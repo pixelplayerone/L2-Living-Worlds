@@ -1219,6 +1219,7 @@ public class PhantomManager implements IXmlReader
 		final Set<Integer> spotCrowding = new HashSet<>(); // previous observed crowd, guarded with spotScores by data
 		// Encounter actor (see ModuleEncounters): exists only to fight one player once, then leaves.
 		volatile boolean encounterActor;
+		volatile boolean arenaDuelist; // stands where it was put, takes duels from anyone and challenges on a module's say-so (ModuleDuels)
 		int encounterEscapeChance; // percent chance to read a Blessed Scroll of Escape at low HP (0 = carries none)
 		boolean encounterCpPotions; // carries and drinks CP potions (the strong encounters); the others use only HP and MP potions
 		long encounterPrepUntil; // until then it may cast its self-buffs and summon its servitor before the fight
@@ -5148,6 +5149,7 @@ public class PhantomManager implements IXmlReader
 		if (!PhantomPvpManager.pvpEnabled())
 		{
 			removeDisabledEncounters();
+			removeDisabledDuelists(); // FPC-254: nor arena duelists
 			// FPC-115: switched off (a config reload). Release every open engagement once, or the hunt and party ticks
 			// would keep deferring to phantoms nothing drives any more. Idle after that, as before.
 			if (_pvpWasEnabled)
@@ -5188,6 +5190,20 @@ public class PhantomManager implements IXmlReader
 				if (data.encounterActor)
 				{
 					serviceEncounter(phantom, data, now);
+					continue;
+				}
+				// An arena duelist does nothing on its own: it only plays out the duel it was sent to or asked into.
+				if (data.arenaDuelist)
+				{
+					if (!PhantomPvpManager.duelsEnabled() && !phantom.isInDuel())
+					{
+						despawnRecruit(phantom); // FPC-254: duels switched off while PvP stays on
+						continue;
+					}
+					if ((data.pvpTargetOid != 0) && !phantom.isDead())
+					{
+						continuePvp(phantom, data, now);
+					}
 					continue;
 				}
 				// Peace zone, dead, dormant, or mid-disperse: drop any engagement and skip (applies to every role).
@@ -6385,6 +6401,95 @@ public class PhantomManager implements IXmlReader
 		}
 	}
 
+	// ---------------------------------------------------------------------
+	/** FPC-254: arena duelists are removed while duels are off; one still in a duel goes once that duel is over. */
+	private synchronized void removeDisabledDuelists()
+	{
+		for (PhantomData data : _phantoms.values())
+		{
+			if (!data.arenaDuelist || data.player.isInDuel())
+			{
+				continue;
+			}
+			try
+			{
+				despawnRecruit(data.player);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Failed to remove arena duelist " + data.player.getObjectId() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	// Arena duelists (ModuleDuels): geared phantoms that stand where a module puts them.
+	// ---------------------------------------------------------------------
+
+	/** Makes a geared phantom that stays put, takes duels from anyone, and challenges only when {@link #challengeToDuel} says so. */
+	public synchronized Player spawnArenaDuelist(Location where, int level, PartyRole role, int enchant, String fixedName, int classId)
+	{
+		if (!FakePlayersConfig.FAKE_PLAYERS_ENABLED || !PhantomPvpManager.duelsEnabled() || (where == null) || (role == null)) // FPC-254/258: none while off
+		{
+			return null;
+		}
+		final Player duelist;
+		ENCOUNTER_ENCHANT.set(enchant);
+		ENCOUNTER_NAME.set(fixedName);
+		try
+		{
+			duelist = spawnPartyMember(where, level, role, Math.max(0, classId), null);
+		}
+		finally
+		{
+			ENCOUNTER_ENCHANT.remove();
+			ENCOUNTER_NAME.remove();
+		}
+		if (duelist == null)
+		{
+			return null;
+		}
+		final PhantomData data = _phantoms.get(duelist.getObjectId());
+		if (data == null)
+		{
+			return duelist;
+		}
+		data.arenaDuelist = true;
+		return duelist;
+	}
+
+	/** @return {@code true} if this is a duelist made by {@link #spawnArenaDuelist} */
+	public boolean isArenaDuelist(Player player)
+	{
+		final PhantomData data = (player == null) ? null : _phantoms.get(player.getObjectId());
+		return (data != null) && data.arenaDuelist;
+	}
+
+	/** @return {@code true} if this duelist is alive and neither in a duel nor on its way to one */
+	public boolean isArenaDuelistFree(Player duelist)
+	{
+		final PhantomData data = (duelist == null) ? null : _phantoms.get(duelist.getObjectId());
+		return (data != null) && data.arenaDuelist && !duelist.isDead() && !duelist.isInDuel() && !duelist.isProcessingRequest() && (data.pvpTargetOid == 0);
+	}
+
+	/** Sends a duelist to walk up to {@code target} and challenge it. @return {@code false} if either side cannot duel right now */
+	public boolean challengeToDuel(Player duelist, Player target)
+	{
+		final PhantomData data = (duelist == null) ? null : _phantoms.get(duelist.getObjectId());
+		if ((data == null) || !data.arenaDuelist || (target == null) || (target == duelist) || !PhantomPvpManager.duelsEnabled())
+		{
+			return false;
+		}
+		if (duelist.isDead() || target.isDead() || duelist.isInDuel() || target.isInDuel() || duelist.isProcessingRequest() || target.isProcessingRequest() || !duelist.canDuel() || !target.canDuel())
+		{
+			return false;
+		}
+		if ((duelist.getPvpFlag() != 0) || (target.getPvpFlag() != 0))
+		{
+			return false;
+		}
+		return armDuel(data, target, DUEL_APPROACH);
+	}
+
 	/** @return how many encounters are running (a group of actors counts once, until its last actor is gone). */
 	public int activeEncounterCount()
 	{
@@ -6982,9 +7087,9 @@ public class PhantomManager implements IXmlReader
 		{
 			return false; // includes the phantom-versus-phantom gate for a phantom challenger
 		}
-		if (isBoundTo(phantom, data, challenger))
+		if (data.arenaDuelist || isBoundTo(phantom, data, challenger))
 		{
-			return true;
+			return true; // a duelist is there to be dueled
 		}
 		return PhantomPvpManager.shouldAcceptDuel(Rnd.get(100), data.honor, phantom.getLevel(), challenger.getLevel());
 	}
