@@ -71,7 +71,7 @@ The pack can update itself. Double-click **`scripts\Check-Updates.bat`** (or use
 updates** button in the launcher). It:
 
 1. Reads `launcher\version.txt` (stamped at build time by `-Version`).
-2. Asks the public repo `Teravibes/L2-Living-Worlds` for the newest release. Each version is published
+2. Asks the public repo `pixelplayerone/L2-Living-Worlds` for the newest release. Each version is published
    twice: `vX.Y.Z` (the full pack) and `vX.Y.Z-patch` (the overlay). The checker compares by version
    number, ignoring the `-patch` suffix.
 3. If you are behind, it asks for confirmation, then **stops the server, downloads the `-patch` asset,

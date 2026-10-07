@@ -42,7 +42,7 @@ import org.l2jmobius.gameserver.config.ServerConfig;
  */
 public class AboutFrame
 {
-	private static final String URL = "github.com/Teravibes/L2-Living-Worlds";
+	private static final String URL = "github.com/pixelplayerone/L2-Living-Worlds";
 	
 	private final URI _uri;
 	private JFrame _frmAbout;

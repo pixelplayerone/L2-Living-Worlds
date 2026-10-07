@@ -21,7 +21,7 @@ public sealed record UpdateInfo(string InstalledTag, string LatestTag);
 public sealed class Updater
 {
     // Keep in sync with update.ps1.
-    public const string UpdateRepo = "Teravibes/L2-Living-Worlds";
+    public const string UpdateRepo = "pixelplayerone/L2-Living-Worlds";
 
     private readonly LauncherPaths _paths;
 
