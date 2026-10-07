@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Living World Launcher - a compiled, self-contained Windows launcher for the
+    offline server. Build a no-install player exe with:
+
+        dotnet publish -c Release
+
+    which produces a single LivingWorld.exe (win-x64, bundled .NET runtime).
+    build-launcher.bat in the dist folder wraps this and copies the exe next to
+    game\ / login\ so a double-click boots the whole stack. No PowerShell is
+    involved in the player's install or launch path.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <AssemblyName>LivingWorld</AssemblyName>
+    <RootNamespace>LivingWorld</RootNamespace>
+    <AssemblyTitle>Living World Launcher</AssemblyTitle>
+    <Product>Living World Launcher</Product>
+    <Version>0.1.14</Version>
+    <ApplicationIcon>..\launcher\assets\launcher.ico</ApplicationIcon>
+
+    <!-- No-install player build: one self-contained exe with the runtime inside. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Hosts tools\l2admin\index.html as the in-app Config Editor window. The
+         managed DLLs and the native WebView2Loader ride inside the published exe
+         (IncludeNativeLibrariesForSelfExtract), so nothing extra ships alongside.
+         The WebView2 Evergreen RUNTIME is still expected on the player's PC. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+</Project>

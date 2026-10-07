@@ -1,0 +1,95 @@
+# Incremental patch manifest
+# ---------------------------------------------------------------------------
+# One path per line, RELATIVE TO THE PACK ROOT (i.e. the folder that has
+# game\, login\, libs\, launcher\, ...). These are the files that changed in
+# THIS release and should ship in L2J-Offline-Patch.zip so an existing tester
+# can unzip it over their install to update without touching their database.
+#
+# Rules:
+#   - libs\GameServer.jar is ALWAYS included automatically - do NOT list it.
+#   - Blank lines and lines starting with # are ignored.
+#   - Forward or back slashes are both fine.
+#   - Do NOT list files a tester may have customized (e.g. game\config\*.ini,
+#     especially Rates.ini) - overwriting those would reset their settings.
+#     Mention any new config keys in the release notes instead.
+#   - ACCUMULATE this list across releases: keep the prior entries AND add the
+#     datapack/config/html files that changed this time. The patch is a whole-file
+#     overlay of CURRENT content, so a single latest patch then brings any tester
+#     fully up to date - even one who skipped an earlier patch. Only remove an
+#     entry if that file was deleted/renamed (or became a customizable config that
+#     must not be overwritten). Java fixes need NO entry - they ride in the jar,
+#     which is always included and always cumulative.
+#   - The build FAILS if a listed file is missing from the pack, so a typo or a
+#     stale path can't ship a broken patch.
+#
+# ---- current release -------------------------------------------------------
+game/data/html/admin/rates.htm
+game/data/scripts/handlers/chat/commands/admin/AdminRates.java
+game/data/scripts/handlers/chat/commands/admin/AdminReload.java
+game/data/html/CommunityBoard/Custom/navigation.html
+brain/fpc_brain.py
+brain/knowledge/50_items.txt
+brain/requirements.txt
+brain/setup_brain.bat
+brain/setup_brain.sh
+scripts/Check-Updates.bat
+scripts/Configure-Brain.bat
+launcher/update.ps1
+tools/l2admin/index.html
+tools/l2admin/native-bridge.js
+# One-release exception to the "no customizable configs" rule. These configs changed
+# defaults this release, so they ship in the patch and overwrite the tester's copy:
+#   - FakePlayers.ini: phantom gear enchant is now +0 to +3, duel settings documented.
+#   - PhantomOlympiad.ini: new file for the Phantom Olympiad nobles.
+#   - Olympiad.ini: weekly Olympiad period and the current ranking shown.
+#   - NpcStatMultipliers.ini: raid and grand bosses at 75% of stock HP, P.Atk and M.Atk.
+# Remove these four entries after the next patch so later patches keep tester settings.
+game/config/Custom/FakePlayers.ini
+game/config/Custom/PhantomOlympiad.ini
+game/config/Olympiad.ini
+game/config/Custom/NpcStatMultipliers.ini
+# One-release exception, same as above: CommunityBoard.ini now ships CustomCommunityBoard = True so the
+# board's navigation column (where module tabs such as Quest Book and Recipe Book appear) shows. Overwrites
+# the tester's copy. Remove after the next patch.
+game/config/Custom/CommunityBoard.ini
+game/data/PhantomPlaystyles.xml
+game/data/xsd/PhantomPlaystyles.xsd
+game/data/PhantomPopulations.xml
+game/data/BotClans.xml
+game/data/xsd/BotClans.xsd
+game/data/crests
+game/data/scripts/handlers/chat/commands/admin/AdminPhantom.java
+game/data/scripts/handlers/MasterHandler.java
+game/data/scripts/handlers/skill/targets/Party.java
+game/data/skill icons
+images
+# Module framework: reference Hello World module. config/module.ini is intentionally
+# omitted so a tester who enabled it is not reset, and game/config/Modules.ini is a
+# protected config shipped only in the full pack; the framework defaults to enabled
+# with no Modules.ini present, so a patch-only tester still works.
+game/modules/hello-world/module.json
+game/modules/hello-world/MODULE.md
+game/modules/hello-world/TESTING.md
+game/modules/hello-world/scripts/HelloWorldModule.java
+# Module framework: reference Custom Item module (resource-root proof). config/module.ini
+# is omitted for the same reason as above; its item definition ships as a normal module file.
+game/modules/custom-item/module.json
+game/modules/custom-item/MODULE.md
+game/modules/custom-item/TESTING.md
+game/modules/custom-item/scripts/CustomItemModule.java
+game/modules/custom-item/data/items/60000-60009.xml
+# Module framework: Alt Companion module (.alt). config/module.ini ships this one time so
+# patch-only testers get the switch; remove it from this list after the next patch.
+game/modules/alt-companion/module.json
+game/modules/alt-companion/MODULE.md
+game/modules/alt-companion/TESTING.md
+game/modules/alt-companion/config/module.ini
+game/modules/alt-companion/scripts/AltCompanionModule.java
+Start-Server.bat
+Stop-Server.bat
+launcher/launcher.ps1
+launcher/stop.ps1
+# launcher/assets/* is intentionally NOT patched: the running LivingWorld.exe holds
+# these open (e.g. launcher.ico as its window icon), so overwriting them mid-update
+# fails with a file-in-use error and aborts the whole patch. Ship changed launcher
+# assets in the full pack instead.

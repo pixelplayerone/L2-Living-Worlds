@@ -1,0 +1,151 @@
+name: Java and playstyle editor tests
+
+# The extracted FakePlayerChatParsing / FakePlayerStorePricing / FakePlayerNameFactory classes depend
+# only on the JDK standard library (FakePlayerNameFactory also uses the tiny Rnd util, which itself only
+# wraps ThreadLocalRandom), so their regression harnesses compile and run with a stock JDK - no game
+# classpath, no Ant, no JDK 25 features.
+on:
+  pull_request:
+    paths:
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerChatParsing.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerStorePricing.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerStoreEligibility.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerStoreMath.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerNameFactory.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomBuffReservations.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomPvpManager.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomOlympiadRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomEncounterRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/TownFakeInviteRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerGrudgeRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomSkillFallbackRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomCombatController.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomCombatPolicy.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomChargePlanner.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomPartyDowntime.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomPartyCommandRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomCasterPositioning.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomEncounterBuffs.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomServitorRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomSpotRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/modules/**"
+      - "L2J_Mobius_CT_0_Interlude github/tests/java/**"
+      - "L2J_Mobius_CT_0_Interlude github/tests/js/**"
+      - "L2J_Mobius_CT_0_Interlude github/tools/l2admin/index.html"
+      - ".github/workflows/java-parsing-tests.yml"
+  push:
+    branches:
+      - main
+      - fix/encounter-preparation
+    paths:
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerChatParsing.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerStorePricing.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerStoreEligibility.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerStoreMath.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerNameFactory.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomBuffReservations.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomPvpManager.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomOlympiadRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomEncounterRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/TownFakeInviteRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/FakePlayerGrudgeRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomSkillFallbackRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomCombatController.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomCombatPolicy.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomChargePlanner.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomPartyDowntime.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomPartyCommandRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomCasterPositioning.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomEncounterBuffs.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomServitorRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomSpotRules.java"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/modules/**"
+      - "L2J_Mobius_CT_0_Interlude github/tests/java/**"
+      - "L2J_Mobius_CT_0_Interlude github/tests/js/**"
+      - "L2J_Mobius_CT_0_Interlude github/tools/l2admin/index.html"
+      - ".github/workflows/java-parsing-tests.yml"
+
+jobs:
+  parsing:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "L2J_Mobius_CT_0_Interlude github"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Compile and run standalone regression harnesses
+        run: |
+          javac -d build/test-classes \
+            "java/org/l2jmobius/commons/util/Rnd.java" \
+            "java/org/l2jmobius/commons/time/TimeUtil.java" \
+            "java/org/l2jmobius/commons/util/ConfigReader.java" \
+            "java/org/l2jmobius/gameserver/config/custom/FakePlayersConfig.java" \
+            "java/org/l2jmobius/gameserver/managers/FakePlayerChatParsing.java" \
+            "java/org/l2jmobius/gameserver/managers/FakePlayerStorePricing.java" \
+            "java/org/l2jmobius/gameserver/managers/FakePlayerStoreEligibility.java" \
+            "java/org/l2jmobius/gameserver/managers/FakePlayerStoreMath.java" \
+            "java/org/l2jmobius/gameserver/managers/FakePlayerNameFactory.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomBuffReservations.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomPvpManager.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomOlympiadRules.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomEncounterRules.java" \
+            "java/org/l2jmobius/gameserver/managers/TownFakeInviteRules.java" \
+            "java/org/l2jmobius/gameserver/managers/FakePlayerGrudgeRules.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomSkillFallbackRules.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomCombatController.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomCombatPolicy.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomChargePlanner.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomPartyDowntime.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomPartyCommandRules.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomCasterPositioning.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomEncounterBuffs.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomServitorRules.java" \
+            "java/org/l2jmobius/gameserver/managers/PhantomSpotRules.java" \
+            "java/org/l2jmobius/gameserver/modules/Json.java" \
+            "java/org/l2jmobius/gameserver/modules/ModuleException.java" \
+            "java/org/l2jmobius/gameserver/modules/ModuleManifest.java" \
+            "java/org/l2jmobius/gameserver/modules/ModuleManifestReader.java" \
+            "java/org/l2jmobius/gameserver/modules/ModuleIdRange.java" \
+            "java/org/l2jmobius/gameserver/modules/ModuleResourceType.java" \
+            "java/org/l2jmobius/gameserver/modules/ModuleValidator.java" \
+            "java/org/l2jmobius/gameserver/modules/ModuleDatabaseSpec.java" \
+            tests/java/*.java
+          java -cp build/test-classes FakePlayerChatParsingTest
+          java -cp build/test-classes FakePlayerStorePricingTest
+          java -cp build/test-classes FakePlayerStoreEligibilityTest
+          java -cp build/test-classes FakePlayerStoreMathTest
+          java -cp build/test-classes FakePlayerNameFactoryTest
+          java -cp build/test-classes PhantomBuffReservationsTest
+          java -cp build/test-classes PhantomPvpManagerTest
+          java -cp build/test-classes PhantomOlympiadRulesTest
+          java -cp build/test-classes PhantomEncounterRulesTest
+          java -cp build/test-classes TownFakeInviteRulesTest
+          java -cp build/test-classes FakePlayerGrudgeRulesTest
+          java -cp build/test-classes PhantomSkillFallbackRulesTest
+          java -cp build/test-classes PhantomCombatControllerTest
+          java -cp build/test-classes PhantomClassPolicyTest
+          java -cp build/test-classes PhantomPartyDowntimeTest
+          java -cp build/test-classes PhantomPartyCommandRulesTest
+          java -cp build/test-classes PhantomCasterPositioningTest
+          java -cp build/test-classes PhantomEncounterBuffsTest
+          java -cp build/test-classes PhantomServitorRulesTest
+          java -cp build/test-classes PhantomSpotRulesTest
+          java -cp build/test-classes TradeAdParserTest
+          java -cp build/test-classes ModuleFrameworkTest
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run playstyle editor regression harness
+        run: node tests/js/playstyle_editor_test.js

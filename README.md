@@ -1,0 +1,249 @@
+# Interlude: Living World - an offline/solo Lineage 2 server
+
+A fork of **L2J Mobius CT_0 Interlude** turned into a single-player **"Living World"**:
+you log in and the server *feels* populated - towns full of NPCs, working private
+shops, trade chat, field hunters, and recruitable combat parties - without any other
+humans online. Play the classic Interlude chronicle solo, at your own pace, on your own
+machine.
+
+> Lineage 2 and all related assets are trademarks of NCSOFT. This is a non-commercial
+> fan project and is not affiliated with or endorsed by NCSOFT.
+
+---
+
+## What makes it a "Living World"
+
+- **Populated towns** - data-driven NPC "fake players" wander the cities with procedural
+  identities and run **functional private shops** you can actually buy from.
+- **Field hunters** - clientless phantom characters auto-hunt the field zones, so the
+  world outside town isn't empty either.
+- **Recruitable parties** - shout *Looking for Members / Looking for Party* and a
+  level-matched party spawns, walks over, and joins you.
+- **Personal support buddy** - party a phantom as your own dedicated buffer/healer.
+- **Living chat (optional)** - an optional LLM "brain" lets bots hold in-character
+  whisper / say / trade / shout conversations. Fully optional; the server runs without it.
+
+Everything else is stock **Interlude (Chronicle 6 / CT_0)** gameplay from the L2J Mobius
+core - augmentation, Seven Signs, sieges, raids, the full quest and skill set.
+
+---
+
+## Community & support
+
+For help with installation, to report bugs, or to share your experience and
+suggestions, join our [L2 Living Worlds Discord](https://discord.gg/6KTyDG55PA).
+
+For in-game available commands and features please see the wiki [L2 Living Worlds wiki](https://livingworlds.pages.dev/wiki) 
+
+---
+
+## Quick start (Windows, install nothing)
+
+The easiest way to play. You do **not** need Java, a database, or any setup.
+
+1. Download the latest **`version release`** from the
+   [**Releases**](../../releases) page. DO NOT download the patch if it's your first download. Download the normal version.
+2. Unzip it anywhere.
+3. Double-click **`LivingWorld.exe`** and press **Play**.
+
+`LivingWorld.exe` is the launcher and the only thing you run: one **Play** button walks
+through the whole start sequence (database, first-run setup, login and game servers, and
+the optional chat brain) behind a progress bar, with a status light for each piece. On
+first run it initializes a bundled, portable MariaDB, imports the schema, then starts the
+servers - a bundled JDK and database are inside the zip, so there's nothing to install.
+Later runs start straight up. The launcher also carries a **Config Editor** and a
+**Modules** panel (see [Configuration](#configuration)) and a one-click **Update** that
+never touches your database or your customized config. Use the launcher's **Stop** button
+(or `Stop-Server.bat`) to shut everything down cleanly.
+
+**`WARNING`**
+If the server did not close down gracefully, it might have leftover items that prevent it from starting again. If that happens, you need to delete the **`.processes.json`** in the launcher folder. It is a hidden file, so make sure you can see hidden files through Windows settings.
+
+Then connect your **Interlude game client** to the server (see
+[Connecting the client](#connecting-the-client) below) and log in:
+
+- Accounts are **auto-created on first login** - just type any username and password.
+- Log in with the username **`admin`** (any password) to get a **GM account**: every
+  character on the `admin` account is automatically granted master access on entering the
+  world, so admin commands (`//admin`, etc.) work out of the box - no database editing.
+- **Any other username** creates a **normal player account** with no admin rights.
+
+> The pack is large (~0.5 GB) because a full JDK and a database engine are bundled
+> inside it. That is the price of "installs nothing."
+
+### Connecting the client
+
+You need a **Lineage 2 Interlude** client (the server does not ship one).
+
+- **Easiest - pre-configured L2.exe:** find and download an interlude client and then
+  download the ready-to-play l2.exe from **[here](https://www.mediafire.com/file/4rom0v9yuc7za4y/L2.exe/file)**. It's already
+  set to connect to `127.0.0.1`, so just run it and log in.
+  WARNING - Rename the existing "L2.exe" of your client to "L2.bin" and replace it with the new "L2.exe" from the link provided above.
+- **Manual** - if you don't want the provided l2.exe point your client at the local server by editing the
+  client's `system/l2.ini` so the login server host is `127.0.0.1` (or add a `hosts`
+  entry mapping the login server's hostname to `127.0.0.1`). Then launch and log in.
+
+> The Lineage 2 client is NCSOFT's property; distribute or download it at your own
+> discretion, the same as any fan project.
+
+---
+
+## Optional: the LLM chat brain
+
+The bots work fully without this. If you want them to hold natural, in-character
+conversations, run the small Python "brain" alongside the server. It's a local Flask
+service the game server calls over HTTP.
+
+It needs a model to think with - a **local model via [Ollama](https://ollama.com)** (no
+API key, runs on your machine) or a hosted API. **Python is installed automatically** if
+you don't already have it.
+
+**If you're using the launcher:** the brain is bundled at `dist\brain\`. Just go to settings
+in the launcher and click "set up / configure brain..." and the guide to set it up will come up.
+Alternative you can also double-click `dist\brain\setup_brain.bat` - which does the same thing and 
+sets everything up.
+
+**If you cloned the source repo:** on Linux/macOS the one-step script does everything:
+
+```bash
+cd "L2J_Mobius_CT_0_Interlude github"
+./setup_brain.sh          # installs Ollama, pulls a model, sets up a venv, launches
+```
+
+On Windows use `setup_brain.bat`. To run it manually:
+
+```bash
+cd "L2J_Mobius_CT_0_Interlude github"
+python3 -m venv .venv && source .venv/bin/activate   # (Windows: .venv\Scripts\activate)
+pip install -r requirements.txt
+python fpc_brain.py       # serves http://127.0.0.1:5000
+```
+
+Configure it with a `.env` file in that folder:
+
+```ini
+# Local model (recommended, no key needed):
+PROVIDER=ollama
+OLLAMA_MODEL=gamma3:12b
+
+# - or - a hosted provider:
+# PROVIDER=deepseek
+# DEEPSEEK_API_KEY=your-key-here
+```
+
+Then set `StartBrain=true` in `dist/launcher/launcher.ini` (or start it yourself) so the
+server talks to it.
+
+---
+
+## Building from source (maintainers / developers)
+
+You only need this if you want to change the Java server or rebuild the one-click pack.
+
+**Requirements:** a full **JDK 25** (not a JRE - the server compiles datapack scripts at
+runtime and needs `javac`) and **Apache Ant**.
+
+Build the server jars:
+
+```bash
+cd "L2J_Mobius_CT_0_Interlude github"
+ant
+```
+
+### Producing the one-click pack
+
+Two ways:
+
+- **In the cloud (no local JDK/Ant needed):** run the **"Build one-click pack"** GitHub
+  Action from the repository's **Actions** tab ("Run workflow"). When it finishes,
+  download the `L2J-Offline-OneClick` artifact and publish it on the Releases page.
+- **Locally on Windows:** from `L2J_Mobius_CT_0_Interlude github/dist/launcher/` run
+  `build-pack.bat` (or `build-pack.ps1` with options). It builds the jars, bundles a full
+  JDK 25 and a portable MariaDB, and produces `L2J-Offline-OneClick.zip`.
+
+See `dist/launcher/README.md` for the full build-and-run details, launcher options, and
+the external-database path (running against your own MySQL/XAMPP instead of the bundled
+DB).
+
+---
+
+## Configuration
+
+The easy way is built into the launcher. Click **Config Editor** and a visual panel opens
+as its own window, already pointed at your server files, so every tab is ready with no
+setup: **rates and server settings**, phantom playstyles, bot clans, and the fake-player
+**population map**. You change things without editing a single file, and a save rewrites
+only the values you touched while keeping your comments and layout intact. The **Modules**
+button enables, disables, or removes optional feature modules the same way (see [Modules](#modules)).
+
+Prefer to edit by hand? Every setting still lives in plain files: standard L2J Mobius
+`.ini` files under `L2J_Mobius_CT_0_Interlude github/dist/game/config/`, the custom
+"Living World" options under `config/Custom/` (e.g. `FakePlayers.ini`), and the XML
+behaviour/route files under `dist/game/data/`. Rates, spawns, and the fake-player
+populations are all adjustable there too.
+
+---
+
+## Modules
+
+The server supports **modules**: optional features packaged as a self-contained folder that you add
+without rebuilding anything. Examples are an NPC buffer, a class master, a GM shop, or extra menus for
+calling phantoms into your party.
+
+Reviewed modules are published in the
+[**L2 Living Worlds Modules**](https://github.com/Teravibes/L2-Living-Worlds-Modules-) repository,
+which lists each one with its author and a short description.
+
+To install a module:
+
+1. Copy its folder into your server's `game/modules/` directory, so you end up with
+   `game/modules/<module-id>/`.
+2. Open the launcher's **Modules** panel and make sure the module is enabled.
+3. Restart the server. The module takes effect on the next start.
+
+To remove one, disable it in the launcher and delete its folder.
+
+> Modules are executable code and run with your server's permissions. Only the modules in the
+> modules repository have been reviewed. Install modules from anywhere else at your own risk.
+
+Want to write your own? See [docs/MODULE_AUTHORING_GUIDE.md](docs/MODULE_AUTHORING_GUIDE.md) and
+[docs/MODULE_FRAMEWORK.md](docs/MODULE_FRAMEWORK.md), then submit it through the server's Discord
+as described in the modules repository.
+
+---
+
+## Repository layout
+
+```
+L2J_Mobius_CT_0_Interlude github/   # the server project (note the space in the folder name)
+  java/org/l2jmobius/                # game/login server source (JDK 25 + Ant build)
+  dist/                              # runnable server: config, data, scripts, launcher
+  fpc_brain.py                       # optional Python LLM chat service
+  knowledge/                         # fact files that ground the chat brain
+  tools/l2admin/                     # visual Config Editor: rates, playstyles, bot clans, populations
+  build.xml                          # Ant build
+fpc data/                            # geodata + world map assets for the editor
+.github/workflows/                   # CI: pack build + regression tests
+```
+
+---
+## Support the project
+
+This is a free, non-commercial fan project. If you enjoy it and want to help,
+you can buy me a coffee. Totally optional!
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-yellow?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/industrialeve)
+
+
+---
+
+## Credits & license
+
+This project is a fork of the **[L2J Mobius](https://l2jmobius.org/)** project
+(CT_0 Interlude), which provides the Lineage 2 server core. Huge thanks to the L2J Mobius
+team and the wider L2J community.
+
+Licensed under the **GNU General Public License v3.0** - the same license as L2J Mobius.
+See [`LICENSE`](LICENSE). You are free to use, modify, and redistribute it under the terms
+of the GPL v3; if you distribute it, you must make your source available under the same
+license.

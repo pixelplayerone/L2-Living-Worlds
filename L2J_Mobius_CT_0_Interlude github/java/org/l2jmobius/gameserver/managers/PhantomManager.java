@@ -1,0 +1,8600 @@
+/*
+ * Copyright (c) 2013 L2jMobius
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+package org.l2jmobius.gameserver.managers;
+
+import java.io.File;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Predicate;
+import java.util.logging.Logger;
+
+import org.l2jmobius.gameserver.config.custom.FakePlayersConfig;
+import org.w3c.dom.Document;
+
+import org.l2jmobius.commons.database.DatabaseFactory;
+import org.l2jmobius.commons.threads.ThreadPool;
+import org.l2jmobius.commons.util.IXmlReader;
+import org.l2jmobius.commons.util.Rnd;
+import org.l2jmobius.gameserver.ai.Action;
+import org.l2jmobius.gameserver.ai.Intention;
+import org.l2jmobius.gameserver.config.custom.AutoPlayConfig;
+import org.l2jmobius.gameserver.data.sql.CharInfoTable;
+import org.l2jmobius.gameserver.data.sql.ClanTable;
+import org.l2jmobius.gameserver.data.xml.ExperienceData;
+import org.l2jmobius.gameserver.data.xml.ItemData;
+import org.l2jmobius.gameserver.data.xml.PetSkillData;
+import org.l2jmobius.gameserver.data.xml.PhantomPlaystyleData;
+import org.l2jmobius.gameserver.data.xml.PlayerTemplateData;
+import org.l2jmobius.gameserver.data.xml.SkillData;
+import org.l2jmobius.gameserver.managers.PhantomWeaponSets.GearContext;
+import org.l2jmobius.gameserver.managers.PhantomWeaponSets.WeaponKind;
+import org.l2jmobius.gameserver.geoengine.GeoEngine;
+import org.l2jmobius.gameserver.handler.ItemHandler;
+import org.l2jmobius.gameserver.model.Location;
+import org.l2jmobius.gameserver.model.StatSet;
+import org.l2jmobius.gameserver.model.World;
+import org.l2jmobius.gameserver.model.WorldObject;
+import org.l2jmobius.gameserver.model.actor.Creature;
+import org.l2jmobius.gameserver.model.actor.Player;
+import org.l2jmobius.gameserver.model.actor.Summon;
+import org.l2jmobius.gameserver.model.actor.appearance.PlayerAppearance;
+import org.l2jmobius.gameserver.model.actor.enums.creature.Race;
+import org.l2jmobius.gameserver.model.actor.enums.player.PlayerClass;
+import org.l2jmobius.gameserver.model.actor.holders.player.AutoPlaySettingsHolder;
+import org.l2jmobius.gameserver.model.clan.Clan;
+import org.l2jmobius.gameserver.model.actor.holders.player.AutoUseSettingsHolder;
+import org.l2jmobius.gameserver.model.actor.holders.player.ClassType;
+import org.l2jmobius.gameserver.model.actor.holders.player.Duel;
+import org.l2jmobius.gameserver.model.actor.holders.npc.AggroInfo;
+import org.l2jmobius.gameserver.model.actor.holders.npc.FakePlayerAppearance;
+import org.l2jmobius.gameserver.model.actor.instance.Chest;
+import org.l2jmobius.gameserver.model.actor.instance.Monster;
+import org.l2jmobius.gameserver.model.actor.templates.PlayerTemplate;
+import org.l2jmobius.gameserver.model.effects.EffectType;
+import org.l2jmobius.gameserver.model.events.Containers;
+import org.l2jmobius.gameserver.model.events.EventType;
+import org.l2jmobius.gameserver.model.events.holders.actor.creature.OnCreatureDamageReceived;
+import org.l2jmobius.gameserver.model.events.holders.actor.player.OnPlayerLogout;
+import org.l2jmobius.gameserver.model.events.listeners.AbstractEventListener;
+import org.l2jmobius.gameserver.model.events.listeners.ConsumerEventListener;
+import org.l2jmobius.gameserver.model.groups.Party;
+import org.l2jmobius.gameserver.model.item.Armor;
+import org.l2jmobius.gameserver.model.item.EtcItem;
+import org.l2jmobius.gameserver.model.item.ItemTemplate;
+import org.l2jmobius.gameserver.model.item.Weapon;
+import org.l2jmobius.gameserver.model.item.enums.BodyPart;
+import org.l2jmobius.gameserver.model.item.enums.ItemProcessType;
+import org.l2jmobius.gameserver.model.item.instance.Item;
+import org.l2jmobius.gameserver.model.item.type.ArmorType;
+import org.l2jmobius.gameserver.model.item.type.CrystalType;
+import org.l2jmobius.gameserver.model.item.type.ActionType;
+import org.l2jmobius.gameserver.model.item.type.EtcItemType;
+import org.l2jmobius.gameserver.model.item.type.WeaponType;
+import org.l2jmobius.gameserver.model.itemcontainer.Inventory;
+import org.l2jmobius.gameserver.model.skill.AbnormalType;
+import org.l2jmobius.gameserver.model.skill.Skill;
+import org.l2jmobius.gameserver.model.skill.targets.TargetType;
+import org.l2jmobius.gameserver.model.zone.ZoneId;
+import org.l2jmobius.gameserver.network.Disconnection;
+import org.l2jmobius.gameserver.network.GameClient;
+import org.l2jmobius.gameserver.network.SystemMessageId;
+import org.l2jmobius.gameserver.network.enums.ChatType;
+import org.l2jmobius.gameserver.network.serverpackets.CreatureSay;
+import org.l2jmobius.gameserver.network.serverpackets.ExDuelAskStart;
+import org.l2jmobius.gameserver.network.serverpackets.L2Friend;
+import org.l2jmobius.gameserver.network.serverpackets.MagicSkillUse;
+import org.l2jmobius.gameserver.network.serverpackets.SystemMessage;
+import org.l2jmobius.gameserver.taskmanagers.AttackStanceTaskManager;
+import org.l2jmobius.gameserver.taskmanagers.AutoPlayTaskManager;
+import org.l2jmobius.gameserver.taskmanagers.AutoUseTaskManager;
+
+/**
+ * Real-Player phantom system.
+ * <p>
+ * A phantom is a genuine {@link Player} database object with no client attached - the same
+ * clientless-Player pattern Mobius ships for offline traders / offline-play
+ * ({@code OfflineTraderTable}, {@code OfflinePlayTable}). That gives it real skills, inventory, stats,
+ * leveling and PvP eligibility an NPC cannot have.
+ * <p>
+ * <b>Combat is delegated to the engine's native auto-hunt</b> ({@link AutoPlayTaskManager} +
+ * {@link AutoUseTaskManager}) - the exact systems {@code OfflinePlayTable.restoreOfflinePlayers}
+ * uses to make a clientless player farm. They handle target selection, movement (geodata
+ * pathfinding), attacking, skills, buffs, soulshots and potions. This manager owns the <b>macro</b>
+ * layer: data-driven deployment from {@code data/PhantomPopulations.xml}, gearing, supervision and
+ * death-respawn.
+ */
+public class PhantomManager implements IXmlReader
+{
+	private static final Logger LOGGER = Logger.getLogger(PhantomManager.class.getName());
+
+	private static final String ACCOUNT_NAME = "phantom";
+	// Regulars persist across restarts (stable charId) so a future friend tier can reference them by id; they
+	// live under this distinct account so the boot sweep (which only targets ACCOUNT_NAME) never touches them
+	// and despawn() knows to keep their row instead of deleting it.
+	private static final String ACCOUNT_NAME_REGULAR = "phantom_regular";
+	// Olympiad roster nobles (PhantomOlympiadManager) live on their own account: persistent like regulars, since their
+	// Olympiad record and Hero status are keyed to the charId, but never part of the friend tier. The boot sweep only
+	// targets ACCOUNT_NAME, so it never touches them either.
+	public static final String ACCOUNT_NAME_NOBLE = "phantom_noble";
+	// An idle roster noble takes a short stroll near its Olympiad Manager every so often, so the crowd is not frozen.
+	private static final long OLYMPIAN_WANDER_MIN_MS = 20000;
+	private static final long OLYMPIAN_WANDER_MAX_MS = 60000;
+	private static final int OLYMPIAN_WANDER_RADIUS = 250;
+	// A roster noble still down this long after its match (the stock return teleport normally revives it) stands up.
+	private static final long OLYMPIAN_REVIVE_DELAY_MS = 10000;
+	// Both sides of a match stand 1800 apart at the start; the opponent search covers the whole stadium.
+	private static final int OLYMPIAD_OPPONENT_RANGE = 4000;
+	// Archer kiting: how long a kite run may take before the archer re-engages, the shortest step worth taking, and how
+	// far from its party leader a member may kite.
+	private static final long KITE_RUN_MS = 1500;
+	private static final int KITE_MIN_STEP = 100;
+	private static final int KITE_LEADER_LEASH = 900;
+	// Short grace after a player's EnterWorld before we login-spawn their befriended regulars, so login itself
+	// finishes first and the spawn work runs off the login (packet) thread.
+	private static final long FRIEND_SPAWN_DELAY = 3000;
+	// Supervisor cadence: cleanup gone phantoms and revive/respawn dead ones. Combat runs on AutoPlay's
+	// own 700ms loop, so this can be lazy.
+	private static final long SUPERVISE_INTERVAL = 5000;
+	// How often phantoms drop a monster another phantom or a real player is already fighting, so they
+	// spread over the mobs instead of ganging one. Fast tick - this should feel responsive.
+	private static final long DECONFLICT_INTERVAL = 1000;
+	// How long a dead phantom stays down before it is replaced (population) or revived (ad-hoc).
+	private static final long RESPAWN_DELAY = 15000;
+	// On-demand activation: a population's phantoms exist only while a real player is near its anchor, and
+	// despawn a short while after the last one leaves. Keeps memory/DB free for empty zones and rolls a
+	// fresh crowd on every visit. ACTIVATION_MARGIN is added to the group radius to decide "near"; the
+	// grace delay avoids spawn/despawn thrash when a player skirts the edge; the stagger spreads the spawn
+	// cost (DB insert + level + gear per phantom) over a few ticks so entering a zone does not hitch.
+	private static final int ACTIVATION_MARGIN = 2000;
+	private static final long DEACTIVATE_DELAY = 30000;
+	private static final long SPAWN_STAGGER = 250;
+	// AutoPlay "next target" modes (mirrors the client toggle): 1 = monsters only.
+	private static final int TARGET_MODE_MONSTER = 1;
+	// AutoPlay auto-action id for the basic melee attack. Without it, AutoPlay treats the character as a
+	// mage caster that never auto-hits (see AutoPlayTaskManager.isMageCaster).
+	private static final int AUTO_ATTACK_ACTION = 2;
+	// Emergency / panic self-buffs a phantom must NOT auto-maintain as ordinary buff upkeep. These are
+	// situational, long-cooldown "panic buttons": several root or immobilize the caster (Ultimate Defense and
+	// the barriers apply an ImmobileBuff), some can only be cast at low HP (Guts/Frenzy = PINCH), and all waste a
+	// multi-minute reuse if popped on trash at full HP - which is how a tank ended up standing frozen out of
+	// combat with Ultimate Defense running. They belong to the manager survival layer and the playstyle PANIC
+	// entries, which fire them only when actually needed. Matched by abnormal type so no per-skill id list is
+	// needed; offensive damage steroids (Snipe/Rapid Fire/Dead Eye, War Cry, Rage, ...) are deliberately kept.
+	private static final Set<AbnormalType> PANIC_SELF_BUFFS = EnumSet.of(AbnormalType.PD_UP_SPECIAL, AbnormalType.AVOID_UP_SPECIAL, AbnormalType.INVINCIBILITY, AbnormalType.ULTIMATE_BUFF, AbnormalType.HERO_BUFF, AbnormalType.PINCH, AbnormalType.RESURRECTION_SPECIAL, AbnormalType.MIRAGE, AbnormalType.AVOID_SKILL, AbnormalType.COUNTER_SKILL, AbnormalType.FORCE_MEDITATION);
+	// Own-MP floor for a field hunter driving its class playstyle: below this percent the engine skips
+	// spending skills (PANIC/LIMIT survival casts are exempt) so a hunter keeps enough MP to auto-attack
+	// instead of going fully OOM. Recruited members use their own per-role reserve in PhantomPartyManager.
+	private static final int HUNTER_MP_RESERVE = 15;
+	// Dagger rear positioning (FPC-144): only once within this range of the target, a step's walk window, blocked steps
+	// allowed per target, and how far behind the target's body edge the dagger stands.
+	private static final int HUNTER_REAR_RANGE = 300;
+	private static final long HUNTER_REAR_GRACE_MS = 1500;
+	private static final int HUNTER_REAR_MAX_TRIES = 3;
+	private static final int HUNTER_REAR_GAP = 25;
+	// Retaliation anti-thrash: a hunter waits at least this long between target switches to an attacker, and
+	// never abandons a current target already at/below the near-kill HP percent (finish the kill first).
+	private static final long RETARGET_COOLDOWN = 4000;
+	private static final int RETALIATE_NEAR_KILL_PERCENT = 15;
+	// How many soulshots to hand a freshly geared phantom (no runtime restock yet).
+	private static final int SHOT_COUNT = 5000;
+	// Arrows handed to an archer so its bow can actually fire (a bow with no ammunition does nothing). Big stack
+	// so a farm session doesn't run dry; the engine auto-equips them into the left hand on the first shot.
+	private static final int ARROW_COUNT = 20000;
+	// Recruited party members gear up for real content (unlike the cheap, intentionally-patchy ambient loadout):
+	// a chance the member is an enchanted player, and if so a modest uniform enchant on its weapon + armor.
+	// The chance and +min..+max range are configurable via FakePlayerRecruitEnchant* in FakePlayers.ini.
+	// Healing potions for in-combat HP sustain while farming. Generous stack since phantoms fight a lot;
+	// refreshed on every (re)spawn. Native auto-potion drinks one when HP falls below the percent.
+	private static final int HP_POTION_ID = 1539; // Greater Healing Potion
+	private static final int HP_POTION_COUNT = 20000;
+	private static final int HP_POTION_PERCENT = 60;
+	// Encounter actors fight once, so they carry a modest stack of the best potions and drink them from the fight tick.
+	private static final int ENC_ESCAPE_SCROLL_ID = 1538; // Blessed Scroll of Escape
+	private static final int ENC_ESCAPE_SKILL_ID = 2036;
+	private static final int ENC_ESCAPE_BELOW_PERCENT = 10;
+	private static final String[] ENC_ESCAPE_LINES =
+	{
+		"Nope. Not dying for this. Later, clown.",
+		"You got lucky. Don't get comfortable.",
+		"Whatever, I'm out. You're not worth my scroll.",
+		"This isn't over. I'll be back with friends.",
+		"Cheap. Real cheap. I'm leaving."
+	};
+	private static final long ENC_PREP_MS = 10_000L;
+	private static final long ENC_PET_SKILL_GAP_MS = 4_000L;
+	private static final int ENC_POTION_COUNT = 300;
+	private static final int ENC_CP_POTION_ID = 5592; // Greater CP Potion (0.5 s reuse)
+	private static final int ENC_MP_POTION_ID = 728; // Mana Potion (0.5 s reuse)
+	private static final int ENC_CP_BELOW_PERCENT = 100;
+	private static final int ENC_HP_BELOW_PERCENT = 100;
+	private static final int ENC_MP_BELOW_PERCENT = 90;
+	// Healing potions a party companion may carry, best first: Greater, normal, Lesser Healing Potion.
+	private static final int[] COMPANION_HP_POTIONS =
+	{
+		1539,
+		1061,
+		1060
+	};
+	// Emergency rez scroll: every recruited party member carries a small stack of Scroll of Resurrection (skill 2014)
+	// so a party with no natural rezzer - an all-DPS group, or one whose only healer is also down - can still put a
+	// fallen member or the leader back up. The party brain (PhantomPartyManager) only reaches for a scroll when nobody
+	// alive can cast Resurrection itself, so a healer-led party keeps behaving exactly as before. Scrolls leave with
+	// the phantom on despawn, so nothing leaks into the economy.
+	private static final int REZ_SCROLL_ID = 737;
+	private static final int REZ_SCROLL_COUNT = 3;
+	// Dimensional Fragment: every phantom carries one so it satisfies the Dimensional Rift entry requirement
+	// (each party member must hold at least one fragment). With the rift entry cost configurable to 0 the fragment
+	// is never consumed, so a single copy is enough and it leaves with the phantom on despawn.
+	private static final int DIMENSION_FRAGMENT_ID = 7079;
+	// Buff reagents: a few support buffs consume an item per cast (the prophet's Greater Might / Greater Shield
+	// and the caster's Clarity all eat Spirit Ore, id 3031). A clientless buffer that has none silently fails the
+	// cast - the engine rejects it in checkDoCastConditions - and, since the buff never lands, re-tries it every
+	// tick forever (the "high-level buffer stuck buffing in a loop"; a low-level one doesn't know those buffs, so
+	// it never hit it). We hand every support phantom a large stack of whatever reagents its known buffs require,
+	// so the greater buffs actually land and upkeep completes. Weight is a non-issue: diet mode zeroes it.
+	private static final int BUFF_REAGENT_COUNT = 20000;
+	// Heal skill ids a buddy may already know (Heal, Battle Heal, Greater Heal, Greater Battle Heal). If it
+	// knows none (Prophet/Warcryer), it is granted Heal (1011) so every buddy can top its owner up.
+	private static final int[] HEAL_SKILL_IDS =
+	{
+		1011,
+		1015,
+		1217,
+		1218
+	};
+	// Minimum spacing between phantoms at spawn, so a group does not stack on one tile.
+	private static final int MIN_SEPARATION = 250;
+	// First-occupation FIGHTER class ids per race (verified in FakePlayerAppearanceFactory), weighted by
+	// repetition so phantoms vary in race/body type. All are melee, so the sword + soulshot path is shared.
+	private static final int[] FIGHTER_CLASS_POOL =
+	{
+		0, 0, 0, // Human Fighter
+		18, 18, // Elven Fighter
+		31, 31, // Dark Fighter
+		44, // Orc Fighter
+		53 // Dwarven Fighter
+	};
+	// First-occupation MYSTIC (DD) base classes; orcs/dwarves excluded (no nuker line).
+	private static final int[] MAGE_CLASS_POOL =
+	{
+		10, 10, // Human Mage
+		25, // Elven Mystic
+		38 // Dark Mystic
+	};
+	// How many (cheapest) candidate items to keep per slot/grade, so phantoms vary their look without
+	// pulling in rare/expensive drops.
+	private static final int CANDIDATES_PER_SLOT = 6;
+	// Recruited members should still use strong, role-correct weapons, but choosing the single most expensive
+	// template made every member of a role/grade look identical. Roll among the strongest few compatible items.
+	private static final int PARTY_WEAPON_CANDIDATES = 6;
+	/** A caster weapon counts among the strongest of its grade at this share of the best reference price or more. */
+	private static final double CASTER_TOP_TIER = 0.9;
+	// Safety ceiling on total live phantom Player objects (each is far heavier than an NPC fake player).
+	private static final int MAX_PHANTOMS = 200;
+	// Proximity dormancy: a phantom only runs the (costly) auto-hunt while a real, client-connected player
+	// is near. Hysteresis (wake closer than sleep) stops it flapping at the boundary. Ideal for solo play:
+	// only the handful of phantoms around you actually compute.
+	private static final int WAKE_RANGE = 3500;
+	private static final int SLEEP_RANGE = 4500;
+	// Resting: when safe (no mob near, not in combat) and low on HP/MP, a phantom sits to regen, then
+	// stands when recovered or threatened. This is what sustains mages (MP) and wounded fighters (HP).
+	// HP uses a moderate band; MP (a caster's lifeblood) sits later but recovers all the way to full so a
+	// nuker gets a proper refill instead of standing back up half-charged.
+	private static final int REST_SIT_PERCENT = 35;
+	private static final int REST_STAND_PERCENT = 85;
+	private static final int REST_MP_SIT_PERCENT = 30; // sit once MP drops to ~this
+	private static final int REST_MP_STAND_PERCENT = 100; // and stay seated until MP is fully restored
+	private static final int REST_DANGER_RANGE = 700;
+	// Share of phantoms that roll a (DD) mage instead of a fighter.
+	private static final int MAGE_CHANCE = 30;
+	// Default chance a spawn uses one of a population's fixed "regular" identities (name/appearance) instead
+	// of a fresh random one, giving that zone a few recognizable recurring faces. Only applies when the
+	// population actually defines <regular> entries; overridable per-population via the regularChance attribute.
+	private static final int REGULAR_CHANCE_DEFAULT = 25;
+	// Safety ceiling on auto-generated regulars per population (regularCount), so a stray config can't flood one.
+	private static final int MAX_AUTO_REGULARS = 30;
+	// Mage combat: casters don't move under AutoPlay, so a faster tick positions them. They walk IN to within
+	// CAST_RANGE to nuke and then stand and cast (never backing off as the mob closes - that kites indefinitely);
+	// when MP drops below CAST_MP_PERCENT they break off to rest (a pure caster is otherwise passive with no MP).
+	// TOLERANCE is the casting-range slack that stops constant micro-repositioning.
+	private static final long MAGE_TICK_INTERVAL = 1000;
+	// Phantom PvP (self-defense) tick. Runs at the same cadence as the hunt deconflict pass; the pvpCombat tick
+	// early-returns when the master switch is off, so it costs nothing on a server with PvP disabled.
+	private static final long PVP_TICK_INTERVAL = 1000;
+	// How close a hostile player must be for a phantom to notice it is under attack (mirrors REST_DANGER_RANGE).
+	private static final int PVP_DANGER_RANGE = 700;
+	// A PvP opponent that leaves this range (or dies) ends the engagement; wider than PVP_DANGER_RANGE so a phantom
+	// does not disengage the instant the opponent steps back a pace mid-fight.
+	private static final int PVP_LEASH_RANGE = 1200;
+	// Hard cap on a single PvP engagement, so a phantom never stays locked on a vanished or unreachable opponent.
+	private static final long PVP_ENGAGE_MAX_MS = 60000;
+	// Anti-thrash: once a stand-or-flee decision is made it holds at least this long before it may flip again.
+	private static final long PVP_DECISION_HOLD_MS = 3000;
+	// One retreat step for a fleeing phantom. Kept short and re-issued each time the phantom finishes the previous
+	// step (rather than one long lurch), so the client animates a continuous run away instead of a snap, and so the
+	// direction re-aims at the attacker as it chases.
+	private static final int PVP_FLEE_STEP = 300;
+	// A fleeing phantom still this close to its attacker at decision time is cornered: it turns and fights back.
+	private static final int PVP_CORNERED_RANGE = 200;
+	// How long a recorded "a Player hit me" record stays valid. A hit inside this window means the attacker is still
+	// actively engaging; once the last hit is older than this the record is stale and self-defense will not fire on it.
+	private static final long PVP_ATTACKER_MEMORY_MS = 8000;
+	// How often an idle aggressor phantom scans for a flagged/PK target to react to. Coarser than the 1s tick so the
+	// scan and the react roll stay cheap; a phantom that finds no target waits this long before scanning again.
+	private static final long PVP_REACT_SCAN_INTERVAL_MS = 4000;
+	// A caster/healer phantom below this MP percent is treated as out of mana for the stand-or-flee sizing (flee sooner).
+	private static final int PVP_CASTER_LOW_MP_PERCENT = 20;
+	// Phase 3 duels. A duel reuses the PvP engagement (pvpTargetOid holds the opponent, so every hunt and party tick
+	// defers to it); PhantomData.duelPhase says which duel step the engagement is in.
+	private static final int DUEL_NONE = 0; // an ordinary PvP engagement, or none
+	private static final int DUEL_APPROACH = 1; // a challenging phantom is walking up to its opponent before asking
+	private static final int DUEL_ASKED = 2; // a challenging phantom is waiting for a real player's answer
+	private static final int DUEL_COUNTDOWN = 3; // accepted: waiting through the stock countdown for the duel to start
+	private static final int DUEL_FIGHTING = 4; // the stock duel is running
+	// Outcome of a finished duel, for the phantom's closing line.
+	private static final int DUEL_OUTCOME_NONE = 0;
+	private static final int DUEL_OUTCOME_WON = 1;
+	private static final int DUEL_OUTCOME_LOST = 2;
+	private static final int DUEL_OUTCOME_SURRENDERED = 3;
+	// A challenged phantom "thinks" for a random moment in this range before answering, so it reads like a person.
+	private static final int DUEL_ANSWER_DELAY_MIN_MS = 1500;
+	private static final int DUEL_ANSWER_DELAY_MAX_MS = 3500;
+	// A challenging phantom asks from inside this range (stock RequestDuelStart requires 250 for a player).
+	private static final int DUEL_ASK_RANGE = 200;
+	// A challenging phantom gives up walking to its opponent after this long.
+	private static final long DUEL_APPROACH_MAX_MS = 15000;
+	// Stock start: the duel is scheduled 3s after acceptance, then counts down 5s. This covers it with slack.
+	private static final long DUEL_COUNTDOWN_MAX_MS = 12000;
+	// Stock 1v1 duels last 120s; a safety cap a little past that in case the end is never observed.
+	private static final long DUEL_FIGHT_MAX_MS = 130000;
+	// How often an idle, honorable phantom considers issuing a challenge (then PhantomPvpDuelChancePercent rolls).
+	private static final long DUEL_CONSIDER_INTERVAL_MS = 30000;
+	// After issuing a challenge (accepted or not) a phantom waits this long before it may issue another.
+	private static final long DUEL_CHALLENGE_COOLDOWN_MS = 600000;
+	// Per opponent: once challenged, no phantom challenges the same player (or phantom) again for this long.
+	private static final long DUEL_TARGET_COOLDOWN_MS = 300000;
+	// How close a prospective opponent must be for an idle phantom to consider challenging it.
+	private static final int DUEL_NOTICE_RANGE = 600;
+	// Phantom-versus-phantom duels only start while a real player is this close to watch.
+	private static final int DUEL_AUDIENCE_RANGE = 1500;
+	private static final String[] DUEL_CHALLENGE_LINES =
+	{
+		"Hey, duel?",
+		"Fancy a quick duel?",
+		"Want to spar?",
+		"One duel, you and me?"
+	};
+	private static final String[] DUEL_ACCEPT_LINES =
+	{
+		"You're on.",
+		"Alright, let's go.",
+		"Sure, show me what you've got.",
+		"Ok, one round."
+	};
+	private static final String[] DUEL_DECLINE_LINES =
+	{
+		"Not now, I'm busy.",
+		"Maybe later.",
+		"No thanks.",
+		"Pass."
+	};
+	private static final String[] DUEL_WIN_LINES =
+	{
+		"gg",
+		"Good fight.",
+		"gg, close one."
+	};
+	private static final String[] DUEL_LOSE_LINES =
+	{
+		"gg, you got me.",
+		"Nice one.",
+		"gg wp"
+	};
+	private static final String[] DUEL_SURRENDER_LINES =
+	{
+		"Ok ok, I yield.",
+		"I give up, you win.",
+		"Enough, you win."
+	};
+	private static final int MAGE_CAST_RANGE = 650;
+	private static final int MAGE_RANGE_TOLERANCE = 150;
+	private static final int MAGE_CAST_MP_PERCENT = 20;
+	// Idle roaming: the native AutoPlay never moves a phantom past its search radius, so once no monster is
+	// in range it stands still forever. When an awake phantom has nothing to fight, the supervisor walks it
+	// to a fresh spot inside its home area so the next AutoPlay scan finds new mobs - this is what keeps a
+	// spread-out zone active instead of phantoms freezing wherever the local mobs ran out.
+	private static final int ROAM_RADIUS = 1200;
+	private static final int ROAM_MIN_DISTANCE = 400;
+	private static final int ROAM_ATTEMPTS = 10;
+	private static final int IDLE_TARGET_CLEAR_TICKS = 3;
+	// Post-kill breather: after a phantom kills its mob it stands a beat before pulling the next one, instead
+	// of machine-gunning straight through the spawn. (Lost targets without a kill re-acquire immediately.)
+	private static final long POST_KILL_DELAY_MIN = 1200;
+	private static final long POST_KILL_DELAY_MAX = 3200;
+	// Initial dispersal: when a population activates (a real player approaches), phantoms first fan out toward
+	// the perimeter of their area for this long before hunting, so they spread instead of all piling onto the
+	// nearest mobs the instant they spawn. DISPERSE_MIN_RADIUS_PCT is the closest-to-edge they aim for.
+	private static final long DISPERSE_DURATION = 4500;
+	private static final double DISPERSE_MIN_RADIUS_PCT = 0.55;
+	// Caster looting: after a kill a mage walks to the corpse so it can reach the drop (it can't from cast range);
+	// the walk ends on arrival or after the cap.
+	private static final int LOOT_WALK_RANGE = 180;
+	private static final long LOOT_WALK_MAX = 6000;
+	// Post-kill looting: the hunt loop collects drops itself (the native AutoPlay pickup only fires when a phantom
+	// has no target, which the hunt loop almost never lets happen). Scan radius for reachable drops around the
+	// phantom, and the distance within which it stops moving and picks one up.
+	private static final int LOOT_SCAN_RANGE = 250;
+	private static final int LOOT_PICKUP_RANGE = 40;
+	private static final int FIELD_SWEEP_SKILL_ID = 42;
+
+	// Body slots a phantom is geared in. R_HAND = sword; the rest are LIGHT/HEAVY armor pieces.
+	private static final BodyPart[] GEAR_SLOTS =
+	{
+		BodyPart.R_HAND,
+		BodyPart.CHEST,
+		BodyPart.LEGS,
+		BodyPart.GLOVES,
+		BodyPart.FEET,
+		BodyPart.HEAD
+	};
+	// The cheapest few tradeable items per grade for each slot, resolved once from the datapack, so each
+	// phantom can roll a varied but level-appropriate look (data-driven - no hard-coded item ids). Two
+	// loadouts: fighters (sword + light/heavy armor) and mages (magic weapon + robe).
+	private static final Map<BodyPart, EnumMap<CrystalType, List<ItemTemplate>>> FIGHTER_GEAR = new EnumMap<>(BodyPart.class);
+	private static final Map<BodyPart, EnumMap<CrystalType, List<ItemTemplate>>> MAGE_GEAR = new EnumMap<>(BodyPart.class);
+	// DISABLED (kept for reference). Caster armor item ids that have NO Orc-Mystic model in the client and so
+	// render invisibly on an Orc (Warcryer) - chest/legs vanish. There is no server-side attribute to detect this
+	// (identical items render differently), so it was a tested deny-list: an Orc caster was geared from everything
+	// EXCEPT these (445 Paradia Tunic chest, 474 Stockings of Mana legs). Turned OFF for now so orc casters draw
+	// ordinary robe and we can re-check whether the invisible-torso bug still reproduces on the live client. If it
+	// does, re-enable this and pass it as the `skip` set in gear()/gearParty() again.
+	// private static final Set<Integer> ORC_CASTER_ARMOR_SKIP = Set.of(445, 474);
+	private static volatile boolean _gearBuilt = false;
+	private static volatile int _gearVersion = -1;
+
+	/**
+	 * A buddy is a support-class phantom that idles in a town (no auto-hunt) until a real player whispers it,
+	 * parties it, and uses it as a personal buffer/healer. Each role fixes the exact support class to spawn.
+	 * All three cast (mage gear loadout); Prophet/Warcryer get a basic Heal granted since their Interlude class
+	 * has none, so every buddy can top its owner up.
+	 */
+	enum BuddyRole
+	{
+		NONE(0),
+		ELDER(30), // Elven Elder - mage buffs, heals, recharge
+		PROPHET(17), // Prophet - fighter buffs (Heal granted)
+		WARCRYER(52); // Warcryer - Orc buffs (Heal granted)
+		// No Bounty Hunter here: it is a physical spoiler run by PhantomPartyManager (PartyRole.BOUNTY_HUNTER). As a
+		// buddy it got the caster loadout, and a befriended class 55 came back as a support buddy (FPC-206).
+
+		final int classId;
+
+		BuddyRole(int classId)
+		{
+			this.classId = classId;
+		}
+
+		boolean isBuddy()
+		{
+			return this != NONE;
+		}
+
+		static BuddyRole fromString(String value)
+		{
+			if ((value == null) || value.isEmpty())
+			{
+				return NONE;
+			}
+			switch (value.trim().toUpperCase())
+			{
+				case "BUDDY_ELDER":
+				case "ELDER":
+				{
+					return ELDER;
+				}
+				case "BUDDY_PROPHET":
+				case "PROPHET":
+				{
+					return PROPHET;
+				}
+				case "BUDDY_WARCRYER":
+				case "WARCRYER":
+				{
+					return WARCRYER;
+				}
+				default:
+				{
+					return NONE;
+				}
+			}
+		}
+	}
+
+	/**
+	 * A recruited combat party member. Unlike a {@link BuddyRole} buddy (which idles in a town until partied),
+	 * a party member is spawned on demand off-screen when a real player shouts an LFM/LFP, walks to the player,
+	 * and is then invited into the party. {@link PhantomPartyManager} owns its behaviour from spawn.
+	 * <ul>
+	 * <li>{@code mage} - caster gear loadout (magic weapon + robe + spiritshots).</li>
+	 * <li>{@code supportAs} - non-NONE roles reuse the proven {@link #outfitBuddy} support outfit (no auto-hunt;
+	 * the manager casts heals/buffs by hand). Combat roles use {@link #outfitCombat} (a fixed class + auto-skills).</li>
+	 * </ul>
+	 * Combat class ids are standard Interlude occupations resolved per level tier; if a template is missing the
+	 * spawner falls back to a plain fighter/mage, so a bad id degrades instead of crashing.
+	 */
+	public enum PartyRole
+	{
+		// The armor field is the class's practical armor family (from its datapack armor-mastery skill, cross-checked
+		// against community Interlude builds): Heavy for tanks/warriors/singer/dancer, Light for archers/daggers,
+		// MAGIC (=robe) for casters. It drives gearParty's armor pick so an archer no longer rolls heavy plate, etc.
+		TANK(false, BuddyRole.NONE, ArmorType.HEAVY),
+		WARRIOR(false, BuddyRole.NONE, ArmorType.HEAVY),
+		ARCHER(false, BuddyRole.NONE, ArmorType.LIGHT),
+		DAGGER(false, BuddyRole.NONE, ArmorType.LIGHT),
+		MONK(false, BuddyRole.NONE, ArmorType.LIGHT), // Orc Monk / Tyrant / Grand Khavatari: unarmed (fist) light-armor melee bruiser
+		SINGER(false, BuddyRole.NONE, ArmorType.HEAVY), // Swordsinger: melee that keeps the party's songs running (2-min recast loop)
+		DANCER(false, BuddyRole.NONE, ArmorType.HEAVY), // Bladedancer: dual-wield melee that keeps the dances running (Heavy + dual swords is the retail standard)
+		NUKER(true, BuddyRole.NONE, ArmorType.MAGIC),
+		HEALER(true, BuddyRole.ELDER, ArmorType.MAGIC), // Elven Elder kit (heals + recharge + Resurrection, learned naturally from its class tree)
+		BUFFER(true, BuddyRole.PROPHET, ArmorType.MAGIC), // Prophet fighter-buff kit
+        BOUNTY_HUNTER(false, BuddyRole.NONE, ArmorType.HEAVY); // Bounty Hunter: spoils stuff, shares loot
+
+        final boolean mage;
+		final BuddyRole supportAs;
+		final ArmorType armor;
+
+		PartyRole(boolean mage, BuddyRole supportAs, ArmorType armor)
+		{
+			this.mage = mage;
+			this.supportAs = supportAs;
+			this.armor = armor;
+		}
+
+		/** @return {@code true} for HEALER/BUFFER: outfit via the support path, behaviour driven by hand. */
+		public boolean isSupport()
+		{
+			return supportAs.isBuddy();
+		}
+
+		/**
+		 * Resolves the loose tokens a player shouts ("healer", "dd", "box", "tank", "ee") to a role.
+		 * @return the matched role, or {@code null} if the word names no role
+		 */
+		public static PartyRole fromToken(String token)
+		{
+			switch (token)
+			{
+				case "tank":
+				case "tanker":
+				case "knight":
+				case "pally":
+				case "paladin":
+				{
+					return TANK;
+				}
+				case "dd":
+				case "dps":
+				case "damage":
+				case "dealer":
+				{
+					return randomDps(); // "dd" = any damage dealer, so a party comes out varied
+				}
+				case "fighter":
+				case "warrior":
+				case "melee":
+				case "glad":
+				case "gladiator":
+				case "wl":
+				case "warlord":
+				{
+					return WARRIOR;
+				}
+				case "archer":
+				case "bow":
+				case "hawkeye":
+				case "ranger":
+				{
+					return ARCHER;
+				}
+				case "dagger":
+				case "rogue":
+				case "th":
+				case "assassin":
+				{
+					return DAGGER;
+				}
+				case "nuker":
+				case "mage":
+				case "nuke":
+				case "sorc":
+				case "sorcerer":
+				case "wizard":
+				case "ss":
+				{
+					return NUKER;
+				}
+				case "healer":
+				case "heal":
+				case "ee":
+				case "elder":
+				case "bishop":
+				case "se":
+				case "shillien":
+				case "cleric":
+				{
+					return HEALER;
+				}
+				case "buffer":
+				case "buff":
+				case "pp":
+				case "prophet":
+				case "wc":
+				case "warcryer":
+				{
+					return BUFFER;
+				}
+				case "sws":
+				case "singer":
+				case "swordsinger":
+				{
+					return SINGER;
+				}
+				case "bd":
+				case "dancer":
+				case "bladedancer":
+				{
+					return DANCER;
+				}
+				case "monk":
+				case "tyrant":
+				case "fist":
+				case "gk":
+				case "khavatari":
+				{
+					return MONK;
+				}
+				case "spoiler":
+				case "spoil":
+				case "scavenger":
+				case "scav":
+				case "bh":
+				case "bounty hunter":
+				{
+					return BOUNTY_HUNTER;
+				}
+				default:
+				{
+					return null;
+				}
+			}
+		}
+
+		/** A random damage-dealer role, so a bare "dd"/"dps" request yields a varied party. */
+		private static PartyRole randomDps()
+		{
+			return DPS_ROLES[Rnd.get(DPS_ROLES.length)];
+		}
+
+		// A generic "dd"/"dps" rolls only PHYSICAL damage dealers. NUKER is deliberately excluded: a caster brings its
+		// own positioning/MP needs and is not what most players expect from a plain "dd", so it comes only from an
+		// explicit "nuker"/"mage" request (PartyRole.fromToken), never from the generic roll.
+		private static final PartyRole[] DPS_ROLES =
+		{
+			WARRIOR,
+			ARCHER,
+			DAGGER,
+			MONK
+		};
+	}
+
+	/**
+	 * @return a random damage-dealer archetype that actually exists for {@code race} (so "elf dd" never rolls a
+	 *         warrior/monk the race can't be), or {@code null} if the race has no damage archetype at all.
+	 */
+	public static PartyRole randomDpsForRace(Race race)
+	{
+		final List<PartyRole> valid = new ArrayList<>();
+		for (PartyRole dps : PartyRole.DPS_ROLES)
+		{
+			if (comboExists(race, dps))
+			{
+				valid.add(dps);
+			}
+		}
+		return valid.isEmpty() ? null : valid.get(Rnd.get(valid.size()));
+	}
+
+	/**
+	 * The playable races a generic damage-dealer can be rolled from, so a bulk "N dd" call spreads across races.
+	 * Dwarves are deliberately EXCLUDED: their only damage archetype is a blunt/heavy melee that most players do not
+	 * want filling a generic DD slot - they are wanted as a spoiler, not a nuker/archer stand-in. A dwarf is still
+	 * recruited when asked for explicitly ("dwarf dd", or the "spoiler" token -> the Bounty Hunter line).
+	 */
+	private static final Race[] DPS_RACES =
+	{
+		Race.HUMAN,
+		Race.ELF,
+		Race.DARK_ELF,
+		Race.ORC
+	};
+
+	/**
+	 * Rolls ONE generic damage-dealer recruit with fresh race + archetype variety, so a bulk "N dd" request fills
+	 * with a varied mix instead of N identical clones (Trello #11). With an explicit {@code race} the race is kept
+	 * and only the archetype varies (a valid DPS for that race); otherwise both are rolled. The class is left at 0
+	 * so it is resolved level-aware at spawn, and the role still drives the weapon so archetypes differ even below
+	 * level 20 (where every class is still the base fighter/mage).
+	 * @param race a requested race to pin, or {@code null} to also vary the race
+	 * @return a generic-DD recruit, or {@code null} if a pinned race has no damage archetype at all
+	 */
+	public static Recruit rollDpsRecruit(Race race)
+	{
+		if (race != null)
+		{
+			final PartyRole role = randomDpsForRace(race);
+			return (role == null) ? null : new Recruit(role, 0, race);
+		}
+		final Race rolledRace = DPS_RACES[Rnd.get(DPS_RACES.length)];
+		final PartyRole role = randomDpsForRace(rolledRace);
+		// Every playable race has at least one damage archetype, but fall back defensively to a Human fighter.
+		return (role == null) ? new Recruit(PartyRole.WARRIOR, 0, Race.HUMAN) : new Recruit(role, 0, rolledRace);
+	}
+
+	/**
+	 * A requested recruit: the behaviour role, an optional exact class id (0 = the role's default class), and an
+	 * optional requested race ({@code null} = the role's default race). Race only applies to a generic-role recruit
+	 * (classId 0); a specifically named class carries its own race.
+	 */
+	public static class Recruit
+	{
+		public final PartyRole role;
+		public final int classId;
+		public final Race race;
+
+		public Recruit(PartyRole role, int classId)
+		{
+			this(role, classId, null);
+		}
+
+		public Recruit(PartyRole role, int classId, Race race)
+		{
+			this.role = role;
+			this.classId = classId;
+			this.race = race;
+		}
+	}
+
+	/**
+	 * @return {@code true} if a class is a specific 2nd-or-higher occupation worth requesting by name (e.g.
+	 *         Shillien Elder, Gladiator) - base and 1st classes are excluded so generic words ("fighter",
+	 *         "knight", "mage") fall through to the level-appropriate role tokens instead.
+	 */
+	public static boolean isSelectableClass(PlayerClass playerClass)
+	{
+		int depth = 0;
+		PlayerClass parent = playerClass.getParent();
+		while (parent != null)
+		{
+			depth++;
+			parent = parent.getParent();
+		}
+		return depth >= 2;
+	}
+
+	/** Maps a specific class to the behaviour role used for its gear/weapon/support handling. */
+	public static PartyRole roleForClass(PlayerClass playerClass)
+	{
+		final String name = playerClass.name().toLowerCase();
+		if (nameHas(name, "paladin", "dark_avenger", "darkavenger", "temple_knight", "templeknight", "shillien_knight", "shillienknight", "hell_knight", "hellknight", "phoenix_knight", "phoenixknight", "evas_templar", "eva_templar", "shillien_templar", "knight"))
+		{
+			return PartyRole.TANK;
+		}
+		if (nameHas(name, "cleric", "bishop", "oracle", "elder", "cardinal", "saint"))
+		{
+			return PartyRole.HEALER;
+		}
+		if (nameHas(name, "prophet", "warcryer", "doomcryer", "overlord", "dominator", "shaman", "hierophant"))
+		{
+			return PartyRole.BUFFER;
+		}
+		// Mage check goes BEFORE the singer/dancer name match: mystic classes carry "singer"/"muse"/"dancer" in
+		// their names (Spellsinger, Mystic Muse) but are nukers, not party bards - only the FIGHTER bards below are.
+		if (playerClass.isMage())
+		{
+			return PartyRole.NUKER;
+		}
+		if (nameHas(name, "singer", "muse")) // Sword Singer / Sword Muse (fighter bards)
+		{
+			return PartyRole.SINGER;
+		}
+		if (nameHas(name, "dancer")) // Bladedancer / Spectral Dancer (fighter bards)
+		{
+			return PartyRole.DANCER;
+		}
+		if (nameHas(name, "monk", "tyrant", "khavatari")) // Orc fist-fighters: light armor + fist weapon
+		{
+			return PartyRole.MONK;
+		}
+		if (nameHas(name, "scavenger", "bounty", "seeker")) { // Dwarves: blunt/heavy melee, spoil targets, collect with sweep
+			return PartyRole.BOUNTY_HUNTER;
+		}
+		if (nameHas(name, "artisan", "warsmith", "maestro")) // Dwarves: blunt/heavy melee, assist with golems
+		{
+			return PartyRole.WARRIOR;
+		}
+		if (nameHas(name, "ranger", "hawkeye", "sentinel", "sagittarius", "scout", "archer"))
+		{
+			return PartyRole.ARCHER;
+		}
+		if (nameHas(name, "hunter", "walker", "adventurer", "rider", "assassin", "rogue"))
+		{
+			return PartyRole.DAGGER;
+		}
+		return PartyRole.WARRIOR;
+	}
+
+	private static boolean nameHas(String name, String... keys)
+	{
+		for (String key : keys)
+		{
+			if (name.contains(key))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// ---------------------------------------------------------------------------------------------------------------
+	// Level- and race-aware recruit class resolution.
+	//
+	// Every recruited phantom's occupation is resolved from four inputs, in priority order: an explicitly named class,
+	// the requested race, the behaviour role, and - always - the requested level. The level fixes the occupation TIER
+	// (base < 20, 1st 20-39, 2nd 40-75, 3rd 76+); a named class or a race+role anchor is then walked along the class
+	// tree (up via getParent, down via getNextClasses) to the class that sits at that tier. So "buffer lvl 80" and
+	// "prophet lvl 80" both land a Hierophant (never a level-80 Prophet), "elf archer" a Silver Ranger line rather
+	// than a Human Rogue, and a low-level request demotes to the honest early class instead of an over-ranked one.
+	// The valid race x archetype matrix is derived from the game's own class table (below), so it can't drift from it.
+	// ---------------------------------------------------------------------------------------------------------------
+
+	/** 2nd-class (depth-2), non-summoner representative(s) of each archetype, per race - the anchor a generic role walks from. */
+	private static final Map<Race, Map<PartyRole, List<PlayerClass>>> RACE_ROLE_ANCHORS = buildRaceRoleAnchors();
+
+	private static Map<Race, Map<PartyRole, List<PlayerClass>>> buildRaceRoleAnchors()
+	{
+		final Map<Race, Map<PartyRole, List<PlayerClass>>> map = new EnumMap<>(Race.class);
+		for (PlayerClass pc : PlayerClass.values())
+		{
+			// A 2nd class is the shallowest point where every archetype is distinct; summoners are excluded so a
+			// generic "mage" never rolls a (currently unsupported) summoner - they stay requestable by exact name.
+			if ((classDepth(pc) != 2) || pc.isSummoner())
+			{
+				continue;
+			}
+			map.computeIfAbsent(pc.getRace(), r -> new EnumMap<>(PartyRole.class)).computeIfAbsent(roleForClass(pc), r -> new ArrayList<>()).add(pc);
+		}
+		return map;
+	}
+
+	/** @return the occupation tier a level implies: 0 base (&lt;20), 1 first (20-39), 2 second (40-75), 3 third (76+). */
+	private static int tierForLevel(int level)
+	{
+		return (level < 20) ? 0 : (level < 40) ? 1 : (level < 76) ? 2 : 3;
+	}
+
+	/** @return how many class transfers deep a class is (base = 0, 1st = 1, 2nd = 2, 3rd = 3). */
+	private static int classDepth(PlayerClass pc)
+	{
+		int depth = 0;
+		for (PlayerClass parent = pc.getParent(); parent != null; parent = parent.getParent())
+		{
+			depth++;
+		}
+		return depth;
+	}
+
+	/**
+	 * Walks a class along its own lineage to the occupation appropriate for a level: demotes toward the base class
+	 * when the anchor is over-ranked for the level, promotes toward the next occupation when it is under-ranked. When
+	 * a promotion step forks (e.g. Cleric -&gt; Bishop/Prophet), the child matching {@code roleBias} is preferred so
+	 * the archetype is kept; ties and unbiased forks pick at random for party variety.
+	 * @return the class at the level's tier along {@code anchor}'s lineage, or {@code anchor} itself if it can't move
+	 */
+	public static PlayerClass resolveClassForLevel(PlayerClass anchor, int level, PartyRole roleBias)
+	{
+		if (anchor == null)
+		{
+			return null;
+		}
+		final int target = tierForLevel(level);
+		PlayerClass current = anchor;
+		while (classDepth(current) > target)
+		{
+			final PlayerClass parent = current.getParent();
+			if (parent == null)
+			{
+				break;
+			}
+			current = parent;
+		}
+		while (classDepth(current) < target)
+		{
+			final PlayerClass next = pickNextClass(current, roleBias);
+			if (next == null)
+			{
+				break; // lineage ends before the target tier (shouldn't happen for our anchors)
+			}
+			current = next;
+		}
+		return current;
+	}
+
+	/** Picks the next occupation when promoting: a child whose archetype matches {@code roleBias} if any, else random. */
+	private static PlayerClass pickNextClass(PlayerClass pc, PartyRole roleBias)
+	{
+		final Set<PlayerClass> nextClasses = pc.getNextClasses();
+		if ((nextClasses == null) || nextClasses.isEmpty())
+		{
+			return null;
+		}
+		final List<PlayerClass> options = new ArrayList<>(nextClasses);
+		if (roleBias != null)
+		{
+			final List<PlayerClass> matching = new ArrayList<>();
+			for (PlayerClass option : options)
+			{
+				if (roleForClass(option) == roleBias)
+				{
+					matching.add(option);
+				}
+			}
+			if (!matching.isEmpty())
+			{
+				return matching.get(Rnd.get(matching.size()));
+			}
+		}
+		return options.get(Rnd.get(options.size()));
+	}
+
+	/** @return a random 2nd-class representative of {@code role} for {@code race}, or {@code null} if the race has no such archetype. */
+	private static PlayerClass anchorFor(Race race, PartyRole role)
+	{
+		final Map<PartyRole, List<PlayerClass>> byRole = RACE_ROLE_ANCHORS.get(race);
+		if (byRole == null)
+		{
+			return null;
+		}
+		final List<PlayerClass> pool = byRole.get(role);
+		return ((pool == null) || pool.isEmpty()) ? null : pool.get(Rnd.get(pool.size()));
+	}
+
+	/**
+	 * @return {@code true} if {@code race} actually has a class of archetype {@code role} in the Interlude class tree
+	 *         (e.g. false for an Orc archer, an Elf buffer, a Dwarf mage) - used to reject impossible recruit combos.
+	 */
+	public static boolean comboExists(Race race, PartyRole role)
+	{
+		final Map<PartyRole, List<PlayerClass>> byRole = RACE_ROLE_ANCHORS.get(race);
+		return (byRole != null) && (byRole.get(role) != null) && !byRole.get(role).isEmpty();
+	}
+
+	/** The race a generic role defaults to when none is requested: the archetype's home race (Human where it has one). */
+	private static Race defaultRaceFor(PartyRole role)
+	{
+		switch (role)
+		{
+			case SINGER:
+			{
+				return Race.ELF;
+			}
+			case DANCER:
+			{
+				return Race.DARK_ELF;
+			}
+			case MONK:
+			{
+				return Race.ORC;
+			}
+			default:
+			{
+				return Race.HUMAN;
+			}
+		}
+	}
+
+	/**
+	 * @return {@code true} if a class is worth requesting by its exact name: any 2nd-or-higher occupation (as before),
+	 *         plus the distinctive multi-word 1st classes (Palus Knight, Elven Knight, Orc Raider, ...) so a request
+	 *         like "palus knight lvl 22" lands the right race+archetype. Generic single-word 1st/base names (fighter,
+	 *         knight, warrior, cleric, ...) are deliberately excluded so they stay race-flexible role tokens.
+	 */
+	public static boolean isRequestableByName(PlayerClass pc)
+	{
+		final int depth = classDepth(pc);
+		if ((depth >= 2) || ((depth == 1) && (pc.name().indexOf('_') >= 0)))
+		{
+			return true;
+		}
+		// Distinctive single-word 1st classes. Most single-word 1st class names ("warrior", "knight", "rogue",
+		// "assassin", "wizard") are role tokens that PartyRole.fromToken already owns, so they stay race-flexible
+		// roles - but nothing calls itself a scavenger or an artisan, and without these the dwarf 1st classes were
+		// reachable only by naming their 2nd class and letting the level demote it ("bounty hunter lvl 25").
+		return (pc == PlayerClass.SCAVENGER) || (pc == PlayerClass.ARTISAN);
+	}
+
+	/**
+	 * Resolves the concrete class id a recruited phantom spawns as, honouring an explicitly named class, the requested
+	 * race, the role, and always the level (see the block comment above).
+	 * @return a spawnable class id, or -1 when nothing fits (the caller degrades to a plain fighter/mage)
+	 */
+	public static int resolveRecruitClassId(PartyRole role, Race requestedRace, int level, int overrideClassId)
+	{
+		if (overrideClassId > 0)
+		{
+			final PlayerClass named = PlayerClass.getPlayerClass(overrideClassId);
+			if (named != null)
+			{
+				final PlayerClass resolved = resolveClassForLevel(named, level, roleForClass(named));
+				return (resolved == null) ? -1 : resolved.getId();
+			}
+		}
+		final Race race = (requestedRace != null) ? requestedRace : defaultRaceFor(role);
+		PlayerClass anchor = anchorFor(race, role);
+		if (anchor == null) // requested race lacks this archetype: fall back to the archetype's home race
+		{
+			anchor = anchorFor(defaultRaceFor(role), role);
+		}
+		if (anchor == null)
+		{
+			return -1;
+		}
+		final PlayerClass resolved = resolveClassForLevel(anchor, level, role);
+		return (resolved == null) ? -1 : resolved.getId();
+	}
+
+	/**
+	 * A fixed "regular" identity for a population: a recurring, recognizable face rather than a fresh random
+	 * one each spawn. Name + appearance are stable, so the LLM brain (which hashes the name into a persistent
+	 * voice) gives the same personality every time and the player recognizes the character across sessions.
+	 * {@code classId <= 0} means "roll a class as usual" (only name/appearance are pinned).
+	 */
+	private static class Regular
+	{
+		String name;
+		boolean female;
+		byte face;
+		byte hairColor;
+		byte hairStyle;
+		int classId; // 0 = use the population's normal class roll; buddies always keep their role class
+	}
+
+	/** A deployment group: where/how many phantoms spawn, their level range, and whether to respawn. */
+	private static class Population
+	{
+		String name = "unnamed";
+		Location center;
+		int radius = 800;
+		int count;
+		int minLevel = 1;
+		int maxLevel = 1;
+		boolean respawn = true;
+		BuddyRole role = BuddyRole.NONE; // NONE = ordinary field hunter; otherwise an idle support buddy
+		final List<Location> polygon = new ArrayList<>(); // optional area; spawn inside it instead of a circle
+		final List<Regular> regulars = new ArrayList<>(); // fixed identities that recur in this area (authored + auto)
+		int regularCount; // how many stable regulars to auto-generate for this area (0 = none / authored only)
+		int regularChance = REGULAR_CHANCE_DEFAULT; // % chance a spawn uses a regular (only if regulars exist)
+		String botClan = ""; // "" = none, "random" = a random bot clan, else a bot clan key (BotClans.xml)
+		int botClanChance = 100; // % chance a spawned field hunter here wears botClan (only when botClan is set)
+		boolean active; // phantoms currently spawned (a real player is in range)
+		long emptySince; // when the last observer left this area (0 while a player is near)
+	}
+
+	// Phantom encounters (engine only; a module decides when and what, see ModuleEncounters).
+	private static final int ENC_APPROACH = 1;
+	private static final int ENC_WARN = 2;
+	private static final int ENC_FIGHT = 3;
+	private static final int ENC_CLOSE_RANGE = 180; // a Wimp stops and speaks this close
+	private static final int ENC_STRIKE_RANGE = 350; // a Normie waits this close for its moment
+	private static final int ENC_LEASH = 2500; // victim farther than this (recall, escape): the encounter is over
+	private static final long ENC_CORPSE_MS = 15000;
+	private static final long ENC_LEAVE_MS = 6000;
+	// Enchant for the actor being built right now. Set only around spawnEncounterActor.
+	private static final ThreadLocal<Integer> ENCOUNTER_ENCHANT = new ThreadLocal<>();
+	// Fixed name for the actor being built right now (the lone PKer); null = a normal random name.
+	private static final ThreadLocal<String> ENCOUNTER_NAME = new ThreadLocal<>();
+
+	private static class PhantomData
+	{
+		final Player player;
+		final Location home;
+		final Population population; // null for ad-hoc (admin) spawns
+		final boolean mage; // pure caster: needs the mage combat tick to position/kite it
+		final BuddyRole role; // NONE for hunters; otherwise this is an idle support buddy (see PhantomBuddyManager)
+		long deadSince; // 0 while alive
+		boolean dormant; // auto-hunt paused because no real player is near
+		boolean resting; // sitting to regenerate HP/MP
+		int idleTargetTicks; // stuck with a target but no movement/attack/cast
+		boolean dispersing; // initial fan-out before hunting begins
+		long disperseUntil; // when dispersal ends and the auto-hunt starts
+		long huntPauseUntil; // post-kill breather: minimum pause (also the loot-collect window) until this time (0 = hunting)
+		long lootCapAt; // hard cap on the post-kill loot phase, so a phantom never chases unreachable loot forever
+		int claimedOid; // object id of the monster this phantom currently owns (0 = none)
+		int lastMobX; // last known position of the engaged mob, so a caster can walk to the loot after a kill
+		int lastMobY;
+		volatile boolean buddyEngaged; // buddy is partied/claimed by a player: skip the proximity despawn (grace)
+		volatile boolean recruited; // recruited combat party member: PhantomPartyManager owns it; skip ALL hunter logic
+		int friendOwnerId; // objectId of the real player this regular was login-spawned to accompany (0 = not a friend spawn)
+		PhantomPlaystyleEngine.PlayState play; // hunter-owned playstyle runtime (null until this fighter is parked; see parkHunterPlaystyle)
+		boolean playstyleParked; // this fighter's offensive AutoUse was handed to the playstyle engine (restored on teardown/adopt)
+		long nextRetargetAt; // earliest time this hunter may switch target to a fresh attacker again (retaliation hysteresis)
+		long nextDbgAt; // throttle for the per-tick hunter debug trace (only used while PhantomPartyManager.DEBUG is on)
+		int rearTargetId; // the target a dagger is stepping behind (positionHunterRear); a new target resets rearTries
+		int rearTries; // blocked steps behind rearTargetId so far (gives up at HUNTER_REAR_MAX_TRIES)
+		long rearMoveAt; // when the last step behind was issued
+		volatile boolean classRecovering; // safe class sustain owns the scanner until its cast/effect ends
+		// PvP personality, rolled once at construction (see PhantomPvpManager). 0-100 each.
+		final boolean aggressor; // an aggressor may initiate PvP (react to a flag/PK, gank); a non-aggressor only ever defends
+		final int bravery; // higher = tolerates being more outmatched before it flees (shifts the flee HP threshold)
+		final int honor; // higher = more willing to accept a duel; only an honorable phantom issues one (Phase 3)
+		// PvP engagement state (Phase 1: self-defense). Written by the pvpCombat tick and read by the separate
+		// hunt/deconflict ticks (assignTargets, mageCombat, supervise) to defer to PvP, so these are volatile: the
+		// tasks run on different pool threads and a stale read of pvpTargetOid would let the hunt yank the phantom
+		// off its PvP target.
+		volatile int pvpTargetOid; // objectId of the Player this phantom is currently fighting in PvP (0 = not engaged)
+		volatile boolean freshEngagement; // set when a PvP engagement is claimed; the first playstyle tick clears the PvE pacing so the opener fires at once
+		volatile long pvpUntil; // hard cap on the current PvP engagement, so a phantom never stays locked on a vanished target
+		volatile boolean pvpFleeing; // currently retreating from the PvP opponent rather than trading blows
+		volatile long nextPvpDecisionAt; // anti-thrash: earliest time the stand-or-flee decision may flip again
+		// Most recent Player (real player or another phantom) that dealt damage to this phantom, recorded by the
+		// ON_CREATURE_DAMAGE_RECEIVED listener (attachPvpDamageListener). This is how self-defense detects its
+		// attacker: a Player's stock attack-by list is never populated (that is Attackable/NPC-only), so the old
+		// getAttackByList() check could never fire. Written by the async damage event, read by the pvpCombat tick.
+		// (Phase 1 self-defense records the last attacker in the manager-level _recentPvpVictims map, keyed by this
+		// phantom's objectId, not on PhantomData - the same map that carries watched owners, so defense reads uniformly.)
+		// Phase 2 (react to flagged/PK): earliest time this aggressor phantom next CONSIDERS initiating on a flagged
+		// target. Set after each consideration so reacting is occasional, not a per-tick scan. Non-aggressors never set it.
+		volatile long nextInitiateAt;
+		// Phase 3 duel state (see DUEL_* constants). Armed from the duel answer task and driven by the pvpCombat tick.
+		volatile int duelPhase; // DUEL_NONE unless the current engagement is a formal duel
+		volatile long duelAnsweredAt; // challenger side: when its pending request was first seen answered or expired
+		volatile int duelOutcome; // DUEL_OUTCOME_*, for the closing line once the duel ends
+		volatile long nextDuelConsiderAt; // earliest time this idle phantom next considers issuing a challenge
+		// Olympiad roster noble (PhantomOlympiadManager): no hunt, PvP, rest, roam or respawn; serviceOlympian drives it.
+		boolean olympian;
+		boolean olyInMatch; // seen in Olympiad mode (moved to a stadium); the fight kit is on until the match ends
+		long olyNextWanderAt; // next short stroll while idle near the Olympiad Manager
+		long lastKiteAt; // when this archer last stepped back from a melee PvP opponent (0 = never)
+		long olyTeleportSeenAt; // when a pending (decayed) teleport was first seen; finished on a later tick (FPC-124)
+		// Party companion (addCompanion): a real player's own character, loaded from its row and driven by the party AI.
+		// Its row belongs to that player, so despawn saves it and never deletes it, and it is never promoted or re-geared.
+		boolean companion;
+		Runnable onCompanionLeave; // run once after the companion is saved and removed from the world (may be null)
+		int companionOwnerId; // objectId of the player who summoned this companion
+		// Spot defense (see PhantomSpotRules): how annoyed this hunter is at each real player, and where it stands in the warning ladder.
+		PhantomSpotRules.Temper spotTemper; // rolled on first use
+		final Map<Integer, Double> spotScores = new HashMap<>();
+		long spotScoreAt; // when the scores were last brought up to date
+		long spotNextAt; // earliest next spot check
+		long spotWarnNextAt; // earliest next complaint
+		long spotAttackAt; // when the hunter follows through (0 = no ultimatum given)
+		long spotCooldownUntil;
+		int spotStealOid; // the mob whose theft was last counted, so one mob is one theft
+		Monster spotEngagedMonster; // native hunter damage observed before a real player's damage
+		AggroInfo spotEngagedDamage; // identity changes when the native aggro entry is cleared on respawn
+		long spotEngagedAt;
+		int spotWarnedOid; // offender who received the pending ultimatum
+		final Set<Integer> spotCrowding = new HashSet<>(); // previous observed crowd, guarded with spotScores by data
+		// Encounter actor (see ModuleEncounters): exists only to fight one player once, then leaves.
+		volatile boolean encounterActor;
+		int encounterEscapeChance; // percent chance to read a Blessed Scroll of Escape at low HP (0 = carries none)
+		boolean encounterCpPotions; // carries and drinks CP potions (the strong encounters); the others use only HP and MP potions
+		long encounterPrepUntil; // until then it may cast its self-buffs and summon its servitor before the fight
+		boolean encounterPreparing; // approach time starts only after the initial preparation finishes
+		final Set<Integer> encounterPrepDone = new HashSet<>(); // skills already tried in the preparation (a refused cast is not retried)
+		int encounterPetBuffedOid; // object id of the servitor that already got the spawn kit (a re-summoned one gets it again)
+		long encounterPetSkillAt;
+		boolean encounterEscapeOnRout; // a lost fight (3/4 of the group down, outnumbered) is a reason to read it too
+		boolean encounterEscapeRolled;
+		volatile int encounterVictimOid; // the real player this actor came for
+		volatile int encounterPhase; // ENC_APPROACH / ENC_WARN / ENC_FIGHT
+		volatile long encounterDeadline; // when this phase gives up (approach timeout, then fight cap)
+		PhantomEncounterRules.EncounterGroup encounterGroup; // shared by every actor of one encounter
+		volatile long encounterEndAt; // > 0 once over: when to despawn
+		long encounterLastMoveAt; // last time the victim was seen moving (Normie waits for them to stand still)
+		int encounterLastX; // victim position at that sample
+		int encounterLastY;
+
+		PhantomData(Player player, Location home, Population population, boolean mage, BuddyRole role)
+		{
+			this.player = player;
+			this.home = home;
+			this.population = population;
+			this.mage = mage;
+			this.role = role;
+			this.aggressor = PhantomPvpManager.rollAggressor();
+			this.bravery = PhantomPvpManager.rollBravery();
+			this.honor = PhantomPvpManager.rollHonor();
+		}
+	}
+
+	private final ConcurrentHashMap<Integer, PhantomData> _phantoms = new ConcurrentHashMap<>();
+	// Phase 3 (duels): objectId of an opponent -> time until which no phantom challenges it again.
+	private final ConcurrentHashMap<Integer, Long> _duelTargetCooldownUntil = new ConcurrentHashMap<>();
+	// Whether the PvP master switch was on at the last pvpCombat tick, so turning it off releases engagements once.
+	private boolean _pvpWasEnabled = true;
+	// FPC-115: phantoms whose accepted duel was still counting down when PvP was switched off -> when to stop watching.
+	// Each is canceled as soon as its duel starts. Only touched by the pvpCombat tick.
+	private final Map<Integer, Long> _duelsToCancel = new ConcurrentHashMap<>();
+	// Phase 2 (react to flagged/PK): objectId of a target -> time until which no aggressor may newly INITIATE on it,
+	// so several phantoms do not dogpile the same flagged player. Stamped when a phantom starts a reaction; entries
+	// are short-lived (PhantomPvpEngageCooldownSeconds) and pruned lazily on read.
+	private final ConcurrentHashMap<Integer, Long> _pvpVictimCooldownUntil = new ConcurrentHashMap<>();
+	// One record of "who last hit victim V, and when", keyed by victim objectId, for every watched player: each phantom
+	// (its own ON_CREATURE_DAMAGE_RECEIVED listener) and each watched real owner. Self-defense reads a phantom's own
+	// entry; party/clan defense reads an owner's or a party-mate's; clan defense iterates the (small) live entries to
+	// find a clanmate victim without a world scan. Entries are short-lived (PVP_ATTACKER_MEMORY_MS) and pruned on read.
+	private final ConcurrentHashMap<Integer, long[]> _recentPvpVictims = new ConcurrentHashMap<>();
+	// The damage listener attached to each watched owner, so it can be detached on logout (see the ON_PLAYER_LOGOUT hook).
+	private final ConcurrentHashMap<Integer, AbstractEventListener> _pvpWatchedOwners = new ConcurrentHashMap<>();
+	// CopyOnWriteArrayList: //phantom reload rewrites this from the admin's packet thread while the
+	// supervisor iterates it every tick - a plain ArrayList would risk a ConcurrentModificationException.
+	// Writes are rare (boot + reload) and the list is tiny, so copy-on-write is the cheap safe choice.
+	private final List<Population> _populations = new CopyOnWriteArrayList<>();
+	private boolean _supervising = false;
+	// Live phantoms promoted to regular THIS session (befriended while spawned under the ephemeral 'phantom'
+	// account). Player._accountName is final, so the in-memory instance keeps the old account until it is next
+	// reloaded from DB (where the promotion is already written) - this set bridges that gap for isRegular().
+	private final Set<Integer> _promoted = ConcurrentHashMap.newKeySet();
+	// Cached friend-regular charIds per online real player (ownerObjectId -> regular charIds), so the supervisor
+	// can keep them spawned without re-querying the DB every tick. Loaded at login, extended on befriend,
+	// dropped at logout.
+	private final ConcurrentHashMap<Integer, Set<Integer>> _friendRegularsByOwner = new ConcurrentHashMap<>();
+	// Last time the supervisor ran the friend-regular ensure pass (throttled; it self-heals, no need every tick).
+	private long _lastFriendEnsure = 0;
+	// <friend> creation orders authored in the fpc-editor (PhantomPopulations.xml): materialized once when the
+	// owner is online (create + befriend + spawn), then inert - an entry whose name already exists is skipped,
+	// so the file can stay in place and never duplicates or resurrects a friend the player later deleted.
+	private final List<CraftedFriend> _craftedFriends = new ArrayList<>();
+
+	/** A `<friend>` node from PhantomPopulations.xml: a friend to craft for a player, authored in the fpc-editor. */
+	private static class CraftedFriend
+	{
+		String owner; // the real player's character name
+		String name; // the friend's character name (also the "already created" marker)
+		String classSpec = ""; // fighter/mage/elder/prophet/warcryer or a class id; empty = random fighter
+		int level; // 0 = match the owner's level at creation
+		int sex = -1; // 0 male, 1 female, -1 random
+		int face = -1; // 0-2, -1 random
+		int hairStyle = -1; // 0-2, -1 random
+		int hairColor = -1; // 0-3, -1 random
+	}
+
+	protected PhantomManager()
+	{
+		load();
+	}
+
+	@Override
+	public void load()
+	{
+		// Phantoms/buddies/party members are real `characters` rows (account_name='phantom') that are only
+		// deleted when despawn() runs deliberately (zone-empty timeout, //phantom clear, reload). An unclean
+		// shutdown (the usual "just kill the PC" case) never runs despawn(), so every such session leaves its
+		// active phantom rows orphaned forever - they bloat the DB, become permanent CharInfoTable RAM residents
+		// (the whole characters table is loaded at boot), and make name generation collide more. Sweep them here,
+		// once at boot, before anything spawns. load() runs exactly once per JVM (lazy singleton, not touched by
+		// //reloadfakeplayers), so this can never delete a live phantom's row.
+		sweepOrphanedPhantoms();
+
+		_populations.clear();
+		synchronized (_craftedFriends)
+		{
+			_craftedFriends.clear();
+		}
+		parseDatapackFile("data/PhantomPopulations.xml");
+		parseGeneratedHuntingZones();
+		LOGGER.info(getClass().getSimpleName() + ": Loaded " + _populations.size() + " phantom population(s), " + _craftedFriends.size() + " crafted-friend order(s).");
+		// The Olympiad roster runs on its own tick; it idles whenever the feature or the competition is off.
+		PhantomOlympiadManager.getInstance().start();
+		if (!_populations.isEmpty() || !_craftedFriends.isEmpty())
+		{
+			// Populations are spawned on demand (when a real player approaches), not at boot - the supervisor
+			// drives activation/deactivation, so nothing is created until someone is near. Crafted-friend
+			// orders also materialize from the supervisor (when their owner is online).
+			startSupervising();
+		}
+	}
+
+	/**
+	 * Re-reads {@code PhantomPopulations.xml} live ({@code //phantom reload}): despawns everything (persistent
+	 * regulars keep their rows and are respawned by the friend ensure pass), then re-parses populations and
+	 * crafted-friend orders. Unlike {@link #load()} this does NOT run the boot orphan sweeps - phantoms are
+	 * live, and the sweeps are only safe before anything has spawned.
+	 * @return a short result message for the invoking tooling
+	 */
+	public String reloadPopulations()
+	{
+		final int removed = clear();
+		_populations.clear();
+		synchronized (_craftedFriends)
+		{
+			_craftedFriends.clear();
+		}
+		parseDatapackFile("data/PhantomPopulations.xml");
+		parseGeneratedHuntingZones();
+		if (!_populations.isEmpty() || !_craftedFriends.isEmpty())
+		{
+			startSupervising();
+		}
+		LOGGER.info(getClass().getSimpleName() + ": Reloaded PhantomPopulations.xml: " + _populations.size() + " population(s), " + _craftedFriends.size() + " crafted-friend order(s); " + removed + " phantom(s) despawned.");
+		return "Reloaded: " + _populations.size() + " population(s), " + _craftedFriends.size() + " friend order(s). " + removed + " phantom(s) despawned; zones redeploy on approach, friends rejoin in ~15s. Note: recruited parties/buddies do NOT respawn - re-recruit/re-summon them.";
+	}
+
+	/**
+	 * Additively parses the auto-generated field-hunter zones ({@code data/PhantomPopulations.generated.xml},
+	 * produced by {@code tools/build_populations.py}) into the same {@link #_populations} list as the authored
+	 * file, when {@code PhantomAutoHuntingZones} is enabled. This runs AFTER the authored file, so hand-authored
+	 * buddies, regulars, and crafted friends are parsed first and are never overwritten - the generated set only
+	 * adds plain field-hunter zones. Off by default: with the toggle disabled (or the file absent) behavior is
+	 * exactly the authored-only set. Uses the same on-demand parse path, so a world-wide generated set is idle-cheap.
+	 */
+	private void parseGeneratedHuntingZones()
+	{
+		if (!FakePlayersConfig.FAKE_PLAYER_AUTO_HUNTING_ZONES)
+		{
+			return;
+		}
+		final File generated = new File(".", "data/PhantomPopulations.generated.xml");
+		if (!generated.exists())
+		{
+			LOGGER.info(getClass().getSimpleName() + ": PhantomAutoHuntingZones is enabled but data/PhantomPopulations.generated.xml is missing - run tools/build_populations.py to generate it.");
+			return;
+		}
+		final int before = _populations.size();
+		parseFile(generated);
+		LOGGER.info(getClass().getSimpleName() + ": PhantomAutoHuntingZones: +" + (_populations.size() - before) + " auto-generated hunting zone(s) from PhantomPopulations.generated.xml.");
+	}
+
+	@Override
+	public void parseDocument(Document document, File file)
+	{
+		forEach(document, "list", listNode -> forEach(listNode, "population", populationNode ->
+		{
+			final StatSet set = new StatSet(parseAttributes(populationNode));
+			final Population population = new Population();
+			population.name = set.getString("name", "unnamed");
+			population.center = new Location(set.getInt("x"), set.getInt("y"), set.getInt("z"));
+			population.radius = set.getInt("radius", 800);
+			population.count = set.getInt("count", 0);
+			population.minLevel = set.getInt("minLevel", 1);
+			population.maxLevel = set.getInt("maxLevel", population.minLevel);
+			population.respawn = set.getBoolean("respawn", true);
+			population.role = BuddyRole.fromString(set.getString("role", ""));
+			population.regularChance = set.getInt("regularChance", REGULAR_CHANCE_DEFAULT);
+			population.regularCount = set.getInt("regularCount", 0);
+			population.botClan = set.getString("botClan", "").trim();
+			population.botClanChance = Math.max(0, Math.min(100, set.getInt("botClanChance", 100)));
+			forEach(populationNode, "point", pointNode ->
+			{
+				final StatSet p = new StatSet(parseAttributes(pointNode));
+				population.polygon.add(new Location(p.getInt("x"), p.getInt("y"), p.getInt("z", population.center.getZ())));
+			});
+			forEach(populationNode, "regular", regularNode ->
+			{
+				final StatSet r = new StatSet(parseAttributes(regularNode));
+				final Regular regular = new Regular();
+				regular.name = r.getString("name", "").trim();
+				if (regular.name.isEmpty())
+				{
+					LOGGER.warning(getClass().getSimpleName() + ": Skipping a <regular> with no name in population '" + population.name + "'.");
+					return;
+				}
+				regular.female = r.getBoolean("female", false);
+				regular.face = (byte) r.getInt("face", 0);
+				regular.hairColor = (byte) r.getInt("hairColor", 0);
+				regular.hairStyle = (byte) r.getInt("hairStyle", 0);
+				regular.classId = r.getInt("classId", 0);
+				population.regulars.add(regular);
+			});
+			generateAutoRegulars(population);
+			_populations.add(population);
+		}));
+
+		// <friend> creation orders (authored in the fpc-editor's Phantoms > Friends panel): craft a persistent
+		// regular to the given spec for the given player, once, the next time that player is online.
+		forEach(document, "list", listNode -> forEach(listNode, "friend", friendNode ->
+		{
+			final StatSet set = new StatSet(parseAttributes(friendNode));
+			final CraftedFriend friend = new CraftedFriend();
+			friend.owner = set.getString("owner", "").trim();
+			friend.name = set.getString("name", "").trim();
+			if (friend.owner.isEmpty() || friend.name.isEmpty())
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Skipping a <friend> without both owner and name.");
+				return;
+			}
+			friend.classSpec = set.getString("class", "");
+			friend.level = set.getInt("level", 0);
+			final String sex = set.getString("sex", "").trim().toLowerCase();
+			friend.sex = sex.startsWith("f") ? 1 : sex.startsWith("m") ? 0 : -1;
+			friend.face = set.getInt("face", -1);
+			friend.hairStyle = set.getInt("hairStyle", -1);
+			friend.hairColor = set.getInt("hairColor", -1);
+			synchronized (_craftedFriends)
+			{
+				_craftedFriends.add(friend);
+			}
+			// Logged per order so a typo'd owner (which would otherwise wait forever, silently) is visible.
+			LOGGER.info(getClass().getSimpleName() + ": <friend> order queued: '" + friend.name + "' for owner '" + friend.owner + "' (materializes when that character is online).");
+		}));
+	}
+
+	/**
+	 * Activates populations a real player has approached and despawns those everyone has left (after a grace
+	 * delay). Called every supervisor tick so phantoms exist only around the player(s).
+	 */
+	private void updatePopulations(List<Player> observers, long now)
+	{
+		for (Population population : _populations)
+		{
+			if (population.count <= 0)
+			{
+				continue;
+			}
+			if (isAnyoneNear(population, observers))
+			{
+				population.emptySince = 0;
+				if (!population.active)
+				{
+					activate(population);
+				}
+			}
+			else if (population.active)
+			{
+				if (population.emptySince == 0)
+				{
+					population.emptySince = now;
+				}
+				else if ((now - population.emptySince) >= DEACTIVATE_DELAY)
+				{
+					deactivate(population);
+				}
+			}
+		}
+	}
+
+	/** @return {@code true} if any real player is within {@link #ACTIVATION_MARGIN} of a population's area. */
+	private static boolean isAnyoneNear(Population population, List<Player> observers)
+	{
+		final long range = (long) population.radius + ACTIVATION_MARGIN;
+		final long rangeSq = range * range;
+		for (Player observer : observers)
+		{
+			final long dx = observer.getX() - population.center.getX();
+			final long dy = observer.getY() - population.center.getY();
+			if (((dx * dx) + (dy * dy)) <= rangeSq)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Spawns a population's phantoms (staggered to spread the cost) when a player first enters its area. */
+	private void activate(Population population)
+	{
+		population.active = true;
+		population.emptySince = 0;
+		if (!AutoPlayConfig.ENABLE_AUTO_PLAY)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": EnableAutoPlay is false in config/Custom/AutoPlay.ini - phantoms in '" + population.name + "' will not hunt.");
+		}
+		// A buddy that stayed alive on grace (followed its owner away and came back) is already counted: only
+		// top the group back up to its count, so we don't stack a second buddy on the lingering one.
+		int alive = 0;
+		for (PhantomData data : _phantoms.values())
+		{
+			if (data.population == population)
+			{
+				alive++;
+			}
+		}
+		final int toSpawn = population.count - alive;
+		if (toSpawn <= 0)
+		{
+			return;
+		}
+		LOGGER.info(getClass().getSimpleName() + ": Activating population '" + population.name + "' (" + toSpawn + " phantoms).");
+		for (int i = 0; i < toSpawn; i++)
+		{
+			ThreadPool.schedule(() ->
+			{
+				// A quick in-and-out could have deactivated it before this staggered spawn fires.
+				if (population.active)
+				{
+					deployOne(population);
+				}
+			}, i * SPAWN_STAGGER);
+		}
+	}
+
+	/** Despawns all of a population's phantoms (deleting their DB rows) once everyone has left its area. */
+	private void deactivate(Population population)
+	{
+		population.active = false;
+		population.emptySince = 0;
+		int removed = 0;
+		for (PhantomData data : new ArrayList<>(_phantoms.values()))
+		{
+			if (data.population == population)
+			{
+				// A buddy that is partied/claimed by a player gets a grace period: it stays alive even though the
+				// town it idled in is now empty (the player may have teleported it out to a hunting zone). The
+				// PhantomBuddyManager despawns it when the party disbands, the owner logs off, or grace runs out,
+				// and activate()'s top-up counts it so re-entering the town won't stack a second buddy on it. We
+				// leave the population deactivated regardless, so we don't re-run this every tick (which spammed
+				// the log with "despawned 0").
+				if (data.role.isBuddy() && data.buddyEngaged)
+				{
+					continue;
+				}
+				despawn(data);
+				removed++;
+			}
+		}
+		LOGGER.info(getClass().getSimpleName() + ": Deactivated population '" + population.name + "' (despawned " + removed + ").");
+	}
+
+	/** Spawns one phantom into a population: rolls a scattered location and a level in the group's range. */
+	private boolean deployOne(Population population)
+	{
+		final Location location = rollLocation(population);
+		if (location == null)
+		{
+			return false;
+		}
+		// Rnd.get(origin, bound) is inclusive on both ends.
+		final int level = Rnd.get(population.minLevel, population.maxLevel);
+		return createAndSpawn(location, level, population) != null;
+	}
+
+	/** Picks a geodata-valid, ground-snapped spawn point inside a population's circle or polygon. */
+	private Location rollLocation(Population population)
+	{
+		Location fallback = null;
+		for (int attempt = 0; attempt < 15; attempt++)
+		{
+			final int x;
+			final int y;
+			if (population.polygon.size() >= 3)
+			{
+				final Location point = randomPointInPolygon(population);
+				x = point.getX();
+				y = point.getY();
+			}
+			else
+			{
+				// sqrt() spreads points evenly across the disc area instead of bunching them near the center.
+				final double angle = Rnd.nextDouble() * 2 * Math.PI;
+				final int distance = (int) (population.radius * Math.sqrt(Rnd.nextDouble()));
+				x = population.center.getX() + (int) (Math.cos(angle) * distance);
+				y = population.center.getY() + (int) (Math.sin(angle) * distance);
+			}
+			final Location valid = GeoEngine.getInstance().getValidLocation(population.center, new Location(x, y, population.center.getZ()));
+			final int groundZ = GeoEngine.getInstance().getHeight(valid.getX(), valid.getY(), valid.getZ());
+			final Location candidate = new Location(valid.getX(), valid.getY(), groundZ);
+			fallback = candidate;
+			if (isClearOfOtherPhantoms(candidate))
+			{
+				return candidate;
+			}
+		}
+		return fallback; // gave up finding a clear spot; place anyway
+	}
+
+	/** @return {@code true} if no live phantom is within {@link #MIN_SEPARATION} of the spot. */
+	private boolean isClearOfOtherPhantoms(Location loc)
+	{
+		for (PhantomData data : _phantoms.values())
+		{
+			final Player other = data.player;
+			if ((other == null) || other.isDead())
+			{
+				continue;
+			}
+			final double dx = other.getX() - loc.getX();
+			final double dy = other.getY() - loc.getY();
+			if (((dx * dx) + (dy * dy)) < (MIN_SEPARATION * MIN_SEPARATION))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static Location randomPointInPolygon(Population population)
+	{
+		int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+		for (Location v : population.polygon)
+		{
+			minX = Math.min(minX, v.getX());
+			maxX = Math.max(maxX, v.getX());
+			minY = Math.min(minY, v.getY());
+			maxY = Math.max(maxY, v.getY());
+		}
+		for (int i = 0; i < 30; i++)
+		{
+			final int rx = Rnd.get(minX, maxX);
+			final int ry = Rnd.get(minY, maxY);
+			if (isInPolygon(rx, ry, population.polygon))
+			{
+				return new Location(rx, ry, population.center.getZ());
+			}
+		}
+		return population.center;
+	}
+
+	private static boolean isInPolygon(int px, int py, List<Location> poly)
+	{
+		boolean inside = false;
+		for (int i = 0, j = poly.size() - 1; i < poly.size(); j = i++)
+		{
+			final int xi = poly.get(i).getX(), yi = poly.get(i).getY();
+			final int xj = poly.get(j).getX(), yj = poly.get(j).getY();
+			if (((yi > py) != (yj > py)) && (px < ((double) (xj - xi) * (py - yi) / (yj - yi)) + xi))
+			{
+				inside = !inside;
+			}
+		}
+		return inside;
+	}
+
+	/**
+	 * Auto-generates {@code population.regularCount} stable regular identities and appends them to the
+	 * population's roster (alongside any hand-authored ones). Each slot is built from a seed derived from the
+	 * population name + slot index, so the same slot yields the same name/appearance/class on every restart -
+	 * no manual authoring needed. Reuses the shared name pools and mage/fighter class pools so auto-regulars
+	 * blend in with the rest of the crowd. Buddies keep their role class at spawn; the generated classId is
+	 * simply ignored there.
+	 * @param population the group to populate (no-op if regularCount <= 0)
+	 */
+	private void generateAutoRegulars(Population population)
+	{
+		final int wanted = Math.min(population.regularCount, MAX_AUTO_REGULARS);
+		for (int i = 0; i < wanted; i++)
+		{
+			// Deterministic per (population, slot): a stable seed so the identity is identical across restarts.
+			final Random rng = new Random((((long) population.name.hashCode()) << 20) ^ ((i + 1) * 0x9E3779B97F4A7C15L));
+			final Regular regular = new Regular();
+			regular.name = FakePlayerAppearanceFactory.generateName(rng);
+			final boolean mage = rng.nextInt(100) < MAGE_CHANCE;
+			final int[] pool = mage ? MAGE_CLASS_POOL : FIGHTER_CLASS_POOL;
+			regular.classId = pool[rng.nextInt(pool.length)];
+			// Orc (44) / Dwarf (53) bodies skew male, like the appearance factory and the random spawn path.
+			regular.female = ((regular.classId == 44) || (regular.classId == 53)) ? (rng.nextInt(100) < 30) : rng.nextBoolean();
+			regular.face = (byte) rng.nextInt(3); // 0-2
+			regular.hairColor = (byte) rng.nextInt(4); // 0-3
+			regular.hairStyle = (byte) rng.nextInt(3); // 0-2
+			population.regulars.add(regular);
+		}
+	}
+
+	/**
+	 * Rolls whether this spawn should use one of the population's fixed regular identities, and if so picks one
+	 * that isn't already standing in the world (so the same regular never appears twice at once).
+	 * @param population the owning group (null for ad-hoc/admin/recruit spawns, which never use regulars)
+	 * @return a free regular to spawn as, or {@code null} to spawn a fresh random identity
+	 */
+	private Regular pickRegular(Population population)
+	{
+		if ((population == null) || population.regulars.isEmpty() || (Rnd.get(100) >= population.regularChance))
+		{
+			return null;
+		}
+
+		// Exclude regulars already spawned (a phantom carrying that exact name). Player.create would also reject a
+		// duplicate name, but filtering first lets us pick another free regular instead of failing the spawn.
+		final List<Regular> free = new ArrayList<>(population.regulars);
+		for (PhantomData data : _phantoms.values())
+		{
+			final String live = data.player.getName();
+			free.removeIf(regular -> regular.name.equalsIgnoreCase(live));
+		}
+		return free.isEmpty() ? null : free.get(Rnd.get(free.size()));
+	}
+
+	/**
+	 * Looks up the charId of an already-persisted regular by name, scoped to the {@link #ACCOUNT_NAME_REGULAR}
+	 * account so a real player who happens to share the name is never matched.
+	 * @return the stored charId, or 0 if this regular has no persisted row yet
+	 */
+	private int findRegularCharId(String name)
+	{
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("SELECT charId FROM characters WHERE char_name=? AND account_name=?"))
+		{
+			ps.setString(1, name);
+			ps.setString(2, ACCOUNT_NAME_REGULAR);
+			try (ResultSet rs = ps.executeQuery())
+			{
+				if (rs.next())
+				{
+					return rs.getInt("charId");
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to look up persisted regular '" + name + "': " + e.getMessage());
+		}
+		return 0;
+	}
+
+	/**
+	 * @return {@code true} if the given player is a persistent "regular" phantom - either loaded from the
+	 *         {@link #ACCOUNT_NAME_REGULAR} account, or promoted to it this session by being befriended
+	 *         ({@link #_promoted}; the final in-memory account name lags the DB until the next reload). Real
+	 *         players and ordinary ephemeral phantoms return {@code false}.
+	 */
+	public boolean isRegular(Player player)
+	{
+		return (player != null) && (ACCOUNT_NAME_REGULAR.equals(player.getAccountName()) || _promoted.contains(player.getObjectId()));
+	}
+
+	/** @return {@code true} if the given player is any live phantom this manager owns (regular or ephemeral). */
+	public boolean isPhantom(Player player)
+	{
+		return (player != null) && _phantoms.containsKey(player.getObjectId());
+	}
+
+	/**
+	 * Completes a friendship between a real player and ANY live phantom server-side, promoting the phantom to a
+	 * persistent regular in the process. A phantom is clientless, so it can never answer the
+	 * {@code FriendAddRequest} dialog the stock invite flow sends - instead, when a player friend-invites one we
+	 * accept immediately: promote it to the {@link #ACCOUNT_NAME_REGULAR} account (so its row, name, look and
+	 * class become permanent - "you liked this one, it's a character now"), persist the pair in
+	 * {@code character_friends} both directions (mirroring {@code RequestAnswerFriendInvite}) and update both
+	 * in-memory lists, so it shows in the player's friends window right away. No XML authoring is needed;
+	 * befriending IS what makes a phantom a regular. Buddies work too: their persisted support class maps back
+	 * to a {@link BuddyRole} at friend-spawn time, so a befriended buffer comes back as a proper idle buddy
+	 * (whisperable for buffs/party), not a hunter.
+	 * @param player the inviting real player
+	 * @param phantom the target phantom (assumed {@link #isPhantom(Player)})
+	 */
+	public void befriendPhantom(Player player, Player phantom)
+	{
+		if ((player == null) || (phantom == null))
+		{
+			return;
+		}
+		if (player.getFriendList().contains(phantom.getObjectId()))
+		{
+			player.sendPacket(SystemMessageId.THIS_PLAYER_IS_ALREADY_REGISTERED_IN_YOUR_FRIENDS_LIST);
+			return;
+		}
+		// An Olympiad roster noble stays on its own account (its record is keyed to it); promoting it to a regular would
+		// pull it out of the roster, so it declines.
+		final PhantomData target = _phantoms.get(phantom.getObjectId());
+		if ((target != null) && target.olympian)
+		{
+			player.sendMessage(phantom.getName() + " declined your friend request.");
+			return;
+		}
+		// A party companion is a real character on its own account; promoting it would move it to the bot account.
+		if ((target != null) && target.companion)
+		{
+			player.sendMessage(phantom.getName() + " is a summoned character. Log in to it to add it as a friend.");
+			return;
+		}
+
+		// Promote an ephemeral phantom to a persistent regular: flip its DB row to the regular account so the
+		// boot sweep skips it, despawn keeps it, and the friend login-spawn can find it. The in-memory account
+		// can't change (final), so _promoted covers the live instance until it is next reloaded from DB. The
+		// UPDATE is durable: Player.storeMe() never writes account_name, so nothing can revert it.
+		if (!isRegular(phantom))
+		{
+			try (Connection con = DatabaseFactory.getConnection();
+				PreparedStatement ps = con.prepareStatement("UPDATE characters SET account_name=? WHERE charId=?"))
+			{
+				ps.setString(1, ACCOUNT_NAME_REGULAR);
+				ps.setInt(2, phantom.getObjectId());
+				ps.executeUpdate();
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Failed to promote phantom " + phantom.getName() + " to regular: " + e.getMessage());
+				return; // without the promotion the friendship row would dangle once the phantom's row is deleted
+			}
+			_promoted.add(phantom.getObjectId());
+			LOGGER.info(getClass().getSimpleName() + ": Promoted phantom '" + phantom.getName() + "' (charId=" + phantom.getObjectId() + ") to a persistent regular (befriended by " + player.getName() + ").");
+		}
+
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("INSERT INTO character_friends (charId, friendId) VALUES (?, ?), (?, ?)"))
+		{
+			ps.setInt(1, player.getObjectId());
+			ps.setInt(2, phantom.getObjectId());
+			ps.setInt(3, phantom.getObjectId());
+			ps.setInt(4, player.getObjectId());
+			ps.execute();
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to persist friendship between " + player.getName() + " and regular " + phantom.getName() + ": " + e.getMessage());
+			return;
+		}
+		player.getFriendList().add(phantom.getObjectId());
+		phantom.getFriendList().add(player.getObjectId());
+		// Track it for the supervisor's ensure pass, so from this moment it is kept online with its owner.
+		_friendRegularsByOwner.computeIfAbsent(player.getObjectId(), k -> ConcurrentHashMap.newKeySet()).add(phantom.getObjectId());
+		final SystemMessage msg = new SystemMessage(SystemMessageId.S1_HAS_BEEN_ADDED_TO_YOUR_FRIENDS_LIST);
+		msg.addString(phantom.getName());
+		player.sendPacket(msg);
+		player.sendPacket(new L2Friend(phantom, 1)); // show it online in the friends window right away
+	}
+
+	/**
+	 * "Always online" friend behaviour (Phase 3b): shortly after a player logs in, spawn each of their
+	 * befriended regulars at its own stored location and announce it online, so a friend shows up in the
+	 * friends list even when the player is nowhere near that regular's home zone. Also primes the
+	 * {@link #_friendRegularsByOwner} cache the supervisor uses to KEEP them online (respawn after death,
+	 * zone deactivation, etc.) for as long as the owner is. Runs off the login thread.
+	 * @param owner the player who just entered the world
+	 */
+	public void onOwnerLogin(Player owner)
+	{
+		if ((owner == null) || owner.getFriendList().isEmpty())
+		{
+			return;
+		}
+		final int ownerId = owner.getObjectId();
+		ThreadPool.schedule(() ->
+		{
+			final Player online = World.getInstance().getPlayer(ownerId);
+			if (online == null)
+			{
+				return; // logged back out before the delay elapsed
+			}
+			final Set<Integer> ids = ConcurrentHashMap.newKeySet();
+			ids.addAll(findFriendRegulars(ownerId));
+			_friendRegularsByOwner.put(ownerId, ids);
+			ensureFriendRegulars(ownerId, online);
+		}, FRIEND_SPAWN_DELAY);
+	}
+
+	/**
+	 * Spawns any of this owner's friend-regulars that are not currently live, announcing each to the owner.
+	 * Called at login and periodically from the supervisor, so a friend that died, was despawned with a
+	 * deactivating population, or failed to spawn earlier comes back on its own while the owner is online.
+	 */
+	private void ensureFriendRegulars(int ownerId, Player owner)
+	{
+		final Set<Integer> ids = _friendRegularsByOwner.get(ownerId);
+		if ((ids == null) || ids.isEmpty())
+		{
+			return;
+		}
+		for (int regularId : ids)
+		{
+			// The player may have friend-deleted it since the cache was primed (stock RequestFriendDel updates
+			// the owner's in-memory list) - prune instead of resurrecting an ex-friend.
+			if (!owner.getFriendList().contains(regularId))
+			{
+				ids.remove(regularId);
+				continue;
+			}
+			if (_phantoms.containsKey(regularId))
+			{
+				continue; // already live (population spawn, a prior ensure, or promoted while spawned)
+			}
+			final Player regular = spawnFriendRegular(regularId, ownerId);
+			if (regular != null)
+			{
+				owner.sendPacket(new L2Friend(regular, 1)); // flip it online in the friends window
+			}
+		}
+	}
+
+	/**
+	 * Despawns the friend-regulars that were login-spawned for a player who is logging out, so they do not
+	 * linger with nobody around. A regular that another still-online player is also friends with is handed over
+	 * to that player rather than despawned. The player's party companions are saved and removed too.
+	 * @param owner the player logging out
+	 */
+	public void onOwnerLogout(Player owner)
+	{
+		if (owner == null)
+		{
+			return;
+		}
+		final int ownerId = owner.getObjectId();
+		_friendRegularsByOwner.remove(ownerId); // stop the supervisor keeping them online
+		for (PhantomData data : new ArrayList<>(_phantoms.values()))
+		{
+			// The owner's companions are saved and removed right now, before the logout or restart finishes, so the
+			// character selection screen that follows already reads what they earned.
+			if (data.companion && (data.companionOwnerId == ownerId))
+			{
+				despawn(data);
+				continue;
+			}
+			if (data.friendOwnerId != ownerId)
+			{
+				continue;
+			}
+			final int newOwner = otherOnlineFriendOf(data.player.getObjectId(), ownerId);
+			if (newOwner != 0)
+			{
+				data.friendOwnerId = newOwner; // still wanted by another online friend - keep it, hand it over
+			}
+			else
+			{
+				despawn(data);
+			}
+		}
+	}
+
+	/**
+	 * Spawns a specific persisted regular by charId at its own stored location because a friend (its owner) is
+	 * now online. No-op if it is already live (a population may have spawned it, or a prior login), the phantom
+	 * cap is reached, or the row cannot be loaded.
+	 * @param charId the regular's stable charId
+	 * @param ownerId the real player it accompanies (tagged on the phantom for logout despawn)
+	 * @return the spawned phantom, or {@code null} if nothing was spawned
+	 */
+	private Player spawnFriendRegular(int charId, int ownerId)
+	{
+		if (_phantoms.containsKey(charId) || (_phantoms.size() >= MAX_PHANTOMS))
+		{
+			return null;
+		}
+		Player phantom = null;
+		try
+		{
+			phantom = Player.load(charId);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to load friend-regular " + charId + ": " + e.getMessage());
+		}
+		if (phantom == null)
+		{
+			return null;
+		}
+		final int groundZ = GeoEngine.getInstance().getHeight(phantom.getX(), phantom.getY(), phantom.getZ());
+		final Location spawnLocation = new Location(phantom.getX(), phantom.getY(), groundZ);
+		// A befriended buddy's support class maps back to its BuddyRole, so it comes back as a proper idle
+		// buddy (buddy gear/reagents, registered with PhantomBuddyManager, whisperable for buffs/party)
+		// instead of a sword-swinging hunter. The buddy class ids (17/30/52) are never in the hunter pools,
+		// so an ordinary promoted hunter can't be misread as one. For everything else the caster flag comes
+		// from the class itself (isMage), not the DD pool - so a promoted support-class recruit (Bishop etc.)
+		// re-gears as a robe caster rather than a melee fighter.
+		final BuddyRole role = buddyRoleForClass(phantom.getPlayerClass().getId());
+		final boolean mage = role.isBuddy() || phantom.getPlayerClass().isMage();
+		return finishSpawn(phantom, spawnLocation, phantom.getLevel(), mage, role, null, true, ownerId);
+	}
+
+	/** @return the {@link BuddyRole} whose support class the given classId is, or {@link BuddyRole#NONE}. */
+	static BuddyRole buddyRoleForClass(int classId)
+	{
+		for (BuddyRole role : BuddyRole.values())
+		{
+			if (role.isBuddy() && (role.classId == classId))
+			{
+				return role;
+			}
+		}
+		return BuddyRole.NONE;
+	}
+
+	/**
+	 * Creates a brand-new persistent regular to the player's own spec - name, class, level, sex, looks - spawns
+	 * it next to them, and befriends it on the spot ("recreate an old friend to play together"). It is created
+	 * straight onto the {@link #ACCOUNT_NAME_REGULAR} account, so it is permanent from birth and flows into the
+	 * whole friend tier (always-online, friend chat, stable brain persona keyed to the chosen name).
+	 * @param owner the real player crafting the friend (also its friend + spawn anchor)
+	 * @param name the character name (1-16 letters/digits, must be free)
+	 * @param classSpec {@code fighter}/{@code mage}/{@code elder}/{@code prophet}/{@code warcryer}, a raw class
+	 *            id, or empty for a random fighter
+	 * @param level target level, or 0 to match the owner's level (clamped 1-80)
+	 * @param sex 0 = male, 1 = female, -1 = random
+	 * @param face 0-2 or -1 = random
+	 * @param hairStyle 0-2 or -1 = random
+	 * @param hairColor 0-3 or -1 = random
+	 * @return a human-readable result message for the invoking tooling
+	 */
+	public String craftFriend(Player owner, String name, String classSpec, int level, int sex, int face, int hairStyle, int hairColor)
+	{
+		if ((owner == null) || (name == null) || name.isEmpty())
+		{
+			return "No name given.";
+		}
+		if (!name.matches("[A-Za-z0-9]{1,16}"))
+		{
+			return "Invalid name '" + name + "' (1-16 letters/digits).";
+		}
+		if (CharInfoTable.getInstance().doesCharNameExist(name))
+		{
+			return "The name '" + name + "' is already taken.";
+		}
+		if (_phantoms.size() >= MAX_PHANTOMS)
+		{
+			return "Phantom cap reached (" + MAX_PHANTOMS + ").";
+		}
+
+		// Resolve the class: an archetype keyword, a buddy role, or a raw class id.
+		final int classId;
+		final String spec = (classSpec == null) ? "" : classSpec.trim().toLowerCase();
+		switch (spec)
+		{
+			case "":
+			case "fighter":
+			{
+				classId = FIGHTER_CLASS_POOL[Rnd.get(FIGHTER_CLASS_POOL.length)];
+				break;
+			}
+			case "mage":
+			{
+				classId = MAGE_CLASS_POOL[Rnd.get(MAGE_CLASS_POOL.length)];
+				break;
+			}
+			case "elder":
+			case "healer":
+			{
+				classId = BuddyRole.ELDER.classId;
+				break;
+			}
+			case "prophet":
+			case "buffer":
+			{
+				classId = BuddyRole.PROPHET.classId;
+				break;
+			}
+			case "warcryer":
+			{
+				classId = BuddyRole.WARCRYER.classId;
+				break;
+			}
+			default:
+			{
+				int parsed;
+				try
+				{
+					parsed = Integer.parseInt(spec);
+				}
+				catch (NumberFormatException e)
+				{
+					return "Unknown class '" + classSpec + "' (use fighter/mage/elder/prophet/warcryer or a class id).";
+				}
+				classId = parsed;
+				break;
+			}
+		}
+		final PlayerClass playerClass = PlayerClass.getPlayerClass(classId);
+		final PlayerTemplate template = (playerClass == null) ? null : PlayerTemplateData.getInstance().getTemplate(playerClass);
+		if (template == null)
+		{
+			return "No player template for class id " + classId + ".";
+		}
+
+		final boolean female = (sex == 1) || ((sex < 0) && Rnd.nextBoolean());
+		final PlayerAppearance appearance = new PlayerAppearance( //
+			(byte) ((face >= 0) ? Math.min(face, 2) : Rnd.get(0, 2)), //
+			(byte) ((hairColor >= 0) ? Math.min(hairColor, 3) : Rnd.get(0, 3)), //
+			(byte) ((hairStyle >= 0) ? Math.min(hairStyle, 2) : Rnd.get(0, 2)), female);
+
+		// Persistent from birth: created straight onto the regular account (no promotion step needed).
+		final Player phantom = Player.create(template, ACCOUNT_NAME_REGULAR, name, appearance, true);
+		if (phantom == null)
+		{
+			return "Creation failed (duplicate name / db error?).";
+		}
+
+		final int targetLevel = Math.max(1, Math.min(80, (level > 0) ? level : owner.getLevel()));
+		final int groundZ = GeoEngine.getInstance().getHeight(owner.getX() + 50, owner.getY() + 50, owner.getZ());
+		final Location spawnLocation = new Location(owner.getX() + 50, owner.getY() + 50, groundZ);
+		final BuddyRole role = buddyRoleForClass(classId);
+		final boolean mage = role.isBuddy() || playerClass.isMage();
+		try
+		{
+			if (finishSpawn(phantom, spawnLocation, targetLevel, mage, role, null, false, owner.getObjectId()) == null)
+			{
+				return "Spawn failed - check the gameserver log.";
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to craft friend '" + name + "': " + e.getMessage());
+			GameClient.deleteCharByObjId(phantom.getObjectId()); // don't leave a half-made row behind
+			return "Spawn failed: " + e.getMessage();
+		}
+		befriendPhantom(owner, phantom);
+		return "Created your friend '" + name + "' (" + playerClass + ", level " + targetLevel + (role.isBuddy() ? (", " + role + " buddy") : "") + ") - added to your friends list.";
+	}
+
+	/**
+	 * Attempts every pending editor-authored {@code <friend>} order belonging to this (online, real) player:
+	 * an order whose name already exists is inert (created on an earlier pass / an earlier boot - never
+	 * duplicated, never re-befriended after a friend-delete), anything else is crafted via
+	 * {@link #craftFriend}. Each order is attempted at most once per load - success or failure it is removed,
+	 * so a bad entry (invalid name/class) logs once instead of spamming every pass; a reload re-arms it.
+	 * The one transient exception is the phantom cap: a cap-blocked order is kept and retried later.
+	 */
+	private void materializeCraftedFriends(Player owner)
+	{
+		if ((owner == null) || isPhantom(owner))
+		{
+			return;
+		}
+		synchronized (_craftedFriends)
+		{
+			for (Iterator<CraftedFriend> it = _craftedFriends.iterator(); it.hasNext();)
+			{
+				final CraftedFriend friend = it.next();
+				if (!friend.owner.equalsIgnoreCase(owner.getName()))
+				{
+					continue;
+				}
+				if (_phantoms.size() >= MAX_PHANTOMS)
+				{
+					return; // transient (phantom cap): keep the order and retry on a later pass
+				}
+				it.remove();
+				if (CharInfoTable.getInstance().doesCharNameExist(friend.name))
+				{
+					// Already created on an earlier boot (or the name is simply taken) - the order is permanently
+					// inert. Logged so "nothing happened" is diagnosable from the gameserver log.
+					LOGGER.info(getClass().getSimpleName() + ": <friend> order '" + friend.name + "' for " + owner.getName() + ": name already exists - order is inert (created earlier, or the name is taken).");
+					continue;
+				}
+				final String result = craftFriend(owner, friend.name, friend.classSpec, friend.level, friend.sex, friend.face, friend.hairStyle, friend.hairColor);
+				LOGGER.info(getClass().getSimpleName() + ": <friend> order '" + friend.name + "' for " + owner.getName() + ": " + result);
+			}
+		}
+	}
+
+	/** @return the charIds of the given player's befriended regulars (friends on the {@code phantom_regular} account). */
+	private List<Integer> findFriendRegulars(int ownerId)
+	{
+		final List<Integer> ids = new ArrayList<>();
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("SELECT c.charId FROM characters c JOIN character_friends f ON c.charId=f.friendId WHERE f.charId=? AND c.account_name=?"))
+		{
+			ps.setInt(1, ownerId);
+			ps.setString(2, ACCOUNT_NAME_REGULAR);
+			try (ResultSet rs = ps.executeQuery())
+			{
+				while (rs.next())
+				{
+					ids.add(rs.getInt("charId"));
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to list friend-regulars for " + ownerId + ": " + e.getMessage());
+		}
+		return ids;
+	}
+
+	/** @return the objectId of an online real player (other than {@code excludeOwnerId}) friends with this regular, or 0. */
+	private int otherOnlineFriendOf(int regularId, int excludeOwnerId)
+	{
+		for (Player p : World.getInstance().getPlayers())
+		{
+			if ((p.getObjectId() != excludeOwnerId) && !isRegular(p) && p.getFriendList().contains(regularId))
+			{
+				return p.getObjectId();
+			}
+		}
+		return 0;
+	}
+
+	/** @return {@code true} if the class id belongs to the DD-mage pool (so the caster gear/combat tick applies). */
+	private static boolean isMageClass(int classId)
+	{
+		for (int mageClass : MAGE_CLASS_POOL)
+		{
+			if (mageClass == classId)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Creates a brand-new clientless fighter phantom, levels/skills/gears it, spawns it, and hands it to
+	 * the native auto-hunt so it seeks and fights monsters on its own.
+	 * @param location where to spawn (also its home)
+	 * @param level the level to bring the phantom to
+	 * @param population the owning group (null for ad-hoc admin spawns)
+	 * @return the spawned phantom, or {@code null} on failure
+	 */
+	private Player createAndSpawn(Location location, int level, Population population)
+	{
+		return createAndSpawn(location, level, population, 0);
+	}
+
+	/**
+	 * @param forcedClassId when greater than 0 (and this is not a buddy/regular spawn), pins the phantom to this
+	 *            exact class instead of rolling one - used by the admin spawn command for targeted class testing.
+	 */
+	private Player createAndSpawn(Location location, int level, Population population, int forcedClassId)
+	{
+		if (_phantoms.size() >= MAX_PHANTOMS)
+		{
+			return null; // safety ceiling reached
+		}
+		// Snap the spawn point to the geodata ground. The population deploy path already snaps via
+		// rollLocation, but the ad-hoc/admin path keeps the caller's raw Z (e.g. the admin's feet Z) at an
+		// offset (x,y) whose real ground sits higher/lower, so the phantom ends up embedded in or floating
+		// over the terrain and its pathfinding raycasts from a bad Z. Snapping here makes every path safe;
+		// it is idempotent for the already-snapped deploy locations.
+		final int groundZ = GeoEngine.getInstance().getHeight(location.getX(), location.getY(), location.getZ());
+		final Location spawnLocation = new Location(location.getX(), location.getY(), groundZ);
+		final BuddyRole role = (population != null) ? population.role : BuddyRole.NONE;
+		try
+		{
+			// Maybe use one of this population's fixed "regular" identities so the zone has recurring, recognizable
+			// faces (stable name -> stable brain voice) instead of an all-random crowd. Null = spawn randomly.
+			final Regular regular = pickRegular(population);
+
+			// Buddies are a fixed support class (Elder/Prophet/Warcryer) and always cast, so they take the mage
+			// gear loadout. Ordinary phantoms roll a random race/body type: mostly melee fighters, a share DD
+			// mages. A regular may pin its own class; otherwise roll. Either way fall back to Human Fighter if a
+			// template is missing.
+			final boolean mage;
+			final int classId;
+			if (role.isBuddy())
+			{
+				mage = true;
+				classId = role.classId;
+			}
+			else if ((regular != null) && (regular.classId > 0))
+			{
+				classId = regular.classId;
+				mage = isMageClass(classId);
+			}
+			else if (forcedClassId > 0)
+			{
+				// Admin-pinned class for targeted testing (e.g. spawn a Sword Singer). transferClass is idempotent
+				// per tier, so a phantom created already at its target class stays that class at a matching level.
+				classId = forcedClassId;
+				mage = isMageClass(classId);
+			}
+			else
+			{
+				mage = Rnd.get(100) < MAGE_CHANCE;
+				final int[] pool = mage ? MAGE_CLASS_POOL : FIGHTER_CLASS_POOL;
+				classId = pool[Rnd.get(pool.length)];
+			}
+			PlayerClass playerClass = PlayerClass.getPlayerClass(classId);
+			PlayerTemplate template = (playerClass == null) ? null : PlayerTemplateData.getInstance().getTemplate(playerClass);
+			if (template == null)
+			{
+				playerClass = PlayerClass.FIGHTER;
+				template = PlayerTemplateData.getInstance().getTemplate(playerClass);
+			}
+			if (template == null)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": No FIGHTER template available.");
+				return null;
+			}
+
+			// A regular pins its own name/appearance; otherwise roll. Orc (Warcryer) and dwarf bodies skew male,
+			// like the NPC appearance factory.
+			final boolean female = (regular != null) ? regular.female //
+				: (((classId == 44) || (classId == 53) || (role == BuddyRole.WARCRYER)) ? (Rnd.get(100) < 30) : Rnd.nextBoolean());
+			final PlayerAppearance appearance = (regular != null) //
+				? new PlayerAppearance(regular.face, regular.hairColor, regular.hairStyle, female) //
+				: new PlayerAppearance((byte) Rnd.get(0, 2), (byte) Rnd.get(0, 3), (byte) Rnd.get(0, 2), female);
+
+			// A regular gets a PERSISTENT row under ACCOUNT_NAME_REGULAR so its charId is stable across reboots
+			// (the future friend tier references it by id). First spawn creates that row; every spawn after
+			// loads the same row back instead of creating a new character - keeping its charId and its persisted
+			// level/class/skills (only the consumable loadout is refreshed below, see the gearing block). Random
+			// phantoms (regular == null) are unchanged: ephemeral, ACCOUNT_NAME.
+			final int existingId = (regular != null) ? findRegularCharId(regular.name) : 0;
+			final boolean loadedRegular = (regular != null) && (existingId > 0);
+			final Player phantom;
+			if (loadedRegular)
+			{
+				phantom = Player.load(existingId);
+				if (phantom == null)
+				{
+					LOGGER.warning(getClass().getSimpleName() + ": Player.load(" + existingId + ") returned null for persisted regular '" + regular.name + "'.");
+					return null;
+				}
+			}
+			else
+			{
+				phantom = Player.create(template, (regular != null) ? ACCOUNT_NAME_REGULAR : ACCOUNT_NAME, (regular != null) ? regular.name : nextName(), appearance, true);
+				if (phantom == null)
+				{
+					LOGGER.warning(getClass().getSimpleName() + ": Player.create returned null (duplicate name / db error?).");
+					return null;
+				}
+			}
+
+			// A loaded regular's class/appearance came back from its DB row, so the pre-load roll above is moot -
+			// derive the caster flag from the ACTUAL restored class (the auto-hunt combat tick and gear pick both
+			// key off it, and a mismatched flag would gear/fight it as the wrong archetype). isMage() rather than
+			// the DD-pool check, so a support-class char (possible via promotion or an authored classId) re-gears
+			// as a robe caster, not a melee fighter.
+			final boolean effectiveMage = loadedRegular ? phantom.getPlayerClass().isMage() : mage;
+			return finishSpawn(phantom, spawnLocation, level, effectiveMage, role, population, loadedRegular, 0);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to spawn phantom: " + e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * Joins a field/town hunter to its population's bot clan, if one is configured. {@code botClan} names a bot clan
+	 * key (or "random" for any), and {@code botClanChance} is the per-phantom probability it wears that clan, so a
+	 * population can be entirely clanned, partly clanned, or clan-free. No-op when the population sets no bot clan.
+	 */
+	private void attachBotClan(Player phantom, Population population)
+	{
+		if ((population == null) || population.botClan.isEmpty() || (Rnd.get(100) >= population.botClanChance))
+		{
+			return;
+		}
+		final Clan clan = population.botClan.equalsIgnoreCase("random") //
+			? BotClanManager.getInstance().getRandomClan() //
+			: BotClanManager.getInstance().getClanByKey(population.botClan);
+		if (clan == null)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Population '" + population.name + "' references unknown bot clan '" + population.botClan + "'.");
+			return;
+		}
+		BotClanManager.getInstance().attach(phantom, clan);
+	}
+
+	/**
+	 * Finishes materializing an already created-or-loaded phantom {@link Player}: gears it, drops it into the
+	 * world at {@code spawnLocation}, registers it, and hands it to the buddy manager or the auto-hunt. Shared
+	 * by the population/admin path ({@link #createAndSpawn}) and the friend login-spawn path
+	 * ({@link #spawnFriendRegular}).
+	 * @param loadedRegular {@code true} if {@code phantom} came from {@link Player#load} (skip re-leveling, just
+	 *            refresh the consumable loadout on a clean inventory)
+	 * @param friendOwnerId objectId of the real player this phantom was spawned to accompany (0 = none), used to
+	 *            despawn it again when that owner logs out
+	 * @return the phantom, now live
+	 */
+	private Player finishSpawn(Player phantom, Location spawnLocation, int level, boolean mage, BuddyRole role, Population population, boolean loadedRegular, int friendOwnerId)
+	{
+		// Ignore the weight penalty. Phantoms carry a large stack of healing potions (+ soulshots), which
+		// easily exceeds a non-Dwarf's max load - at >=100% load the engine applies Weight Penalty (skill
+		// 4270) level 4, whose runSpd multiplier is 0, so the phantom is fully immobilized. Dwarves have a
+		// far higher carry capacity, which is why only they moved before this. Diet mode zeroes the penalty
+		// regardless of load (set before items are added so the inventory weight never pins them).
+		phantom.setDietMode(true);
+
+		// Level, skill and gear the phantom BEFORE it enters the world, so the very first CharInfo nearby
+		// players receive already shows its full set. (A post-spawn equip update can be throttled or coalesced
+		// by broadcastCharInfo, leaving gear invisible even though it was equipped.) A loaded regular already
+		// has its level/class/skills persisted, so the exp/class/skill steps below are guarded no-ops for it -
+		// but its consumables were spent hunting and its auto-use/soulshot registrations are runtime-only, so
+		// it still needs re-gearing. Wipe its stale inventory first so the restock doesn't stack duplicates.
+		phantom.setOnlineStatus(true, false);
+		if (loadedRegular)
+		{
+			phantom.getInventory().destroyAllItems(ItemProcessType.DESTROY, phantom, null);
+		}
+		if (role.isBuddy())
+		{
+			outfitBuddy(phantom, level, role);
+		}
+		else if (friendOwnerId != 0)
+		{
+			// A friend parties with its owner and pulls real weight in content: full best-in-grade kit
+			// (the recruited-member loadout), not the deliberately cheap ambient look.
+			outfitFriend(phantom, level, mage, GearContext.PARTY);
+		}
+		else
+		{
+			outfit(phantom, level, mage);
+		}
+		phantom.refreshOverloaded();
+		// Bot clan (field/town hunters only): join before entering the world so the very first CharInfo already carries
+		// the clan crest and name. Buddies and friend-summons keep their own identity and are never auto-clanned.
+		if (!role.isBuddy() && (friendOwnerId == 0))
+		{
+			attachBotClan(phantom, population);
+		}
+		enterWorld(phantom, spawnLocation);
+
+		final PhantomData data = new PhantomData(phantom, spawnLocation, population, mage, role);
+		data.friendOwnerId = friendOwnerId;
+		_phantoms.put(phantom.getObjectId(), data);
+		attachPvpDamageListener(phantom, data);
+		if (role.isBuddy())
+		{
+			// Buddies don't hunt - they stand where placed (and do nothing, not even self-buff) until a real
+			// player whispers/parties them. PhantomBuddyManager owns everything from there.
+			PhantomBuddyManager.getInstance().onBuddySpawned(data.player, role.name());
+		}
+		else
+		{
+			// Fan out first; the auto-hunt starts when dispersal ends (see supervise), so a freshly spawned
+			// group spreads over its area instead of all converging on the nearest mobs at once.
+			beginDisperse(phantom, data);
+		}
+		startSupervising();
+		final String kind = role.isBuddy() ? (role + " buddy") //
+			: (friendOwnerId != 0) ? "friend-regular" //
+				: ACCOUNT_NAME_REGULAR.equals(phantom.getAccountName()) ? "regular" : "phantom";
+		LOGGER.info(getClass().getSimpleName() + ": Spawned " + kind + " '" + phantom.getName() + "' (objId=" + phantom.getObjectId() + ", level " + level + ").");
+		return phantom;
+	}
+
+	/**
+	 * Spawns a single ad-hoc phantom (admin testing path). Population-driven deployment uses
+	 * {@link #deployOne(Population)} instead.
+	 * @param location where to spawn
+	 * @param level the level to bring it to
+	 * @return the spawned phantom, or {@code null} on failure
+	 */
+	public Player spawnPhantom(Location location, int level)
+	{
+		return spawnPhantom(location, level, 0);
+	}
+
+	/**
+	 * Spawns a single ad-hoc phantom, optionally pinned to a specific class instead of the random roll - for
+	 * targeted testing (for example a Sword Singer hunter). {@code classId} 0 keeps the normal random pick.
+	 * @param location where to spawn
+	 * @param level the level to bring it to
+	 * @param classId the exact {@link PlayerClass} id to spawn, or 0 to roll a random class
+	 * @return the spawned phantom, or {@code null} on failure
+	 */
+	public Player spawnPhantom(Location location, int level, int classId)
+	{
+		if (!AutoPlayConfig.ENABLE_AUTO_PLAY)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": EnableAutoPlay is false in config/Custom/AutoPlay.ini - phantoms will spawn but not hunt.");
+		}
+		return createAndSpawn(location, level, null, classId);
+	}
+
+	/**
+	 * Drops an already-leveled, already-geared clientless player into the world exactly the way
+	 * offline-play characters are restored - no GameClient is ever attached. {@code setOfflinePlay(true)}
+	 * is required so the AutoPlay loop does not treat the missing client as a plain offline-shop and stop
+	 * the task.
+	 */
+	private void enterWorld(Player phantom, Location location)
+	{
+		// Ensure the phantom holds a Dimensional Fragment so it meets the rift entry requirement. Guarded so a
+		// re-equip/respawn never stacks duplicates.
+		if (phantom.getInventory().getItemByItemId(DIMENSION_FRAGMENT_ID) == null)
+		{
+			phantom.getInventory().addItem(ItemProcessType.REWARD, DIMENSION_FRAGMENT_ID, 1, phantom, null);
+		}
+
+		phantom.setCurrentHp(phantom.getMaxHp());
+		phantom.setCurrentMp(phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		phantom.spawnMe(location.getX(), location.getY(), location.getZ());
+		phantom.setOfflinePlay(true);
+		phantom.setOnlineStatus(true, true);
+		phantom.setRunning();
+		phantom.broadcastUserInfo();
+	}
+
+	/**
+	 * Brings a phantom to the requested level (granting the exact experience for it), advances it to the
+	 * class its level warrants, learns that class's full skill tree up to its level, gears it, tops up its
+	 * bars, and registers its skills with the auto-use system.
+	 * @param phantom the phantom to outfit
+	 * @param level the target level
+	 */
+	private void outfit(Player phantom, int level, boolean mage)
+	{
+		if (level > 1)
+		{
+			final long currentExp = phantom.getExp();
+			final long targetExp = ExperienceData.getInstance().getExpForLevel(level);
+			if (targetExp > currentExp)
+			{
+				phantom.addExpAndSp(targetExp - currentExp, 0);
+			}
+		}
+		// Advance through the class transfers a real character of this level would have done (fighters down
+		// a melee branch, mages down a DD/nuker branch), then learn everything that class can learn by now -
+		// so a level-40 phantom is a proper 2nd-class character with a real kit. Learning is looped so
+		// chained skills resolve.
+		transferClass(phantom, level, mage);
+		learnAllSkills(phantom);
+		// Class-aware loadout via the same role-driven path recruited members and friends use, so a field hunter
+		// carries its real class weapon (dagger for a dagger class, dual swords for a Dancer, bow for an archer,
+		// fist for a monk, ...) instead of the old sword-for-every-fighter ambient pick. This matters now that field
+		// hunters run their class playstyles: several class skills hard-require a specific weapon (dances need
+		// equipped dual swords, dagger skills need a dagger), so the wrong weapon silently blocked those casts.
+		buildGear();
+		gearParty(phantom, level, mage, roleForClass(phantom.getPlayerClass()), GearContext.SOLO);
+		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		registerAutoSkills(phantom);
+	}
+
+	/**
+	 * Outfits a befriended/crafted friend-regular: same leveling/class/skill pipeline as {@link #outfit}, but
+	 * geared through {@link #gearParty} - best-in-grade role weapon, full armor set (no random gaps), all five
+	 * jewelry slots, a shield for a tank class, an enchant chance - and it arrives fully buffed. A friend is
+	 * meant to party with its owner and do real content, not blend in as a cheaply-dressed ambient extra.
+	 */
+	private void outfitFriend(Player phantom, int level, boolean mage, GearContext context)
+	{
+		if (level > 1)
+		{
+			final long currentExp = phantom.getExp();
+			final long targetExp = ExperienceData.getInstance().getExpForLevel(level);
+			if (targetExp > currentExp)
+			{
+				phantom.addExpAndSp(targetExp - currentExp, 0);
+			}
+		}
+		transferClass(phantom, level, mage);
+		learnAllSkills(phantom);
+		buildGear();
+		gearParty(phantom, level, mage, roleForClass(phantom.getPlayerClass()), context);
+		PhantomBuffs.applyFullBuffs(phantom, roleForClass(phantom.getPlayerClass()) == PartyRole.TANK);
+		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		registerAutoSkills(phantom);
+	}
+
+	/**
+	 * Outfits a support buddy: brings it to {@code level}, sets it directly to its fixed support class (no
+	 * random transfer), learns that class's full skill tree, gives it the mage gear loadout (magic weapon +
+	 * robe + spiritshots, so its casts hit faster), tops up its bars and guarantees it can heal. Unlike
+	 * {@link #outfit}, it does NOT register auto-hunt skills - a buddy never hunts; the PhantomBuddyManager
+	 * casts its buffs/heals by hand on the player it is partied with.
+	 * @param phantom the buddy
+	 * @param level the target level (should be 40+ so a 2nd-class buff kit is available)
+	 * @param role which support class to become
+	 */
+	private void outfitBuddy(Player phantom, int level, BuddyRole role)
+	{
+		if (level > 1)
+		{
+			final long currentExp = phantom.getExp();
+			final long targetExp = ExperienceData.getInstance().getExpForLevel(level);
+			if (targetExp > currentExp)
+			{
+				phantom.addExpAndSp(targetExp - currentExp, 0);
+			}
+		}
+		// Become the exact support class straight away (the base Mystic/Cleric template was used to create it).
+		if (phantom.getPlayerClass().getId() != role.classId)
+		{
+			phantom.setPlayerClass(role.classId);
+			phantom.setBaseClass(role.classId);
+		}
+		learnAllSkills(phantom);
+		grantHeal(phantom, level);
+		giveBuffReagents(phantom); // Spirit Ore etc. so consumable buffs (Greater Might/Shield, Clarity) actually land
+		gear(phantom, level, true); // cast loadout
+		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		logBuddyGear(phantom, role);
+	}
+
+	/**
+	 * TEMP DEBUG: logs every piece a buddy has equipped (slot item name / id / bodypart), to diagnose the Orc
+	 * Warcryer bare-torso render. Remove once the gearing is sorted.
+	 */
+	private void logBuddyGear(Player phantom, BuddyRole role)
+	{
+		final StringBuilder sb = new StringBuilder();
+		sb.append("BUDDY GEAR [").append(role).append(' ').append(phantom.getName()).append(", race=").append(phantom.getRace()).append(", class=").append(phantom.getPlayerClass()).append(", lvl ").append(phantom.getLevel()).append("] equipped:");
+		boolean any = false;
+		for (Item item : phantom.getInventory().getPaperdollItems())
+		{
+			any = true;
+			sb.append(" {").append(item.getTemplate().getName()).append(" id=").append(item.getId()).append(" bodypart=").append(item.getTemplate().getBodyPart()).append("}");
+		}
+		if (!any)
+		{
+			sb.append(" (nothing)");
+		}
+		LOGGER.info(getClass().getSimpleName() + ": " + sb);
+	}
+
+	/**
+	 * Ensures a buddy can heal. The Elven Elder learns heals naturally; Prophet and Warcryer do not have one
+	 * in Interlude, so grant a basic Heal (id 1011) scaled to level - the user wants every buddy able to top
+	 * its owner up (to roughly half health), and this keeps that data-driven rather than per-class hard-coding.
+	 */
+	private void grantHeal(Player phantom, int level)
+	{
+		for (int healId : HEAL_SKILL_IDS)
+		{
+			if (phantom.getKnownSkill(healId) != null)
+			{
+				return; // already has a heal
+			}
+		}
+		// Heal (1011) has 18 levels; pick one in step with the buddy's level, capped at the table maximum.
+		final int healLevel = Math.max(1, Math.min(18, level / 4));
+		final Skill heal = SkillData.getInstance().getSkill(1011, healLevel);
+		if (heal != null)
+		{
+			phantom.addSkill(heal, true);
+		}
+	}
+
+	/**
+	 * Stocks a support phantom with the item reagents its buffs consume (Spirit Ore for the prophet's Greater
+	 * Might / Greater Shield and the caster's Clarity, etc.), scanned data-driven from the buffs it actually knows
+	 * so it adapts to whatever class/level kit it ended up with. Without the reagent the engine rejects the cast and
+	 * the buffer loops on the missing buff forever - so this both fixes that loop and keeps the greater buffs usable.
+	 * Must run AFTER the skill tree is learned. A big stack so a long session never runs dry; diet mode keeps the
+	 * weight off.
+	 * @param phantom the support phantom (buddy or recruited buffer/healer)
+	 */
+	private void giveBuffReagents(Player phantom)
+	{
+		final Set<Integer> reagents = new HashSet<>();
+		for (Skill skill : phantom.getAllSkills())
+		{
+			if ((skill == null) || skill.isPassive() || (skill.getItemConsumeId() <= 0) || (skill.getItemConsumeCount() <= 0))
+			{
+				continue;
+			}
+			// Beneficial buffs AND reagent-consuming heals (a healer's Major Heal / Major Group Heal eat Spirit Ore),
+			// never offensive/summon/debuff skills. A pure Bishop/Cardinal healer knows no reagent-consuming BUFF, so
+			// without the heal case it carried zero Spirit Ore and could never cast its top heals - they'd be skipped
+			// every tick by the reagent guard. effectPoint >= 0 && !isDebuff() keeps offensive skills out.
+			if ((skill.getEffectPoint() >= 0) && !skill.isDebuff() && (skill.isContinuous() || skill.hasEffectType(EffectType.HEAL)))
+			{
+				reagents.add(skill.getItemConsumeId());
+			}
+		}
+		for (int reagentId : reagents)
+		{
+			phantom.getInventory().addItem(ItemProcessType.REWARD, reagentId, BUFF_REAGENT_COUNT, phantom, null);
+		}
+		if (!reagents.isEmpty())
+		{
+			LOGGER.info(getClass().getSimpleName() + ": Stocked " + phantom.getName() + " with buff reagents " + reagents + " (x" + BUFF_REAGENT_COUNT + " each).");
+		}
+	}
+
+	/**
+	 * Stocks a combat phantom with the reagents its <b>offensive</b> skills consume - most importantly the
+	 * Necromancer line's Death Spike, which eats a Cursed Bone (item 2508) per cast. Without the reagent the
+	 * engine's {@code canAffordReagent} guard rejects that cast every tick, so a field Necromancer silently
+	 * drops its main nuke and only ever casts the reagent-free fallback (Vampiric Claw). Scanned data-driven
+	 * from the skills the phantom actually knows, so it adapts to whatever class/level kit it ended up with.
+	 * This is the offensive counterpart to {@link #giveBuffReagents}: it stocks only attack/debuff skills, so
+	 * the two never double-count. Must run AFTER the skill tree is learned.
+	 * @param phantom the combat phantom (field hunter or recruited party fighter/caster)
+	 */
+	private void giveCombatReagents(Player phantom)
+	{
+		final Set<Integer> reagents = new HashSet<>();
+		for (Skill skill : phantom.getAllSkills())
+		{
+			if ((skill == null) || skill.isPassive() || (skill.getItemConsumeId() <= 0) || (skill.getItemConsumeCount() <= 0))
+			{
+				continue;
+			}
+			// Offensive only (a damaging nuke has a negative effectPoint; a debuff is flagged as such). The
+			// beneficial buffs and heals are stocked by giveBuffReagents, so this inverse split covers every
+			// reagent-consuming skill exactly once.
+			if ((skill.getEffectPoint() < 0) || skill.isDebuff())
+			{
+				reagents.add(skill.getItemConsumeId());
+			}
+		}
+		for (int reagentId : reagents)
+		{
+			phantom.getInventory().addItem(ItemProcessType.REWARD, reagentId, BUFF_REAGENT_COUNT, phantom, null);
+		}
+		if (!reagents.isEmpty())
+		{
+			LOGGER.info(getClass().getSimpleName() + ": Stocked " + phantom.getName() + " with combat reagents " + reagents + " (x" + BUFF_REAGENT_COUNT + " each).");
+		}
+	}
+
+	/**
+	 * Advances a phantom from its base class to the occupation its level warrants by walking the class
+	 * tree, choosing a random in-archetype branch at each transfer: 1st at 20+, 2nd at 40+, 3rd at 76+.
+	 * @param phantom the phantom (created as a base fighter or mage)
+	 * @param level its level
+	 * @param mage {@code true} to follow the DD/nuker line, {@code false} for the melee line
+	 */
+	private void transferClass(Player phantom, int level, boolean mage)
+	{
+		final int targetTier = (level < 20) ? 0 : (level < 40) ? 1 : (level < 76) ? 2 : 3;
+		if (targetTier == 0)
+		{
+			return; // base class is correct below level 20
+		}
+		// Idempotent: a reloaded regular is already transferred to its warranted tier. transferClass walks
+		// forward from the CURRENT class, so re-running it on such a char would over-advance it (e.g. bump a
+		// tier-2 fighter to a tier-3 class). Only transfer a char still short of its target tier (a fresh one).
+		if (phantom.getPlayerClass().level() >= targetTier)
+		{
+			return;
+		}
+		PlayerClass current = phantom.getPlayerClass();
+		for (int step = 0; step < targetTier; step++)
+		{
+			final PlayerClass next = randomChild(current, mage);
+			if (next == null)
+			{
+				break; // no further transfer available
+			}
+			current = next;
+		}
+		if (current.getId() != phantom.getPlayerClass().getId())
+		{
+			phantom.setPlayerClass(current.getId());
+			phantom.setBaseClass(current.getId());
+		}
+	}
+
+	/**
+	 * A random class transfer from the given class within the wanted archetype: melee fighters, or DD
+	 * mages (mystic but not priest/summoner). Returns {@code null} if there are none.
+	 */
+	private static PlayerClass randomChild(PlayerClass parent, boolean mage)
+	{
+		final List<PlayerClass> options = new ArrayList<>();
+		for (PlayerClass child : parent.getNextClasses())
+		{
+			final boolean wanted = mage ? (child.isOfType(ClassType.MYSTIC) && !child.isSummoner()) : !child.isMage();
+			if (wanted)
+			{
+				options.add(child);
+			}
+		}
+		return options.isEmpty() ? null : options.get(Rnd.get(options.size()));
+	}
+
+	/** Learns every skill the phantom's class can learn at its level, looped so chained skills resolve. */
+	private void learnAllSkills(Player phantom)
+	{
+		int guard = 0;
+		while ((phantom.giveAvailableSkills(false, true, true) > 0) && (guard++ < 10))
+		{
+			// keep learning until nothing new becomes available
+		}
+	}
+
+	/**
+	 * Equips a grade-appropriate set and hands over matching shots (auto-enabled): fighters get a sword +
+	 * light/heavy armor + soulshots; mages get a magic weapon + robe + spiritshots. The weapon is what
+	 * makes their attack skills / nukes usable; the armor keeps them alive long enough to hunt.
+	 * @param phantom the phantom to gear
+	 * @param level its level (decides the grade tier)
+	 * @param mage {@code true} for a caster loadout
+	 */
+	private void gear(Player phantom, int level, boolean mage)
+	{
+		buildGear();
+		final Map<BodyPart, EnumMap<CrystalType, List<ItemTemplate>>> set = mage ? MAGE_GEAR : FIGHTER_GEAR;
+		final CrystalType desired = gradeForLevel(level);
+
+		// Weapon first, so we know the grade actually equipped (shots must match it exactly).
+		final ItemTemplate weapon = pickForSlot(set, BodyPart.R_HAND, desired);
+		if (weapon == null)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": No " + (mage ? "magic weapon" : "sword") + " found in the datapack - phantom stays unarmed.");
+		}
+		else
+		{
+			equip(phantom, weapon);
+			final int shotId = mage ? spiritshotIdFor(weapon.getCrystalType()) : soulshotIdFor(weapon.getCrystalType());
+			phantom.getInventory().addItem(ItemProcessType.REWARD, shotId, SHOT_COUNT, phantom, null);
+			phantom.addAutoSoulShot(shotId); // registers both soulshots and spiritshots for auto-use
+		}
+
+		// Healing potions: in-combat HP sustain (sitting can't help mid-fight). Native auto-potion drinks
+		// one when HP drops below the threshold; the big stack lasts a long farm session.
+		phantom.getInventory().addItem(ItemProcessType.REWARD, HP_POTION_ID, HP_POTION_COUNT, phantom, null);
+		phantom.getAutoUseSettings().setAutoPotionItem(HP_POTION_ID);
+		phantom.getAutoPlaySettings().setAutoPotionPercent(HP_POTION_PERCENT);
+
+		// Offensive reagents: the Necromancer line's Death Spike eats a Cursed Bone per cast; stock it (and any
+		// other reagent-consuming nuke this kit knows) so the main nuke actually fires instead of being skipped.
+		giveCombatReagents(phantom);
+
+		// Armor: a full matching set (Karmian / Mithril / Full Plate, ...) for the loadout's family, so a field
+		// hunter wears a coherent outfit instead of a random per-slot mix. Fighters roll light or heavy for variety.
+		final ArmorType family = mage ? ArmorType.MAGIC : (Rnd.get(100) < 55 ? ArmorType.LIGHT : ArmorType.HEAVY);
+		equipArmorSet(phantom, family, desired, 0, false);
+
+		// Jewelry: necklace + two earrings + two rings, for the extra P./M.Def that keeps a field hunter alive.
+		equipJewelry(phantom, BodyPart.NECK, desired, 1);
+		equipJewelry(phantom, BodyPart.LR_EAR, desired, 2);
+		equipJewelry(phantom, BodyPart.LR_FINGER, desired, 2);
+
+		// No broadcast here: gear() runs before the phantom enters the world, so the whole set is in place
+		// for the spawn CharInfo (enterWorld broadcasts afterwards).
+	}
+
+	/**
+	 * Equips a coherent matching armor set (from {@link FakePlayerArmorSets}) for {@code family}/{@code grade},
+	 * filling any slot the set does not define from the best in-family (body) or generic (extremity) piece, so no
+	 * slot is left bare. A one-piece full-body chest correctly leaves the legs slot empty. With {@code wantShield}
+	 * the set's shield (or the best shield in grade) is added.
+	 */
+	private void equipArmorSet(Player phantom, ArmorType family, CrystalType grade, int enchant, boolean wantShield)
+	{
+		final FakePlayerArmorSets.Outfit outfit = FakePlayerArmorSets.random(family, grade);
+		final ItemTemplate chest = (outfit == null) ? null : ItemData.getInstance().getTemplate(outfit.chest);
+		// No set for this family/grade, OR the rolled set's chest can't actually be worn by this phantom (an
+		// academy-gated set like Clan Oath - pledgeClass condition no phantom meets - would otherwise be added to the
+		// bag and left unequipped). Sets are uniform, so the chest is a reliable proxy for the whole set. Fall back to
+		// the best per-slot pieces (body family-correct, extremities agnostic), each guarded the same way.
+		if (!canEquip(phantom, chest))
+		{
+			for (BodyPart slot : GEAR_SLOTS)
+			{
+				if (slot == BodyPart.R_HAND)
+				{
+					continue;
+				}
+				final ItemTemplate piece = bestArmor(slot, grade, family, null);
+				if (canEquip(phantom, piece))
+				{
+					equip(phantom, piece, enchant);
+				}
+			}
+			if (wantShield)
+			{
+				final ItemTemplate shield = bestEquip(grade, item -> (item instanceof Armor) && (((Armor) item).getItemType() == ArmorType.SHIELD));
+				if (canEquip(phantom, shield))
+				{
+					equip(phantom, shield, enchant);
+				}
+			}
+			return;
+		}
+		equipById(phantom, outfit.chest, enchant);
+		if (!outfit.onepiece)
+		{
+			equipPiece(phantom, (outfit.legs > 0) ? ItemData.getInstance().getTemplate(outfit.legs) : bestArmor(BodyPart.LEGS, grade, family, null), enchant);
+		}
+		equipPiece(phantom, (outfit.gloves > 0) ? ItemData.getInstance().getTemplate(outfit.gloves) : bestArmor(BodyPart.GLOVES, grade, family, null), enchant);
+		equipPiece(phantom, (outfit.feet > 0) ? ItemData.getInstance().getTemplate(outfit.feet) : bestArmor(BodyPart.FEET, grade, family, null), enchant);
+		equipPiece(phantom, (outfit.head > 0) ? ItemData.getInstance().getTemplate(outfit.head) : bestArmor(BodyPart.HEAD, grade, family, null), enchant);
+		if (wantShield)
+		{
+			if (outfit.shield > 0)
+			{
+				equipById(phantom, outfit.shield, enchant);
+			}
+			else
+			{
+				equipPiece(phantom, bestEquip(grade, item -> (item instanceof Armor) && (((Armor) item).getItemType() == ArmorType.SHIELD)), enchant);
+			}
+		}
+	}
+
+	/** Resolves an item id to its template and equips it (with enchant); no-op if the id is 0 / unknown. */
+	private void equipById(Player phantom, int itemId, int enchant)
+	{
+		if (itemId > 0)
+		{
+			equipPiece(phantom, ItemData.getInstance().getTemplate(itemId), enchant);
+		}
+	}
+
+	/** Equips a resolved template (with enchant); no-op if {@code template} is {@code null}. */
+	private void equipPiece(Player phantom, ItemTemplate template, int enchant)
+	{
+		if (template != null)
+		{
+			equip(phantom, template, enchant);
+		}
+	}
+
+	/**
+	 * Gears a <b>recruited party member</b> properly for real content, unlike the deliberately cheap and patchy
+	 * ambient {@link #gear} loadout. The difference matters for raids: the ambient path picks the cheapest items,
+	 * randomly skips helmet/gloves/boots, and equips no jewelry or shield - leaving a "tank" badly under-armored.
+	 * Here a party member gets:
+	 * <ul>
+	 * <li>a <b>strong, varied</b> weapon for its role (sword / bow / dagger / fist / dual / magic weapon) +
+	 * matching shots (+ arrows for an archer);</li>
+	 * <li>a <b>full</b> armor set - every slot, no random gaps - best in grade (a TANK prefers HEAVY);</li>
+	 * <li>all five <b>jewelry</b> slots (necklace + two earrings + two rings) for the P./M.Def the ambient bots lack;</li>
+	 * <li>a <b>shield</b> for a TANK/SINGER, or for a caster that rolls a one-handed weapon;</li>
+	 * <li>a chance the whole weapon+armor kit is <b>enchanted</b> (a modest uniform level), so some read as geared
+	 * players rather than fresh dingbats.</li>
+	 * </ul>
+	 */
+	private void gearParty(Player phantom, int level, boolean mage, PartyRole role, GearContext context)
+	{
+		final Integer encounterEnchant = ENCOUNTER_ENCHANT.get();
+		final CrystalType grade = gradeForLevel(level);
+		// A chance this member is an enchanted player; if so, a modest uniform enchant on weapon + armor (jewelry is
+		// not enchantable in Interlude, so it stays +0). Chance and +min..+max range are configurable
+		// (FakePlayerRecruitEnchant* in FakePlayers.ini); values are clamped so bad config can't throw.
+		final int enchantMin = Math.max(0, FakePlayersConfig.FAKE_PLAYER_RECRUIT_ENCHANT_MIN);
+		final int enchantMax = Math.max(enchantMin, FakePlayersConfig.FAKE_PLAYER_RECRUIT_ENCHANT_MAX);
+		// An encounter actor carries exactly the enchant the module asked for.
+		final int enchant = (encounterEnchant != null) ? encounterEnchant : ((Rnd.get(100) < FakePlayersConfig.FAKE_PLAYER_RECRUIT_ENCHANT_CHANCE) ? Rnd.get(enchantMin, enchantMax + 1) : 0);
+
+		// Weapon (randomly chosen among the strongest role-compatible options) + matching shots (+ arrows for a bow).
+		final ItemTemplate weapon = partyWeapon(phantom.getPlayerClass(), role, mage, grade, context);
+		if (weapon != null)
+		{
+			equip(phantom, weapon, enchant);
+			// A party member of a multi-weapon line also carries its spare (PhantomWeaponSets), switched on the
+			// leader's order. Same grade, so the same shots fit; diet mode keeps the extra weight harmless.
+			final WeaponKind spareKind = mage ? null : PhantomWeaponSets.spareKind(phantom.getPlayerClass(), context);
+			final ItemTemplate spare = (spareKind == null) ? null : randomInGrade(grade, spareKind::matches); // none in grade: no spare (FPC-202)
+			if ((spare != null) && (spare.getId() != weapon.getId()))
+			{
+				final Item spareItem = phantom.getInventory().addItem(ItemProcessType.REWARD, spare.getId(), 1, phantom, null);
+				if ((spareItem != null) && (enchant > 0))
+				{
+					spareItem.setEnchantLevel(enchant);
+				}
+			}
+			armShots(phantom, weapon.getCrystalType(), mage, null);
+			if ((weapon instanceof Weapon) && (((Weapon) weapon).getItemType() == WeaponType.BOW))
+			{
+				final ItemTemplate arrow = findArrow(weapon.getCrystalType());
+				if (arrow != null)
+				{
+					phantom.getInventory().addItem(ItemProcessType.REWARD, arrow.getId(), ARROW_COUNT, phantom, null);
+				}
+			}
+		}
+
+		// In-combat HP sustain (same as ambient): auto-potion drinks one below the threshold.
+		phantom.getInventory().addItem(ItemProcessType.REWARD, HP_POTION_ID, HP_POTION_COUNT, phantom, null);
+		phantom.getAutoUseSettings().setAutoPotionItem(HP_POTION_ID);
+		phantom.getAutoPlaySettings().setAutoPotionPercent(HP_POTION_PERCENT);
+
+		// Fallback rez: a few Scrolls of Resurrection the party brain uses only when the group has no living skill-rezzer.
+		phantom.getInventory().addItem(ItemProcessType.REWARD, REZ_SCROLL_ID, REZ_SCROLL_COUNT, phantom, null);
+
+		// Offensive reagents: a recruited Necromancer's Death Spike eats a Cursed Bone per cast - stock it so a
+		// party caster uses its main nuke rather than dropping to the reagent-free fallback.
+		giveCombatReagents(phantom);
+
+		// Full matching armor set in the class's practical armor family (Heavy for tanks/warriors/singer/dancer,
+		// Light for archer/dagger/monk, robe for casters) - a coherent set (Karmian / Full Plate, ...) rather than a
+		// random per-slot mix. A shield is paired only with a one-handed weapon and a class-appropriate loadout:
+		// tanks/singers, casters, and Dwarven blunt users. Any slot the set omits is filled with the best
+		// in-family/generic piece.
+		equipArmorSet(phantom, role.armor, grade, enchant, shouldEquipShield(role, mage, weapon));
+
+		// Jewelry: necklace + two earrings + two rings (matched by body part; the engine fills both ears/fingers).
+		equipJewelry(phantom, BodyPart.NECK, grade, 1);
+		equipJewelry(phantom, BodyPart.LR_EAR, grade, 2);
+		equipJewelry(phantom, BodyPart.LR_FINGER, grade, 2);
+	}
+
+	/**
+	 * One-time debug dump of a recruited member's actual equipped loadout (with enchant levels) and, for a tank,
+	 * whether it actually knows its taunt skills at this level - so a raid trace can rule the gear/skills in or out.
+	 */
+	private void logLoadout(Player phantom, PartyRole role, int level)
+	{
+		final StringBuilder sb = new StringBuilder();
+		for (Item item : phantom.getInventory().getItems())
+		{
+			if (item.isEquipped())
+			{
+				sb.append(item.getTemplate().getName());
+				if (item.getEnchantLevel() > 0)
+				{
+					sb.append(" +").append(item.getEnchantLevel());
+				}
+				sb.append(", ");
+			}
+		}
+		String extra = "";
+		if (role == PartyRole.TANK)
+		{
+			extra = " | taunts known: Aggression=" + (phantom.getKnownSkill(28) != null) + " AuraOfHate=" + (phantom.getKnownSkill(18) != null);
+		}
+		LOGGER.info("PARTY-RAID GEAR " + role + " '" + phantom.getName() + "' lvl" + level + " grade=" + gradeForLevel(level) + extra + " | equipped: " + sb);
+	}
+
+	/**
+	 * Shields are useful only when the rolled weapon leaves the left hand free and the class normally uses one.
+	 * Dagger damage dealers intentionally remain shieldless: their practical Interlude loadout prioritizes
+	 * light-armor evasion. WARRIOR is safe here because its dual, polearm, fist, and two-handed specialists
+	 * fail the R_HAND guard; this admits only Dwarven one-handed blunts and one-handed fallback swords.
+	 */
+	private static boolean shouldEquipShield(PartyRole role, boolean mage, ItemTemplate weapon)
+	{
+		if ((weapon == null) || (weapon.getBodyPart() != BodyPart.R_HAND))
+		{
+			return false;
+		}
+		return mage || (role == PartyRole.TANK) || (role == PartyRole.SINGER) || (role == PartyRole.WARRIOR);
+	}
+
+	/**
+	 * Strong, varied weapon for a recruited member. Broad roles keep strict weapon families, while WARRIOR is
+	 * refined by the resolved occupation so its specialists do not all collapse to swords.
+	 */
+	private static ItemTemplate partyWeapon(PlayerClass playerClass, PartyRole role, boolean mage, CrystalType grade, GearContext context)
+	{
+		final ItemTemplate weapon = partyWeaponInGrade(playerClass, role, mage, grade, context);
+		if (weapon != null)
+		{
+			return weapon;
+		}
+		// Only when the phantom's grade has no weapon at all for its class and role (the gear audit finds no such
+		// case with the shipped data): the same choice one grade lower beats an unarmed party member.
+		LOGGER.warning(PhantomManager.class.getSimpleName() + ": no " + grade + "-grade weapon for " + playerClass + " (" + role + "), using a lower grade.");
+		for (int ordinal = grade.ordinal() - 1; ordinal >= 0; ordinal--)
+		{
+			final ItemTemplate lower = partyWeaponInGrade(playerClass, role, mage, CrystalType.values()[ordinal], context);
+			if (lower != null)
+			{
+				return lower;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * {@link #partyWeapon} without leaving the grade: every pick below is made only among weapons of {@code grade}
+	 * (FPC-202). A role or class weapon the grade lacks falls to the next option in the same grade, and {@code null}
+	 * means the grade has nothing that fits at all.
+	 */
+	private static ItemTemplate partyWeaponInGrade(PlayerClass playerClass, PartyRole role, boolean mage, CrystalType grade, GearContext context)
+	{
+		if (mage && isWarcryerLine(playerClass))
+		{
+			// Orc Shaman, Warcryer and Doomcryer buff first and melee between buffs, so a party one carries a one-handed
+			// magic blunt (the usual party Warcryer weapon: casting stats for the buffs, and a real weapon to hit with)
+			// instead of a staff or a book. Picked from the current class, so it follows the class at every spawn.
+			final ItemTemplate mace = casterWeapon(role, grade, item -> (item instanceof Weapon) && item.isMagicWeapon() && (((Weapon) item).getItemType() == WeaponType.BLUNT) && (item.getBodyPart() == BodyPart.R_HAND));
+			if (mace != null)
+			{
+				return mace;
+			}
+		}
+		if (mage)
+		{
+			// Magic melee weapons are valid caster weapons too. Keep both one-handed (R_HAND) and two-handed
+			// (LR_HAND) templates; gearParty adds a shield only for the former.
+			return casterWeapon(role, grade, item -> item.isMagicWeapon() && ((item.getBodyPart() == BodyPart.R_HAND) || (item.getBodyPart() == BodyPart.LR_HAND)));
+		}
+		if (role == PartyRole.ARCHER)
+		{
+			final ItemTemplate bow = randomInGrade(grade, item -> isPhysicalWeapon(item, WeaponType.BOW));
+			if (bow != null)
+			{
+				return bow;
+			}
+		}
+		else if (role == PartyRole.DAGGER)
+		{
+			final ItemTemplate dagger = randomInGrade(grade, item -> isPhysicalWeapon(item, WeaponType.DAGGER));
+			if (dagger != null)
+			{
+				return dagger;
+			}
+		}
+		else if (role == PartyRole.DANCER)
+		{
+			// Dances hard-require equipped dual swords (<using kind="DUAL"/> in the skill data).
+			final ItemTemplate dual = randomInGrade(grade, item -> isPhysicalWeapon(item, WeaponType.DUAL));
+			if (dual != null)
+			{
+				return dual;
+			}
+		}
+		else if (role == PartyRole.MONK)
+		{
+			// Tyrant / Grand Khavatari force skills require hand-to-hand weapons.
+			final ItemTemplate fist = randomInGrade(grade, item -> isPhysicalWeapon(item, WeaponType.DUALFIST) || isPhysicalWeapon(item, WeaponType.FIST));
+			if (fist != null)
+			{
+				return fist;
+			}
+		}
+		else if (role == PartyRole.WARRIOR)
+		{
+			final ItemTemplate specialist = warriorWeapon(playerClass, grade, context);
+			if (specialist != null)
+			{
+				return specialist;
+			}
+		}
+		// Default fighter weapon. A TANK or SINGER needs a one-handed sword so its shield remains equipped.
+		else if (role == PartyRole.BOUNTY_HUNTER)
+		{
+			// A physical one-handed blunt: a staff is a blunt too, and so are the two-handed hammers (FPC-202).
+			final ItemTemplate blunt = bestInGrade(grade, item -> isPhysicalWeapon(item, WeaponType.BLUNT) && (item.getBodyPart() == BodyPart.R_HAND));
+			if (blunt != null) {
+				return blunt;
+			}
+		}
+		// Sword fallback (and the default melee weapon). A TANK or SINGER needs a ONE-handed sword so its shield fits
+		// the left hand; a two-handed sword would otherwise be unequipped when the shield goes on.
+		final boolean oneHandOnly = (role == PartyRole.TANK) || (role == PartyRole.SINGER);
+		return randomInGrade(grade, item -> isPhysicalWeapon(item, WeaponType.SWORD) && (!oneHandOnly || (item.getBodyPart() == BodyPart.R_HAND)));
+	}
+
+	/**
+	 * Main weapon of an occupation grouped under WARRIOR, from its weapon set (PhantomWeaponSets): Gladiators and
+	 * Duelists dual swords, Warlords and Dreadnoughts a polearm, the Orc Raider line a two-handed sword or blunt (a
+	 * two-handed blunt in the Olympiad), Dwarves a one-handed blunt. Base classes have no set and use the sword
+	 * fallback.
+	 */
+	private static ItemTemplate warriorWeapon(PlayerClass playerClass, CrystalType grade, GearContext context)
+	{
+		final WeaponKind kind = PhantomWeaponSets.mainKind(playerClass, context, option -> randomInGrade(grade, option::matches) != null);
+		return (kind == null) ? null : randomInGrade(grade, kind::matches);
+	}
+
+	/** Exact physical weapon family, excluding caster-oriented magic variants of the same item type. */
+	/**
+	 * Stocks and switches on the shots a party member fires with a weapon of {@code grade}: spiritshots for a caster,
+	 * soulshots for anything that hits with its weapon ({@link #usesPhysicalAttacks}), so a Warcryer or a mystic with no
+	 * attack spell yet gets both. The one place party shots are chosen: the party kit, a town fake's own weapon and an
+	 * adopted friend all go through it.
+	 * @param replacedGrade the grade of the weapon just taken off, whose shots are switched off first ({@code null} when
+	 *            none)
+	 */
+	private static void armShots(Player phantom, CrystalType grade, boolean mage, CrystalType replacedGrade)
+	{
+		final boolean physical = usesPhysicalAttacks(phantom, mage);
+		if (replacedGrade != null)
+		{
+			phantom.removeAutoSoulShot(spiritshotIdFor(replacedGrade));
+			phantom.removeAutoSoulShot(soulshotIdFor(replacedGrade));
+		}
+		if (mage)
+		{
+			stockShot(phantom, spiritshotIdFor(grade));
+		}
+		if (physical)
+		{
+			stockShot(phantom, soulshotIdFor(grade));
+		}
+	}
+
+	/** Tops a shot stack up to {@link #SHOT_COUNT} and switches it to auto-use. */
+	private static void stockShot(Player phantom, int shotId)
+	{
+		final Item held = phantom.getInventory().getItemByItemId(shotId);
+		final long have = (held == null) ? 0 : held.getCount();
+		if (have < SHOT_COUNT)
+		{
+			phantom.getInventory().addItem(ItemProcessType.REWARD, shotId, (int) (SHOT_COUNT - have), phantom, null);
+		}
+		phantom.addAutoSoulShot(shotId);
+	}
+
+	/** A known skill a caster fights with: an active damage skill that is not one the party manager owns. */
+	public static boolean isAttackSpell(Skill skill)
+	{
+		return !skill.isPassive() && !skill.isToggle() && skill.hasNegativeEffect() && (skill.getPower() > 0) && !skill.hasEffectType(EffectType.HATE) && !PhantomSkillFallbackRules.neverCast(skill.getId());
+	}
+
+	/** @return {@code true} if {@code player} knows at least one {@link #isAttackSpell attack spell} */
+	public static boolean knowsAttackSpell(Player player)
+	{
+		for (Skill skill : player.getAllSkills())
+		{
+			if (isAttackSpell(skill))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @return {@code true} if this character hits with its weapon: every non-caster, the Warcryer line (melee between
+	 *         buffs), and a mystic that knows no attack spell yet (it melees until it learns one)
+	 */
+	public static boolean usesPhysicalAttacks(Player player, boolean mage)
+	{
+		return !mage || isWarcryerLine(player.getPlayerClass()) || !knowsAttackSpell(player);
+	}
+
+	/** @return {@code true} for the Orc Shaman line that buffs and melees: Orc Shaman, Warcryer and Doomcryer */
+	public static boolean isWarcryerLine(PlayerClass playerClass)
+	{
+		return (playerClass == PlayerClass.ORC_SHAMAN) || (playerClass == PlayerClass.WARCRYER) || (playerClass == PlayerClass.DOOMCRYER);
+	}
+
+	private static boolean isPhysicalWeapon(ItemTemplate item, WeaponType type)
+	{
+		return (item instanceof Weapon) && !item.isMagicWeapon() && (((Weapon) item).getItemType() == type);
+	}
+
+	/**
+	 * Best-in-grade armor piece for a slot in the class's practical armor {@code family} (MAGIC=robe / LIGHT / HEAVY).
+	 * Falls back to any armor family if the desired one has no piece in that slot/grade, so a slot is never left bare
+	 * (e.g. a family that lacks a helmet at some grade still gets one rather than a hole in the set).
+	 */
+	private static ItemTemplate bestArmor(BodyPart slot, CrystalType grade, ArmorType family, Set<Integer> skip)
+	{
+		// Gloves / boots / helmet are family-agnostic (ArmorType.NONE) - any class wears any of them, so pick the
+		// best regardless of family (a family filter would match nothing and leave the slot bare).
+		if ((slot == BodyPart.GLOVES) || (slot == BodyPart.FEET) || (slot == BodyPart.HEAD))
+		{
+			return bestArmorOfTypes(slot, grade, skip, EnumSet.of(ArmorType.NONE, ArmorType.LIGHT, ArmorType.HEAVY, ArmorType.MAGIC));
+		}
+		final ItemTemplate exact = bestArmorOfTypes(slot, grade, skip, EnumSet.of(family));
+		if (exact != null)
+		{
+			return exact;
+		}
+		return bestArmorOfTypes(slot, grade, skip, EnumSet.of(ArmorType.LIGHT, ArmorType.HEAVY, ArmorType.MAGIC));
+	}
+
+	private static ItemTemplate bestArmorOfTypes(BodyPart slot, CrystalType grade, Set<Integer> skip, Set<ArmorType> allowed)
+	{
+		return bestEquip(grade, item ->
+		{
+			if (!(item instanceof Armor) || (item.getBodyPart() != slot))
+			{
+				return false;
+			}
+			if ((skip != null) && skip.contains(item.getId()))
+			{
+				return false;
+			}
+			return allowed.contains(((Armor) item).getItemType());
+		});
+	}
+
+	/** Equips {@code count} copies of the best-in-grade jewelry for a body part (necklace/earrings/rings). */
+	private void equipJewelry(Player phantom, BodyPart part, CrystalType grade, int count)
+	{
+		final ItemTemplate jewel = bestEquip(grade, item -> (item instanceof Armor) && (item.getBodyPart() == part));
+		if (jewel == null)
+		{
+			return;
+		}
+		for (int i = 0; i < count; i++)
+		{
+			equip(phantom, jewel); // jewelry is not enchantable in Interlude - +0
+		}
+	}
+
+	/**
+	 * A caster weapon of {@code grade} the way a player of the role would pick it: among the strongest weapons of the
+	 * grade (reference price within {@link #CASTER_TOP_TIER} of the best), the special abilities that suit the role
+	 * win ({@link #casterSaScore}), and the roll is among the best and next-best scores so casters still vary.
+	 * @return {@code null} when the grade has no match
+	 */
+	private static ItemTemplate casterWeapon(PartyRole role, CrystalType grade, Predicate<ItemTemplate> filter)
+	{
+		final List<ItemTemplate> candidates = gradeCandidates(grade, filter);
+		long topPrice = 0;
+		for (ItemTemplate item : candidates)
+		{
+			topPrice = Math.max(topPrice, item.getReferencePrice());
+		}
+		int bestScore = Integer.MIN_VALUE;
+		final List<ItemTemplate> topTier = new ArrayList<>();
+		for (ItemTemplate item : candidates)
+		{
+			if (item.getReferencePrice() >= (topPrice * CASTER_TOP_TIER))
+			{
+				topTier.add(item);
+				bestScore = Math.max(bestScore, casterSaScore(role, item));
+			}
+		}
+		final List<ItemTemplate> picks = new ArrayList<>();
+		for (ItemTemplate item : topTier)
+		{
+			if (casterSaScore(role, item) >= (bestScore - 1))
+			{
+				picks.add(item);
+			}
+		}
+		return picks.isEmpty() ? null : picks.get(Rnd.get(picks.size()));
+	}
+
+	/**
+	 * How much a caster of {@code role} wants the weapon's special ability (the part of the name after " - "). Casting
+	 * speed (Acumen) first for everyone; then damage for a nuker and mana for a healer or buffer. A weapon without a
+	 * special ability scores 1, so a defensive or niche one (Magic Hold, Magic Poison, Rsk. Evasion...) ranks below it.
+	 */
+	static int casterSaScore(PartyRole role, ItemTemplate item)
+	{
+		final String name = item.getName();
+		final int dash = name.indexOf(" - ");
+		if (dash < 0)
+		{
+			return 1;
+		}
+		final String sa = name.substring(dash + 3).toLowerCase();
+		if (sa.equals("acumen"))
+		{
+			return 5;
+		}
+		final boolean mana = sa.equals("mana up") || sa.equals("mp regeneration") || sa.equals("magic regeneration");
+		final boolean damage = sa.equals("empower") || sa.equals("m. atk.") || sa.equals("magic damage");
+		if (role == PartyRole.NUKER)
+		{
+			return damage ? 4 : (sa.equals("mana up") ? 3 : (mana ? 2 : 0));
+		}
+		if (mana)
+		{
+			return 4;
+		}
+		if (damage)
+		{
+			return 2;
+		}
+		return ((role == PartyRole.BUFFER) && (sa.equals("mental shield") || sa.equals("blessed body"))) ? 2 : 0;
+	}
+
+	/** {@link #randomTopEquip} limited to {@code grade}: {@code null} when that grade has no match. */
+	private static ItemTemplate randomInGrade(CrystalType grade, Predicate<ItemTemplate> filter)
+	{
+		return topEquip(grade, filter, false);
+	}
+
+	/** {@link #bestEquip} limited to {@code grade}: {@code null} when that grade has no match. */
+	private static ItemTemplate bestInGrade(CrystalType grade, Predicate<ItemTemplate> filter)
+	{
+		final List<ItemTemplate> candidates = gradeCandidates(grade, filter);
+		ItemTemplate best = null;
+		for (ItemTemplate item : candidates)
+		{
+			if ((best == null) || (item.getReferencePrice() > best.getReferencePrice()))
+			{
+				best = item;
+			}
+		}
+		return best;
+	}
+
+	/** Player gear of exactly {@code grade} that matches {@code filter}. */
+	private static List<ItemTemplate> gradeCandidates(CrystalType grade, Predicate<ItemTemplate> filter)
+	{
+		final List<ItemTemplate> candidates = new ArrayList<>();
+		for (ItemTemplate item : ItemData.getInstance().getAllItems())
+		{
+			if ((item == null) || !item.isEquipable() || !item.isTradeable() || (item.getReferencePrice() <= 0) || (item.getCrystalType() != grade) || !FakePlayerGearFilter.isPlayerGear(item))
+			{
+				continue;
+			}
+			if (filter.test(item))
+			{
+				candidates.add(item);
+			}
+		}
+		return candidates;
+	}
+
+	/**
+	 * A random item among the strongest role-compatible weapon templates in the requested grade. This keeps recruited
+	 * members combat-capable without making every archer, caster, tank, or melee member use one deterministic item.
+	 * Falls through to lower grades only when the requested grade has no compatible player gear at all.
+	 */
+	private static ItemTemplate randomTopEquip(CrystalType desired, Predicate<ItemTemplate> filter)
+	{
+		return topEquip(desired, filter, true);
+	}
+
+	private static ItemTemplate topEquip(CrystalType desired, Predicate<ItemTemplate> filter, boolean stepDown)
+	{
+		CrystalType grade = desired;
+		while (grade != null)
+		{
+			final List<ItemTemplate> candidates = gradeCandidates(grade, filter);
+			if (!candidates.isEmpty())
+			{
+				candidates.sort(Comparator.comparingLong(ItemTemplate::getReferencePrice).reversed().thenComparingInt(ItemTemplate::getId));
+				return candidates.get(Rnd.get(Math.min(PARTY_WEAPON_CANDIDATES, candidates.size())));
+			}
+			grade = (stepDown && (grade.ordinal() > 0)) ? CrystalType.values()[grade.ordinal() - 1] : null;
+		}
+		return null;
+	}
+
+	/**
+	 * The best (most valuable, a good proxy for "best stats") tradeable equipable item of {@code grade} that matches
+	 * {@code filter}, stepping down a grade if none exists at the desired one. Scans the item table directly (not the
+	 * trimmed-to-cheapest ambient gear map) since party members want the strongest in grade, not the budget option.
+	 */
+	private static ItemTemplate bestEquip(CrystalType desired, Predicate<ItemTemplate> filter)
+	{
+		CrystalType grade = desired;
+		while (grade != null)
+		{
+			ItemTemplate best = null;
+			for (ItemTemplate item : ItemData.getInstance().getAllItems())
+			{
+				if ((item == null) || !item.isEquipable() || !item.isTradeable() || (item.getReferencePrice() <= 0) || (item.getCrystalType() != grade) || !FakePlayerGearFilter.isPlayerGear(item))
+				{
+					continue; // skip pet/summon/monster gear that renders as a sack / invisible slot
+				}
+				if (filter.test(item) && ((best == null) || (item.getReferencePrice() > best.getReferencePrice())))
+				{
+					best = item;
+				}
+			}
+			if (best != null)
+			{
+				return best;
+			}
+			grade = (grade.ordinal() > 0) ? CrystalType.values()[grade.ordinal() - 1] : null;
+		}
+		return null;
+	}
+
+	/**
+	 * @return {@code true} if {@code phantom} can actually equip {@code t} right now - it is equipable AND all of the
+	 *         item's own equip conditions pass. Normal armor carries only a benign all-races {@code <player>} condition
+	 *         (always passes); this rejects the unmeetable social gates a phantom never satisfies (Clan Oath's academy
+	 *         {@code pledgeClass}, hero/noble/olympiad items), which would otherwise be added to the bag unequipped.
+	 */
+	private static boolean canEquip(Player phantom, ItemTemplate t)
+	{
+		return (t != null) && t.isEquipable() && t.checkCondition(phantom, phantom, false);
+	}
+
+	/** Adds a single template to the phantom's inventory and equips it. */
+	private void equip(Player phantom, ItemTemplate template)
+	{
+		equip(phantom, template, 0);
+	}
+
+	/** Adds a single template, enchants it (when {@code enchant > 0}), and equips it. */
+	private Item equip(Player phantom, ItemTemplate template, int enchant)
+	{
+		final Item item = phantom.getInventory().addItem(ItemProcessType.REWARD, template.getId(), 1, phantom, null);
+		if (item != null)
+		{
+			if (enchant > 0)
+			{
+				item.setEnchantLevel(enchant); // set before equipping so the enchant stat bonuses are applied on equip
+			}
+			phantom.getInventory().equipItem(item);
+		}
+		return item;
+	}
+
+	/** A random candidate item for a slot at the desired grade, stepping down if a grade has none. */
+	private static ItemTemplate pickForSlot(Map<BodyPart, EnumMap<CrystalType, List<ItemTemplate>>> set, BodyPart slot, CrystalType desired)
+	{
+		return pickForSlot(set, slot, desired, null);
+	}
+
+	/**
+	 * A random candidate item for a slot at the desired grade, stepping down if a grade has none. Item ids in
+	 * {@code exclude} are skipped (used to keep non-orc-rendering armor off Orc casters); if a whole grade is
+	 * excluded it falls through to a lower grade.
+	 */
+	private static ItemTemplate pickForSlot(Map<BodyPart, EnumMap<CrystalType, List<ItemTemplate>>> set, BodyPart slot, CrystalType desired, Set<Integer> exclude)
+	{
+		final EnumMap<CrystalType, List<ItemTemplate>> byGrade = set.get(slot);
+		if (byGrade == null)
+		{
+			return null;
+		}
+		for (int ordinal = desired.ordinal(); ordinal >= 0; ordinal--)
+		{
+			final List<ItemTemplate> list = byGrade.get(CrystalType.values()[ordinal]);
+			if ((list == null) || list.isEmpty())
+			{
+				continue;
+			}
+			if ((exclude == null) || exclude.isEmpty())
+			{
+				return list.get(Rnd.get(list.size()));
+			}
+			final List<ItemTemplate> allowed = new ArrayList<>(list.size());
+			for (ItemTemplate candidate : list)
+			{
+				if (!exclude.contains(candidate.getId()))
+				{
+					allowed.add(candidate);
+				}
+			}
+			if (!allowed.isEmpty())
+			{
+				return allowed.get(Rnd.get(allowed.size()));
+			}
+		}
+		return null;
+	}
+
+	/** Highest weapon grade a phantom of this level may wield (aligned with when Expertise is learned). */
+	private static CrystalType gradeForLevel(int level)
+	{
+		if (level < 20)
+		{
+			return CrystalType.NONE;
+		}
+		if (level < 40)
+		{
+			return CrystalType.D;
+		}
+		if (level < 52)
+		{
+			return CrystalType.C;
+		}
+		if (level < 61)
+		{
+			return CrystalType.B;
+		}
+		if (level < 76)
+		{
+			return CrystalType.A;
+		}
+		return CrystalType.S;
+	}
+
+	/** Soulshot item id matching a weapon grade. */
+	private static int soulshotIdFor(CrystalType grade)
+	{
+		switch (grade)
+		{
+			case D:
+			{
+				return 1463;
+			}
+			case C:
+			{
+				return 1464;
+			}
+			case B:
+			{
+				return 1465;
+			}
+			case A:
+			{
+				return 1466;
+			}
+			case S:
+			{
+				return 1467;
+			}
+			default:
+			{
+				return 1835; // No Grade
+			}
+		}
+	}
+
+	/** Spiritshot item id matching a weapon grade. */
+	private static int spiritshotIdFor(CrystalType grade)
+	{
+		switch (grade)
+		{
+			case D:
+			{
+				return 2510;
+			}
+			case C:
+			{
+				return 2511;
+			}
+			case B:
+			{
+				return 2512;
+			}
+			case A:
+			{
+				return 2513;
+			}
+			case S:
+			{
+				return 2514;
+			}
+			default:
+			{
+				return 2509; // No Grade
+			}
+		}
+	}
+
+	/**
+	 * Resolves the cheapest few tradeable items per grade for each gear slot from the datapack, once, into
+	 * two loadouts: fighters (sword + LIGHT/HEAVY armor) and mages (magic weapon + MAGIC robe). FULL_ARMOR
+	 * is skipped so it never conflicts with the separate legs piece.
+	 */
+	private static void buildGear()
+	{
+		final int version = FakePlayerGearFilter.getVersion();
+		if (_gearBuilt && (_gearVersion == version))
+		{
+			return;
+		}
+		synchronized (FIGHTER_GEAR)
+		{
+			final int currentVersion = FakePlayerGearFilter.getVersion();
+			if (_gearBuilt && (_gearVersion == currentVersion))
+			{
+				return;
+			}
+			FIGHTER_GEAR.clear();
+			MAGE_GEAR.clear();
+			initGearMap(FIGHTER_GEAR);
+			initGearMap(MAGE_GEAR);
+			for (ItemTemplate item : ItemData.getInstance().getAllItems())
+			{
+				if ((item == null) || !item.isEquipable() || !item.isTradeable() || (item.getReferencePrice() <= 0) || !FakePlayerGearFilter.isPlayerGear(item))
+				{
+					continue; // skip pet/summon/monster gear that renders as a sack / invisible slot
+				}
+
+				if (item instanceof Weapon)
+				{
+					// Every GM-approved weapon flagged as magic is valid for the caster loadout, including
+					// one-handed and melee-shaped magic weapons.
+					if (item.isMagicWeapon())
+					{
+						MAGE_GEAR.get(BodyPart.R_HAND).get(item.getCrystalType()).add(item);
+					}
+					else if (((Weapon) item).getItemType() == WeaponType.SWORD)
+					{
+						FIGHTER_GEAR.get(BodyPart.R_HAND).get(item.getCrystalType()).add(item);
+					}
+				}
+				else if (item instanceof Armor)
+				{
+					final BodyPart part = item.getBodyPart();
+					if ((part == BodyPart.GLOVES) || (part == BodyPart.FEET) || (part == BodyPart.HEAD))
+					{
+						// Gloves / boots / helmet are family-agnostic (ArmorType.NONE) - any class wears them, so
+						// they go into both the fighter and the mage loadout. (Without this they'd be dropped by
+						// the family check below and phantoms would show bare hands/feet/head.)
+						FIGHTER_GEAR.get(part).get(item.getCrystalType()).add(item);
+						MAGE_GEAR.get(part).get(item.getCrystalType()).add(item);
+					}
+					else if ((part == BodyPart.CHEST) || (part == BodyPart.LEGS))
+					{
+						final ArmorType type = ((Armor) item).getItemType();
+						if ((type == ArmorType.LIGHT) || (type == ArmorType.HEAVY))
+						{
+							FIGHTER_GEAR.get(part).get(item.getCrystalType()).add(item);
+						}
+						else if (type == ArmorType.MAGIC)
+						{
+							MAGE_GEAR.get(part).get(item.getCrystalType()).add(item);
+						}
+					}
+					// else FULL_ARMOR (conflicts with separate legs), shields and jewelry - not used by the ambient loadout
+				}
+			}
+			trimGear(FIGHTER_GEAR);
+			trimGear(MAGE_GEAR);
+			_gearVersion = currentVersion;
+			_gearBuilt = true;
+		}
+	}
+
+	private static void initGearMap(Map<BodyPart, EnumMap<CrystalType, List<ItemTemplate>>> set)
+	{
+		for (BodyPart slot : GEAR_SLOTS)
+		{
+			final EnumMap<CrystalType, List<ItemTemplate>> byGrade = new EnumMap<>(CrystalType.class);
+			for (CrystalType grade : CrystalType.values())
+			{
+				byGrade.put(grade, new ArrayList<>());
+			}
+			set.put(slot, byGrade);
+		}
+	}
+
+	/** Keeps only the cheapest few per slot/grade, so phantoms roll basic gear, not rare drops. */
+	private static void trimGear(Map<BodyPart, EnumMap<CrystalType, List<ItemTemplate>>> set)
+	{
+		for (EnumMap<CrystalType, List<ItemTemplate>> byGrade : set.values())
+		{
+			for (List<ItemTemplate> list : byGrade.values())
+			{
+				list.sort(Comparator.comparingInt(ItemTemplate::getReferencePrice));
+				if (list.size() > CANDIDATES_PER_SLOT)
+				{
+					list.subList(CANDIDATES_PER_SLOT, list.size()).clear();
+				}
+			}
+		}
+	}
+
+	/**
+	 * Registers the phantom's own learned skills with the native auto-use system: self-buffs go to the
+	 * auto-buff list (recast when they drop), offensive actives go to the auto-skill list (cast on the
+	 * current target in combat). Classification is by skill metadata, so it is Interlude-data-driven and
+	 * needs no hard-coded skill ids.
+	 */
+	private void registerAutoSkills(Player phantom)
+	{
+		final AutoUseSettingsHolder autoUse = phantom.getAutoUseSettings();
+		for (Skill skill : phantom.getAllSkills())
+		{
+			if (skill.isPassive() || skill.isToggle())
+			{
+				continue;
+			}
+			// Self-buffs: lasting, beneficial, cast on self.
+			if (skill.isContinuous() && !skill.isDebuff() && (skill.getEffectPoint() >= 0) && (skill.getTargetType() == TargetType.SELF))
+			{
+				// ...except emergency/panic self-buttons (Ultimate Defense and friends), which must not be kept up as
+				// plain buff upkeep - see PANIC_SELF_BUFFS. The manager survival layer / playstyle PANIC entries fire
+				// those when they are actually needed.
+				if (PANIC_SELF_BUFFS.contains(skill.getAbnormalType()))
+				{
+					continue;
+				}
+				autoUse.getAutoBuffs().add(skill.getId());
+			}
+			// Offensive actives: instant (non-continuous) harmful skills used on the target.
+			else if (skill.isActive() && !skill.isContinuous() && (skill.getEffectPoint() < 0))
+			{
+				autoUse.getAutoSkills().add(skill.getId());
+			}
+		}
+	}
+
+	/**
+	 * Configures the auto-hunt preferences and starts the native AutoPlay + AutoUse tasks. Soulshots
+	 * would be registered here too (via {@code addAutoSoulShot}) once phantoms are geared with a weapon.
+	 */
+	private void enableAutoHunt(Player phantom, boolean mage, PhantomData data)
+	{
+		final AutoPlaySettingsHolder settings = phantom.getAutoPlaySettings();
+		settings.setNextTargetMode(TARGET_MODE_MONSTER);
+		// Long-range search so they actively seek mobs across the zone (short range left them standing idle
+		// unless a mob aggroed them - AutoPlay doesn't roam beyond its search radius). Clumping is instead
+		// held down by spaced spawns + respectful hunting (below).
+		settings.setShortRange(false);
+		settings.setRespectfulHunting(true); // skip mobs already being fought, so phantoms don't converge on one
+		settings.setPickup(true);
+
+		// Fighters auto-attack (action id 2). Mages are pure casters: no auto-attack, so AutoPlay only picks
+		// the target and AutoUse casts their nukes - the mage combat tick keeps them at casting range and
+		// kites them out when they run low on MP (it does the moving AutoPlay won't do for a caster).
+		// Idempotent: this runs again on every re-activation and post-kill resume, so guard against stacking
+		// duplicate auto-attack actions on the same phantom.
+		if (!mage && !phantom.getAutoUseSettings().getAutoActions().contains(AUTO_ATTACK_ACTION))
+		{
+			phantom.getAutoUseSettings().getAutoActions().add(AUTO_ATTACK_ACTION);
+		}
+
+		// Hand a field hunter's offensive casting to the shared playstyle engine (once) before the AutoUse task
+		// starts, so the round-robin dump never fires a nuke in the window between start and park. Fighters cast from
+		// the assign tick, mages from the mage tick. No-op for classes without a generic playstyle, or an already
+		// parked hunter (see parkHunterPlaystyle).
+		parkHunterPlaystyle(phantom, data);
+
+		AutoPlayTaskManager.getInstance().startAutoPlay(phantom);
+		AutoUseTaskManager.getInstance().startAutoUseTask(phantom);
+	}
+
+	/**
+	 * Hands a field FIGHTER's offensive casting to the shared {@link PhantomPlaystyleEngine} when its class has a
+	 * playstyle for its class role ({@link #hunterRole}), exactly as {@link PhantomPartyManager} does for recruited members: the engine's
+	 * listed offensive skills (and any PANIC/LIMIT self-buffs) are pulled out of AutoUse so the native round-robin
+	 * dump can't compete with the engine's paced, condition-gated decisions, while auto-attack, shots and potions
+	 * stay on AutoUse (a fighter); a mage's nukes are likewise parked and driven from the mage tick instead of AutoUse.
+	 * Idempotent and additive:
+	 * <ul>
+	 * <li>Feature off, a buddy, or a recruited member - never parked (the party manager owns recruits/buddies).</li>
+	 * <li>A class with no playstyle for its role - not parked, so it stays on exactly today's AutoUse behavior.</li>
+	 * <li>A low-level phantom whose listed skills are all still unlearned - parkAutoSkills self-guards and leaves
+	 * AutoUse intact (so a mage still nukes via AutoUse, a fighter still auto-uses), never parked into silence.</li>
+	 * <li>Already parked - a no-op (a reload re-park is handled by syncParkingIfReloaded in the combat tick).</li>
+	 * </ul>
+	 */
+	private void parkHunterPlaystyle(Player phantom, PhantomData data)
+	{
+		if (!FakePlayersConfig.PHANTOM_HUNTER_PLAYSTYLES || data.role.isBuddy() || data.recruited || data.playstyleParked)
+		{
+			return;
+		}
+		if ((PhantomPlaystyleData.getInstance().getPlaystyle(phantom.getPlayerClass().getId(), hunterRole(phantom)) == null) && !(FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER && PhantomPlaystyleEngine.hasBaseline(phantom)))
+		{
+			return; // no rotation for this class - leave it on native AutoUse (unchanged behavior)
+		}
+		if (data.play == null)
+		{
+			data.play = new PhantomPlaystyleEngine.PlayState();
+		}
+		// The class's own role resolves its style (FPC-131); parkAutoSkills self-guards (leaves AutoUse intact) when
+		// the playstyle can field nothing at this level, so a low-level hunter is never parked into silence.
+		PhantomPlaystyleEngine.parkAutoSkills(phantom, data.play, hunterRole(phantom));
+		data.playstyleParked = true;
+	}
+
+	/**
+	 * Returns a field fighter's engine-parked offensive skills and self-buffs to AutoUse (the inverse of
+	 * {@link #parkHunterPlaystyle}). Called on teardown and, importantly, when a friend-regular is adopted into a
+	 * party - so {@link PhantomPartyManager}'s own parkAutoSkills captures the full AutoUse list, not an already
+	 * emptied one. A no-op when the hunter was never parked.
+	 */
+	private void unparkHunterPlaystyle(Player phantom, PhantomData data)
+	{
+		if (!data.playstyleParked || (data.play == null))
+		{
+			return;
+		}
+		PhantomPlaystyleEngine.unparkAutoSkills(phantom, data.play);
+		data.playstyleParked = false;
+	}
+
+	/**
+	 * The combat role a field hunter or Olympiad noble resolves its playstyle with: the one its class maps to, exactly as
+	 * for a recruited member of that class. Without it the dagger and archer lines, whose playstyles are role-split
+	 * because their first classes are shared, found no playstyle outside a party and fought on raw AutoUse (FPC-131).
+	 * A class with only a role-less playstyle still resolves that one.
+	 */
+	private static String hunterRole(Player phantom)
+	{
+		return roleForClass(phantom.getPlayerClass()).name();
+	}
+
+	/**
+	 * The playstyle state this phantom casts through on the hunter and PvP ticks. A field hunter or Olympiad noble uses
+	 * its own (once {@link #parkHunterPlaystyle} has handed its AutoUse to the engine). A recruited party member uses the
+	 * party manager's: its offensive AutoUse is parked into that state, so a party-defense PvP engagement driven from here
+	 * must cast through it too, or the member fights with no skills at all.
+	 * @return the state, or {@code null} when the engine does not drive this phantom
+	 */
+	private static PhantomPlaystyleEngine.PlayState playStateFor(Player phantom, PhantomData data)
+	{
+		if (data.recruited)
+		{
+			return PhantomPartyManager.getInstance().playStateOf(phantom);
+		}
+		return data.playstyleParked ? data.play : null;
+	}
+
+	/**
+	 * @return the role this phantom's playstyle resolves with: a recruited member's party role, otherwise its class role
+	 */
+	private static String playRole(Player phantom, PhantomData data)
+	{
+		if (data.recruited)
+		{
+			final String role = PhantomPartyManager.getInstance().roleNameOf(phantom);
+			if (role != null)
+			{
+				return role;
+			}
+		}
+		return hunterRole(phantom);
+	}
+
+	/**
+	 * One playstyle decision for a field hunter against its claimed {@code focus}: asks the shared engine for the
+	 * first listed skill whose moment has come and hand-casts it with the same guards the party uses, then restores
+	 * the mob as the target so combat bookkeeping (and, for a fighter, native AutoPlay auto-attack) stays on the focus
+	 * even after a self-cast. When the engine has nothing this tick a fighter is kept swinging via
+	 * {@link #keepMeleeAttacking} (the melee loop is otherwise left wedged after a cast) and a mage just waits for its
+	 * next listed skill. Called for fighters from the assign tick (once they own a focus) and for mages from the mage
+	 * tick (once at casting range); buddies and recruited members are excluded upstream by their own ticks.
+	 */
+	private void tryHunterPlaystyle(Player phantom, Creature focus, PhantomData data)
+	{
+		final PhantomPlaystyleEngine.PlayState play = playStateFor(phantom, data);
+		if (play == null)
+		{
+			return;
+		}
+		// Live off-switch: a config reload that turned the feature off hands casting straight back to AutoUse on the
+		// next tick, so the previous field-hunter behavior returns without waiting for the zone to cycle or a rebuild.
+		// A recruited member's skills belong to the party manager, which keeps its own playstyle switch.
+		if (!data.recruited && !FakePlayersConfig.PHANTOM_HUNTER_PLAYSTYLES)
+		{
+			unparkHunterPlaystyle(phantom, data);
+			return;
+		}
+		final String role = playRole(phantom, data);
+		// A PvP engagement just began: whatever pacing the last PvE skill left must not hold back the PvP opener
+		// (Ultimate Evasion), so the first cast of the fight comes at once.
+		if (data.freshEngagement)
+		{
+			data.freshEngagement = false;
+			PhantomPlaystyleEngine.resetPacing(play);
+		}
+		// A recruited member keeps its party tactics in a party-defense fight: its role's MP reserve and its real party
+		// healer for HEALER_READY entries. A solo phantom has no healer to wait for, so its HEALER_READY is always open.
+		final PhantomPartyManager party = PhantomPartyManager.getInstance();
+		final int mpReserve = data.recruited ? party.mpReserveOf(phantom, HUNTER_MP_RESERVE) : HUNTER_MP_RESERVE;
+		final boolean healerReady = data.recruited ? party.healerReadyOf(phantom) : (phantom.getParty() == null);
+		if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER)
+		{
+			PhantomPlaystyleEngine.syncParkingIfReloaded(phantom, play, role);
+			PhantomCombatActions.observe(phantom, play);
+			final PhantomPlaystyleEngine.CastAction action = PhantomPlaystyleEngine.choose(phantom, focus, play, healerReady, underAttack(phantom), mpReserve, role);
+			PhantomCombatActions.execute(phantom, focus, play, action, !data.mage);
+			hunterDbg(phantom, focus, data, "combat " + play.combat.summary() + ((action == null) ? "" : (" skill=" + action.skill.getId() + " " + action.skill.getName())));
+			return;
+		}
+		if (phantom.isCastingNow() || phantom.isCastingSimultaneouslyNow())
+		{
+			hunterDbg(phantom, focus, data, "casting");
+			return; // a cast is in flight; the swing resumes on a later no-cast tick
+		}
+		if (phantom.isSitting())
+		{
+			hunterDbg(phantom, focus, data, "sitting");
+			return;
+		}
+		// Movement-locked (rooted/held) blocks repositioning and casting, but a melee can still swing where it stands,
+		// so only the cast attempt is skipped - the attack-keeper below still runs (a real stun is caught by doAttack's
+		// own isAttackDisabled, so it never swings early).
+		if (!phantom.isMovementDisabled())
+		{
+			// React to a //phantom playstyle reload that added or removed this class's style before deciding.
+			PhantomPlaystyleEngine.syncParkingIfReloaded(phantom, play, role);
+			// healerReady and mpReserve were resolved above (party tactics for a recruit). underAttack drives PANIC self-buffs.
+			PhantomPlaystyleEngine.CastAction action = PhantomPlaystyleEngine.pick(phantom, focus, play, healerReady, underAttack(phantom), mpReserve, role);
+			if (action == null)
+			{
+				// Nothing listed fits: try the phantom's own unlisted attack skills before settling for a swing.
+				action = PhantomPlaystyleEngine.pickFallback(phantom, focus, play, mpReserve);
+			}
+			if (action != null)
+			{
+				phantom.setTarget(action.target);
+				phantom.doCast(action.skill);
+				// Commit a once-per-target opener to the ledger only after the cast actually launched (mirrors the party)
+				// - a cast the core rejected stays retryable next tick instead of being burned for the life of this target.
+				// A toggle (a STANCE) finishes inside doCast; being on now is what shows that it went off.
+				if (phantom.isCastingNow() || phantom.isCastingSimultaneouslyNow() || (action.skill.isToggle() && phantom.isAffectedBySkill(action.skill.getId())))
+				{
+					PhantomPlaystyleEngine.confirmCast(play, action);
+				}
+				else
+				{
+					PhantomPlaystyleEngine.markRejected(play, action); // refused: rest it briefly instead of retrying every tick
+				}
+				hunterDbg(phantom, focus, data, "cast " + action.skill.getName() + (action.target == phantom ? " (self)" : ""));
+				// Restore the mob as the target so the assign claim bookkeeping (and the attack-keeper below, next tick)
+				// stay on the focus after a self-cast. Creature.beginCast already snapshotted the launched cast's own
+				// target, so this can't abort it.
+				if (action.target != focus)
+				{
+					phantom.setTarget(focus);
+				}
+				return; // cast this tick; the swing resumes next tick via the attack-keeper
+			}
+		}
+		// No skill cast this tick. A FIGHTER must keep swinging between skills: after a doCast the melee loop is left
+		// wedged (the AI still INTENDS attack on the focus but has no swing scheduled), and native AutoPlay will not
+		// relaunch it because the intention is already ATTACK. Re-arm it here. A mage does not melee - it just waits
+		// for its next listed skill.
+		hunterDbg(phantom, focus, data, phantom.isMovementDisabled() ? "move-locked" : "no-pick");
+		if (!data.mage)
+		{
+			keepMeleeAttacking(phantom, focus);
+		}
+	}
+
+	/**
+	 * Dagger rear positioning for a field hunter, a PvP fighter or an Olympiad noble (FPC-144), the solo counterpart of the
+	 * party's {@code positionRear}: steps to the target's back while it cannot turn on the dagger, so Backstab (REAR) and
+	 * the rear crit bonus land by play instead of by chance. A target cannot turn while it is stunned, asleep or
+	 * paralyzed, or while it fights someone else (a monster's most hated, a player's selected target). A target that has
+	 * the dagger itself in its sights is fought face to face, as a real dagger would. Gives up after a few blocked steps
+	 * per target (a wall at its back) rather than circling forever.
+	 * @return {@code true} while stepping - the caller skips re-issuing the attack and the playstyle this tick
+	 */
+	private boolean positionHunterRear(Player phantom, PhantomData data, Creature target)
+	{
+		if (!"DAGGER".equals(playRole(phantom, data)) || phantom.isCastingNow() || phantom.isMovementDisabled() || target.isMoving() || target.isDead())
+		{
+			return false;
+		}
+		if (phantom.calculateDistance2D(target) > HUNTER_REAR_RANGE)
+		{
+			return false; // still closing in - the normal engage walks it up first
+		}
+		final boolean helpless = target.isStunned() || target.isSleeping() || target.isParalyzed();
+		final WorldObject busyWith = target.isAttackable() ? target.asAttackable().getMostHated() : target.getTarget();
+		if (!helpless && ((busyWith == null) || (busyWith == phantom)))
+		{
+			return false; // it is facing us (or nobody): fight from where we stand
+		}
+		if (target.getObjectId() != data.rearTargetId)
+		{
+			data.rearTargetId = target.getObjectId();
+			data.rearTries = 0;
+		}
+		final long now = System.currentTimeMillis();
+		if (phantom.isMoving() && ((now - data.rearMoveAt) < HUNTER_REAR_GRACE_MS))
+		{
+			return true; // still stepping around it - let the move finish
+		}
+		if (phantom.isBehind(target))
+		{
+			data.rearTries = 0;
+			return false; // already at its back - stab away
+		}
+		if (data.rearTries >= HUNTER_REAR_MAX_TRIES)
+		{
+			return false; // its back is out of reach (wall?) - fight from the front rather than orbit forever
+		}
+		// The target faces the way its heading points; its back is directly opposite, just outside its body.
+		final double facing = (target.getHeading() * 2 * Math.PI) / 65536.0;
+		final double distance = target.getTemplate().getCollisionRadius() + HUNTER_REAR_GAP;
+		final Location rear = new Location(target.getX() - (int) (Math.cos(facing) * distance), target.getY() - (int) (Math.sin(facing) * distance), target.getZ());
+		data.rearMoveAt = now;
+		data.rearTries++;
+		phantom.setTarget(target);
+		phantom.setRunning();
+		phantom.getAI().setIntention(Intention.MOVE_TO, GeoEngine.getInstance().getValidLocation(phantom, rear));
+		return true;
+	}
+
+	/**
+	 * Keeps a parked FIGHTER swinging between engine skill casts. After a {@code doCast} the melee loop is interrupted
+	 * and the AI is left INTENDING attack on the focus with no swing scheduled; re-issuing
+	 * {@code setIntention(ATTACK, focus)} then no-ops, because {@code CreatureAI} treats "already ATTACK on this target"
+	 * as nothing to do, so the fighter stands idle taking hits until some other event disturbs its intention. This
+	 * mirrors the party's ATTACK-RESUME fix ({@link PhantomPartyManager}): in that wedged state poke {@code THINK} to
+	 * relaunch the swing ({@code doAttack} self-guards via {@code isAttackDisabled}, so it can never swing early - e.g.
+	 * while stunned); any other case engages/retargets normally through {@code setIntention}.
+	 */
+	private void keepMeleeAttacking(Player phantom, Creature focus)
+	{
+		if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER)
+		{
+			PhantomCombatActions.maintainAttack(phantom, focus);
+			return;
+		}
+		if (phantom.isCastingNow() || phantom.isCastingSimultaneouslyNow())
+		{
+			return; // let a real cast finish; the swing resumes on a later tick
+		}
+		if (phantom.isAttackingNow() && (phantom.getTarget() == focus))
+		{
+			return; // already mid-swing on the focus - nothing to do (isAttackingNow stays true across the attack interval)
+		}
+		phantom.setTarget(focus);
+		phantom.setRunning();
+		if ((phantom.getAI().getIntention() == Intention.ATTACK) && (phantom.getAI().getAttackTarget() == focus))
+		{
+			phantom.getAI().notifyAction(Action.THINK); // the wedge: relaunch the interrupted swing
+		}
+		else
+		{
+			phantom.getAI().setIntention(Intention.ATTACK, focus); // fresh engage / retarget relaunches on its own
+		}
+	}
+
+	/**
+	 * Per-tick combat trace for one field fighter, gated on the same {@code //debug_on} toggle the party tracer uses
+	 * ({@link PhantomPartyManager#DEBUG}) and throttled per phantom so a single watched hunter stays readable. Prints
+	 * the state that explains a stall - distance to focus, AI intention, attacking/moving/casting flags, under-attack,
+	 * HP/MP - plus what the engine decided this tick ({@code note}). Off entirely when DEBUG is off.
+	 */
+	private void hunterDbg(Player phantom, Creature focus, PhantomData data, String note)
+	{
+		if (!PhantomPartyManager.DEBUG)
+		{
+			return;
+		}
+		final long now = System.currentTimeMillis();
+		if (now < data.nextDbgAt)
+		{
+			return;
+		}
+		data.nextDbgAt = now + 1200;
+		LOGGER.info("HUNTER '" + phantom.getName() + "' (" + phantom.getPlayerClass() + ") foc='" + focus.getName() + "' d=" + (int) phantom.calculateDistance2D(focus) + " int=" + phantom.getAI().getIntention() + " atk=" + phantom.isAttackingNow() + " mov=" + phantom.isMoving() + " cast=" + phantom.isCastingNow() + " ua=" + underAttack(phantom) + " hp=" + phantom.getCurrentHpPercent() + "% mp=" + phantom.getCurrentMpPercent() + "% -> " + note);
+	}
+
+	/**
+	 * @return true if a live monster within danger range is currently targeting this phantom, or, in a player fight (an
+	 *         Olympiad match, a duel, or while flagged), a live player is (feeds PANIC and UNDER_ATTACK playstyle entries)
+	 */
+	private static boolean underAttack(Player phantom)
+	{
+		for (Monster monster : World.getInstance().getVisibleObjectsInRange(phantom, Monster.class, REST_DANGER_RANGE))
+		{
+			if (!monster.isDead() && (monster.getTarget() == phantom))
+			{
+				return true;
+			}
+		}
+		if (phantom.isInOlympiadMode() || phantom.isInDuel() || (phantom.getPvpFlag() != 0))
+		{
+			for (Player player : World.getInstance().getVisibleObjectsInRange(phantom, Player.class, REST_DANGER_RANGE))
+			{
+				if (!player.isDead() && (player.getTarget() == phantom))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** Despawns and forgets every phantom (also deletes their DB rows). */
+	public int clear()
+	{
+		int removed = 0;
+		for (PhantomData data : new ArrayList<>(_phantoms.values()))
+		{
+			despawn(data);
+			removed++;
+		}
+		_phantoms.clear();
+		for (Population population : _populations)
+		{
+			population.active = false;
+			population.emptySince = 0;
+		}
+		return removed;
+	}
+
+	/**
+	 * Stops the auto-hunt, removes the phantom from the world, forgets it, and - for an ordinary (ephemeral)
+	 * phantom - deletes its character row. The row must go for those because phantoms are spawned/despawned on
+	 * demand - without deleting it every zone visit would leak an orphan {@code phantom}-account character.
+	 * <p>
+	 * A persisted regular ({@code account_name='phantom_regular'}) is the opposite: its row is the whole point
+	 * (stable charId across reboots for the future friend tier), so it is stored and kept instead - only its
+	 * live world/AutoPlay state is torn down.
+	 */
+	private void despawn(PhantomData data)
+	{
+		final int objectId = data.player.getObjectId();
+		PhantomEncounterRules.clearHostile(objectId);
+		// FPC-113: a phantom leaving the world must not leave its duel challenge open for the player to accept late.
+		// (A duel already running cancels itself on the stock side once this phantom is offline.)
+		if (data.duelPhase == DUEL_ASKED)
+		{
+			releaseDuelRequest(data.player, resolvePvpTarget(data));
+		}
+		if (data.companion)
+		{
+			despawnCompanion(data); // a real player's own character: saved, never deleted
+			return;
+		}
+		// isRegular (not a raw account check) so a phantom promoted THIS session - whose final in-memory
+		// account still reads 'phantom' - is recognized and its row kept too.
+		final boolean persistent = isRegular(data.player) || data.olympian;
+		// Return any engine-parked offensive skills to AutoUse before the phantom leaves, so a persistent regular
+		// that respawns (or is reused) does not come back with an emptied AutoUse. No-op for an unparked phantom.
+		unparkHunterPlaystyle(data.player, data);
+		// Drop any bot-clan membership BEFORE storeMe() so a persistent regular's saved character row keeps clanid 0
+		// (bot-clan membership is runtime-only and rebuilt each spawn, never written to the characters table).
+		BotClanManager.getInstance().detach(data.player);
+		try
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(data.player);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(data.player);
+			if (persistent)
+			{
+				data.player.storeMe();
+			}
+			data.player.deleteMe();
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to despawn phantom " + objectId + ": " + e.getMessage());
+			if (PhantomEncounterRules.isEncounterActor(objectId))
+			{
+				return; // Keep protection and tracking so an encounter tick can retry world removal.
+			}
+		}
+		_phantoms.remove(objectId);
+		PhantomEncounterRules.unregisterActor(objectId);
+		_promoted.remove(objectId); // the DB row now carries the regular account; the live-instance bridge is done
+		if (persistent)
+		{
+			return; // keep the row - this regular respawns into the same character next time
+		}
+		try
+		{
+			GameClient.deleteCharByObjId(objectId);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to delete phantom row " + objectId + ": " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Deletes every leftover {@code account_name='phantom'} character row (and its cascade of item/skill/quest/
+	 * etc. rows, via {@link GameClient#deleteCharByObjId(int)}) that a previous unclean shutdown left behind.
+	 * Runs once at boot from {@link #load()}, before any phantom is spawned, so it only ever removes orphans -
+	 * never a live phantom. Same net effect as despawn(), but for whatever survived a hard kill.
+	 */
+	private void sweepOrphanedPhantoms()
+	{
+		final List<Integer> orphanIds = new ArrayList<>();
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("SELECT charId FROM characters WHERE account_name=?"))
+		{
+			ps.setString(1, ACCOUNT_NAME);
+			try (ResultSet rs = ps.executeQuery())
+			{
+				while (rs.next())
+				{
+					orphanIds.add(rs.getInt("charId"));
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to scan for orphaned phantom rows: " + e.getMessage());
+			return;
+		}
+
+		for (int objectId : orphanIds)
+		{
+			try
+			{
+				GameClient.deleteCharByObjId(objectId);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Failed to delete orphaned phantom row " + objectId + ": " + e.getMessage());
+			}
+		}
+
+		if (!orphanIds.isEmpty())
+		{
+			LOGGER.info(getClass().getSimpleName() + ": Swept " + orphanIds.size() + " orphaned phantom character row(s) left by a previous unclean shutdown.");
+		}
+
+		// Second pass: regulars nobody is friends with anymore. A phantom is promoted to the regular account
+		// the moment it is befriended; if the player later friend-deletes it (stock RequestFriendDel removes
+		// both character_friends directions), its row would otherwise linger forever. XML/auto regulars are
+		// recreated deterministically from their seed on next spawn, so sweeping an unbefriended row loses
+		// nothing but a stale charId nobody references.
+		final List<Integer> friendless = new ArrayList<>();
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("SELECT charId FROM characters WHERE account_name=? AND NOT EXISTS (SELECT 1 FROM character_friends WHERE friendId = characters.charId)"))
+		{
+			ps.setString(1, ACCOUNT_NAME_REGULAR);
+			try (ResultSet rs = ps.executeQuery())
+			{
+				while (rs.next())
+				{
+					friendless.add(rs.getInt("charId"));
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to scan for friendless regular rows: " + e.getMessage());
+			return;
+		}
+		for (int objectId : friendless)
+		{
+			try
+			{
+				GameClient.deleteCharByObjId(objectId);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Failed to delete friendless regular row " + objectId + ": " + e.getMessage());
+			}
+		}
+		if (!friendless.isEmpty())
+		{
+			LOGGER.info(getClass().getSimpleName() + ": Swept " + friendless.size() + " regular row(s) no longer referenced by any friendship.");
+		}
+	}
+
+	public int getCount()
+	{
+		return _phantoms.size();
+	}
+
+	// ===== Buddy support API (called by PhantomBuddyManager) =====
+
+	/**
+	 * Marks/unmarks a buddy as engaged (partied or claimed by a player). An engaged buddy is exempt from the
+	 * proximity despawn so it can follow its owner out of the town it spawned in (see {@link #deactivate}).
+	 * @return {@code true} if the player is a live buddy phantom and the flag was set
+	 */
+	public boolean setBuddyEngaged(Player buddy, boolean engaged)
+	{
+		final PhantomData data = (buddy == null) ? null : _phantoms.get(buddy.getObjectId());
+		if ((data == null) || !data.role.isBuddy())
+		{
+			return false;
+		}
+		data.buddyEngaged = engaged;
+		return true;
+	}
+
+	/** @return {@code true} if the player is a live buddy phantom managed by this manager. */
+	public boolean isBuddy(Player player)
+	{
+		final PhantomData data = (player == null) ? null : _phantoms.get(player.getObjectId());
+		return (data != null) && data.role.isBuddy();
+	}
+
+	/** Despawns a single buddy (used by PhantomBuddyManager when a party ends / owner logs off / grace runs out). */
+	public void despawnBuddy(Player buddy)
+	{
+		final PhantomData data = (buddy == null) ? null : _phantoms.get(buddy.getObjectId());
+		if ((data != null) && data.role.isBuddy())
+		{
+			despawn(data);
+		}
+	}
+
+	// ===== Recruited party-member API (called by PhantomPartyManager / RequestJoinParty) =====
+
+	/**
+	 * Spawns a single recruited combat party member of a given role at a location, brought to {@code level}.
+	 * Combat roles get a fixed class (per level tier), gear, learned skills and the native AutoUse task (so they
+	 * cast/shot/pot on whatever target the party manager assigns); support roles reuse the buddy outfit and are
+	 * cast by hand. The member does NOT auto-hunt and is exempt from the proximity despawn - PhantomPartyManager
+	 * owns it from here (walk-in, party-join, follow, assist, disband).
+	 * @return the spawned member, or {@code null} on failure (caller should fall back gracefully)
+	 */
+	public Player spawnPartyMember(Location location, int level, PartyRole role, int overrideClassId)
+	{
+		return spawnPartyMember(location, level, role, overrideClassId, null);
+	}
+
+	/**
+	 * As {@link #spawnPartyMember(Location, int, PartyRole, int)}, but honouring a requested race for a generic-role
+	 * recruit (a named class carries its own race). The concrete occupation is resolved level-aware via
+	 * {@link #resolveRecruitClassId} - so the class always matches the requested level's tier.
+	 * @return the spawned member, or {@code null} on failure (caller should fall back gracefully)
+	 */
+	public Player spawnPartyMember(Location location, int level, PartyRole role, int overrideClassId, Race requestedRace)
+	{
+		if (_phantoms.size() >= MAX_PHANTOMS)
+		{
+			return null;
+		}
+		final int groundZ = GeoEngine.getInstance().getHeight(location.getX(), location.getY(), location.getZ());
+		final Location spawnLocation = new Location(location.getX(), location.getY(), groundZ);
+		try
+		{
+			final boolean mage = role.mage;
+			// Resolve the exact occupation from role + requested race/class + level (base/1st/2nd/3rd by level).
+			final int classId = resolveRecruitClassId(role, requestedRace, level, overrideClassId);
+			PlayerClass playerClass = PlayerClass.getPlayerClass(classId);
+			PlayerTemplate template = (playerClass == null) ? null : PlayerTemplateData.getInstance().getTemplate(playerClass);
+			if (template == null) // bad/missing class id: degrade to a plain fighter/mage base
+			{
+				playerClass = mage ? PlayerClass.getPlayerClass(10) : PlayerClass.FIGHTER;
+				template = (playerClass == null) ? null : PlayerTemplateData.getInstance().getTemplate(playerClass);
+			}
+			if (template == null)
+			{
+				playerClass = PlayerClass.FIGHTER;
+				template = PlayerTemplateData.getInstance().getTemplate(playerClass);
+			}
+			if (template == null)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": No template available for party member role " + role + ".");
+				return null;
+			}
+
+			final boolean female = Rnd.nextBoolean();
+			final PlayerAppearance appearance = new PlayerAppearance((byte) Rnd.get(0, 2), (byte) Rnd.get(0, 3), (byte) Rnd.get(0, 2), female);
+			final String fixedName = ENCOUNTER_NAME.get();
+			return createPartyMember(template, ((fixedName == null) || fixedName.isEmpty()) ? nextName() : fixedName, appearance, spawnLocation, level, role, null);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to spawn party member role " + role + ": " + e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * Creates, outfits and spawns a recruited party member from a resolved class template. Shared by LFM recruits
+	 * (random name and look) and town fakes joining a party (their own name, look, gear and clan).
+	 * @param look the town fake's appearance to keep, or {@code null} for a fresh recruit
+	 * @return the spawned member, or {@code null} on failure
+	 */
+	private Player createPartyMember(PlayerTemplate template, String name, PlayerAppearance appearance, Location spawnLocation, int level, PartyRole role, FakePlayerAppearance look)
+	{
+		final boolean mage = role.mage;
+		final Player phantom = Player.create(template, ACCOUNT_NAME, name, appearance, true);
+		if (phantom == null)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Player.create returned null for party member (duplicate name / db error?).");
+			return null;
+		}
+		phantom.setDietMode(true); // ignore the weight of the potion/shot stack (see createAndSpawn)
+		phantom.setOnlineStatus(true, false);
+
+		if (role.isSupport())
+		{
+			// The phantom was already created from the right support class template (default or override), so
+			// outfitSupport just levels/learns/gears it (no class transfer needed). Resurrection is NOT
+			// force-granted: outfitSupport's learnAllSkills teaches the class's complete tree (parents included),
+			// so any rez-capable class - the Cleric/Oracle line (HEALER) and the Prophet line (BUFFER, which
+			// inherits Cleric's Resurrection) - naturally knows Resurrection once its level qualifies (skill 1016,
+			// learned at 20). A class/level that never learned it simply cannot rez, by design.
+			outfitSupport(phantom, level, role);
+		}
+		else
+		{
+			outfitCombat(phantom, level, role);
+		}
+		if (look != null)
+		{
+			dressAs(phantom, look, mage); // a town fake keeps the gear it was seen wearing
+		}
+		phantom.refreshOverloaded();
+		if (look != null)
+		{
+			// A town fake keeps its own bot clan and title, so the crest over its head does not change.
+			if (look.getClanId() != 0)
+			{
+				BotClanManager.getInstance().attach(phantom, ClanTable.getInstance().getClan(look.getClanId()));
+				phantom.setTitle(look.getTitle());
+			}
+		}
+		else
+		{
+			// Recruited (LFM) phantoms occasionally belong to a bot clan (BotClans.xml recruitClanChance), so a pickup
+			// group sometimes shows clan crests. Rolled before enterWorld so the first CharInfo already carries it.
+			final int recruitClanChance = BotClanManager.getInstance().getRecruitClanChance();
+			if ((recruitClanChance > 0) && (Rnd.get(100) < recruitClanChance))
+			{
+				BotClanManager.getInstance().attach(phantom, BotClanManager.getInstance().getRandomClan());
+			}
+		}
+		if (ENCOUNTER_ENCHANT.get() != null)
+		{
+			// Protect encounter gear before publishing the actor to the world. AutoUse targets characters.
+			PhantomEncounterRules.registerActor(phantom.getObjectId());
+			phantom.getAutoPlaySettings().setNextTargetMode(2);
+		}
+		enterWorld(phantom, spawnLocation);
+
+		// role=NONE + recruited: skips every hunter path; population=null so the proximity deactivate never
+		// touches it. PhantomPartyManager drives it from onMemberSpawned onward.
+		final PhantomData data = new PhantomData(phantom, spawnLocation, null, mage, BuddyRole.NONE);
+		data.recruited = true;
+		_phantoms.put(phantom.getObjectId(), data);
+		attachPvpDamageListener(phantom, data);
+
+		// Combat roles fire skills/shots/potions through the native AutoUse task on the party manager's
+		// assigned target. No AutoPlay here: the manager picks the target (assist), not the engine's scanner.
+		if (!role.isSupport())
+		{
+			if (!mage && !phantom.getAutoUseSettings().getAutoActions().contains(AUTO_ATTACK_ACTION))
+			{
+				phantom.getAutoUseSettings().getAutoActions().add(AUTO_ATTACK_ACTION);
+			}
+			// AutoUse only fires offensive skills while the player "is auto-playing" (see AutoUseTaskManager).
+			// We set the flag without starting the AutoPlay target-scanner: in assist mode PhantomPartyManager
+			// picks the target (the leader's) and AutoUse casts the role's skills + shots on it. Free mode
+			// starts the real scanner via setRecruitHunting.
+			phantom.setAutoPlaying(true);
+			AutoUseTaskManager.getInstance().startAutoUseTask(phantom);
+		}
+		startSupervising();
+		LOGGER.info(getClass().getSimpleName() + ": Spawned " + role + " party member '" + phantom.getName() + "' (objId=" + phantom.getObjectId() + ", level " + level + ").");
+		if (PhantomPartyManager.DEBUG)
+		{
+			logLoadout(phantom, role, level);
+		}
+		return phantom;
+	}
+
+	/**
+	 * Spawns a party member that IS a town fake: same name, race, sex, face and hair, class, level, visible gear and bot
+	 * clan, standing where the fake stood. Its party role comes from its class. Used when a player invites a town fake
+	 * that agreed to party; the caller removes the fake NPC first.
+	 * @param look the town fake's appearance
+	 * @param location where the fake stood
+	 * @param heading the fake's facing
+	 * @return the spawned member, or {@code null} if it could not be created (the caller brings the fake back)
+	 */
+	public Player spawnPartyMemberAs(FakePlayerAppearance look, Location location, int heading)
+	{
+		if ((look == null) || (look.getName() == null) || (look.getPlayerClass() == null) || (_phantoms.size() >= MAX_PHANTOMS))
+		{
+			return null;
+		}
+		if (CharInfoTable.getInstance().doesCharNameExist(look.getName()))
+		{
+			return null; // a character already uses this name; never create a second one
+		}
+		final PlayerTemplate template = PlayerTemplateData.getInstance().getTemplate(look.getPlayerClass());
+		if (template == null)
+		{
+			return null;
+		}
+		try
+		{
+			final PartyRole role = roleForClass(look.getPlayerClass());
+			final PlayerAppearance appearance = new PlayerAppearance((byte) look.getFace(), (byte) look.getHairColor(), (byte) look.getHairStyle(), look.isFemale());
+			final int groundZ = GeoEngine.getInstance().getHeight(location.getX(), location.getY(), location.getZ());
+			final Player phantom = createPartyMember(template, look.getName(), appearance, new Location(location.getX(), location.getY(), groundZ), Math.max(1, look.getLevel()), role, look);
+			if (phantom != null)
+			{
+				phantom.setHeading(heading);
+			}
+			return phantom;
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to spawn town fake '" + look.getName() + "' as a party member: " + e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * Puts a town fake's visible armor and weapon on a freshly outfitted party member, over the party kit, so the
+	 * phantom looks exactly like the fake the player saw. Jewelry is not visible and stays from the party kit. When
+	 * the weapon changes, shots (and arrows for a bow) matching the new weapon's grade replace the old ones.
+	 */
+	private void dressAs(Player phantom, FakePlayerAppearance look, boolean mage)
+	{
+		equipLookPiece(phantom, look.getEquipHead(), 0);
+		equipLookPiece(phantom, look.getEquipChest(), 0);
+		equipLookPiece(phantom, look.getEquipLegs(), 0);
+		equipLookPiece(phantom, look.getEquipGloves(), 0);
+		equipLookPiece(phantom, look.getEquipFeet(), 0);
+		equipLookPiece(phantom, look.getEquipCloak(), 0);
+		final ItemTemplate weapon = (look.getEquipRHand() > 0) ? ItemData.getInstance().getTemplate(look.getEquipRHand()) : null;
+		if (weapon instanceof Weapon)
+		{
+			final Item before = phantom.getInventory().getPaperdollItem(Inventory.PAPERDOLL_RHAND);
+			final CrystalType oldGrade = (before == null) ? null : before.getTemplate().getCrystalType();
+			equip(phantom, weapon, Math.max(0, look.getWeaponEnchantLevel()));
+			if (oldGrade != weapon.getCrystalType())
+			{
+				armShots(phantom, weapon.getCrystalType(), mage, oldGrade);
+			}
+			if (((Weapon) weapon).getItemType() == WeaponType.BOW)
+			{
+				final ItemTemplate arrow = findArrow(weapon.getCrystalType());
+				if ((arrow != null) && (phantom.getInventory().getItemByItemId(arrow.getId()) == null))
+				{
+					phantom.getInventory().addItem(ItemProcessType.REWARD, arrow.getId(), ARROW_COUNT, phantom, null);
+				}
+			}
+		}
+		// A shield the fake was seen holding (only kept when the weapon leaves the left hand free).
+		if ((look.getEquipLHand() > 0) && (look.getEquipLHand() != look.getEquipRHand()))
+		{
+			equipLookPiece(phantom, look.getEquipLHand(), 0);
+		}
+	}
+
+	/** Equips one item of a town fake's look when it is real, equipable gear; a no-op for 0 or an unknown id. */
+	private void equipLookPiece(Player phantom, int itemId, int enchant)
+	{
+		final ItemTemplate template = (itemId > 0) ? ItemData.getInstance().getTemplate(itemId) : null;
+		if ((template != null) && template.isEquipable())
+		{
+			equip(phantom, template, enchant);
+		}
+	}
+
+	/** @return {@code true} if the player is a live recruited party member managed by PhantomPartyManager. */
+	public boolean isRecruit(Player player)
+	{
+		final PhantomData data = (player == null) ? null : _phantoms.get(player.getObjectId());
+		return (data != null) && data.recruited;
+	}
+
+	public void setRecruitHunting(Player member, boolean hunting)
+	{
+		setRecruitHunting(member, hunting, Collections.emptyList());
+	}
+
+	/**
+	 * Toggles a recruited member's "free hunt" mode. ON starts the native AutoPlay scanner (the member grabs
+	 * its own nearby mobs); OFF stops it so the party manager's assist (focus the leader's target) takes over.
+	 */
+	public void setRecruitHunting(Player member, boolean hunting, List<Skill> autoUseSkills)
+	{
+		final PhantomData data = (member == null) ? null : _phantoms.get(member.getObjectId());
+		if ((data == null) || !data.recruited)
+		{
+			return;
+		}
+		if (hunting)
+		{
+			final AutoPlaySettingsHolder settings = member.getAutoPlaySettings();
+			settings.setNextTargetMode(TARGET_MODE_MONSTER);
+			settings.setShortRange(false);
+			settings.setRespectfulHunting(true);
+			settings.setPickup(false); // no native AutoPlay pickup: PhantomPartyManager collects drops itself (FakePlayerPartyPickup)
+			final AutoUseSettingsHolder autoUseSettings = member.getAutoUseSettings();
+			autoUseSkills.forEach(skill ->
+			{
+				final List<Integer> autoSkills = autoUseSettings.getAutoSkills();
+				if (!autoSkills.contains(skill.getId()))
+				{
+					autoSkills.add(skill.getId());
+				}
+			});
+			AutoPlayTaskManager.getInstance().startAutoPlay(member); // also sets isAutoPlaying(true)
+		}
+		else
+		{
+			// Back to assist: stop the scanner but KEEP the auto-playing flag so AutoUse still casts the member's
+			// skills on the target PhantomPartyManager assigns (stopAutoPlay clears the flag, so re-set it).
+			AutoPlayTaskManager.getInstance().stopAutoPlay(member);
+			member.setAutoPlaying(true);
+		}
+	}
+
+	/**
+	 * Hands a live befriended regular to {@link PhantomPartyManager} so a party invite can adopt it: stops its
+	 * self-directed hunt and mirrors the {@link #spawnPartyMember} runtime state (assist-mode AutoUse for combat
+	 * roles, hand-driven casting for supports; {@code recruited} so the supervisor skips every hunter path).
+	 * Level and gear are untouched - a friend already spawns with the full party kit. When the party ends the
+	 * normal recruit release stores its row and the friend ensure pass respawns it idle within ~15s.
+	 * @return the party role derived from its class, or {@code null} if it is not a live phantom
+	 */
+	public PartyRole adoptFriendForParty(Player friend)
+	{
+		final PhantomData data = (friend == null) ? null : _phantoms.get(friend.getObjectId());
+		if (data == null)
+		{
+			return null;
+		}
+		final PartyRole role = roleForClass(friend.getPlayerClass());
+		if (data.recruited)
+		{
+			return role; // already adopted (re-invite within the same party session)
+		}
+		// This friend-regular may have been running as a field hunter with its offensive AutoUse parked to the
+		// playstyle engine. Restore it BEFORE the party takes over, so PhantomPartyManager's own parkAutoSkills
+		// captures the full AutoUse list instead of an already emptied one (otherwise release would not restore it).
+		unparkHunterPlaystyle(friend, data);
+		AutoPlayTaskManager.getInstance().stopAutoPlay(friend);
+		if (friend.isSitting())
+		{
+			friend.standUp();
+		}
+		data.dormant = false;
+		data.resting = false;
+		data.dispersing = false;
+		if (role.isSupport())
+		{
+			// Supports are cast by hand from the party tick (heal/buff/res), exactly like recruited healers.
+			AutoUseTaskManager.getInstance().stopAutoUseTask(friend);
+		}
+		// Its field kit carries only the shots its field role fired; a party Warcryer also melees, so top up the shot
+		// families its party role needs for the weapon it already holds (its gear itself is kept).
+		final Weapon heldWeapon = friend.getActiveWeaponItem();
+		if (heldWeapon != null)
+		{
+			armShots(friend, heldWeapon.getCrystalType(), role.mage, null);
+		}
+		else
+		{
+			if (!data.mage && !friend.getAutoUseSettings().getAutoActions().contains(AUTO_ATTACK_ACTION))
+			{
+				friend.getAutoUseSettings().getAutoActions().add(AUTO_ATTACK_ACTION);
+			}
+			// Assist mode: the party manager picks the target; AutoUse casts skills/shots on it (no scanner).
+			friend.setAutoPlaying(true);
+			AutoUseTaskManager.getInstance().startAutoUseTask(friend);
+		}
+		data.recruited = true;
+		LOGGER.info(getClass().getSimpleName() + ": Friend-regular '" + friend.getName() + "' adopted into a party as " + role + ".");
+		return role;
+	}
+
+	/**
+	 * Brings a real player's own character, already loaded from its row with {@link Player#load}, into the owner's
+	 * party as a clientless member driven by the party AI (follow, assist, playstyle, heals and buffs by class). It keeps
+	 * its own level, skills, gear and consumables: nothing is added, removed or re-geared. Its soulshots and healing
+	 * potions are switched to auto-use when it carries them. When it leaves the party for any reason (dismissed, owner
+	 * logged out, dead past the res window, its own account logged in) it is saved and removed from the world, and then
+	 * {@code onLeave} runs. Its row is never deleted.
+	 * @param owner the player whose party it joins (solo, or the party leader)
+	 * @param companion the loaded, not yet spawned character
+	 * @param location where it appears
+	 * @param onLeave run once after it has been saved and removed (may be {@code null})
+	 * @return {@code true} if it joined; on {@code false} it has already been saved and removed again
+	 */
+	public boolean addCompanion(Player owner, Player companion, Location location, Runnable onLeave)
+	{
+		if ((owner == null) || (companion == null) || (location == null) || _phantoms.containsKey(companion.getObjectId()))
+		{
+			return false;
+		}
+		final PartyRole role = roleForClass(companion.getPlayerClass());
+		final boolean mage = role.mage;
+		armCompanionSupplies(companion, mage);
+		registerAutoSkills(companion);
+		companion.refreshOverloaded();
+		companion.spawnMe(location.getX(), location.getY(), location.getZ());
+		companion.setOfflinePlay(true); // keeps the AutoUse loop running without a client (see enterWorld)
+		companion.setOnlineStatus(true, true);
+		companion.setRunning();
+		companion.broadcastUserInfo();
+
+		final PhantomData data = new PhantomData(companion, location, null, mage, BuddyRole.NONE);
+		data.recruited = true;
+		data.companion = true;
+		data.onCompanionLeave = onLeave;
+		data.companionOwnerId = owner.getObjectId();
+		_phantoms.put(companion.getObjectId(), data);
+		attachPvpDamageListener(companion, data);
+		// Same runtime state as a recruited party member (see createPartyMember): combat roles cast through AutoUse on
+		// the target the party manager assigns, supports are cast by hand from the party tick.
+		if (!role.isSupport())
+		{
+			if (!mage && !companion.getAutoUseSettings().getAutoActions().contains(AUTO_ATTACK_ACTION))
+			{
+				companion.getAutoUseSettings().getAutoActions().add(AUTO_ATTACK_ACTION);
+			}
+			companion.setAutoPlaying(true);
+			AutoUseTaskManager.getInstance().startAutoUseTask(companion);
+		}
+		startSupervising();
+		LOGGER.info(getClass().getSimpleName() + ": Companion '" + companion.getName() + "' (objId=" + companion.getObjectId() + ", " + companion.getPlayerClass() + ", level " + companion.getLevel() + ") joined " + owner.getName() + " as " + role + ".");
+		// On failure the party manager releases it at once, which comes back through despawnCompanion.
+		return PhantomPartyManager.getInstance().joinCompanion(owner, companion);
+	}
+
+	/**
+	 * @param accountName a character's account name
+	 * @return {@code true} if the account is one of the bot accounts (ephemeral phantoms, persistent regulars, Olympiad
+	 *         nobles), whose characters belong to this manager and must never be summoned as a companion
+	 */
+	public static boolean isBotAccount(String accountName)
+	{
+		return ACCOUNT_NAME.equals(accountName) || ACCOUNT_NAME_REGULAR.equals(accountName) || ACCOUNT_NAME_NOBLE.equals(accountName);
+	}
+
+	/** @return {@code true} if the player is a live party companion (a real player's own character run by the AI). */
+	public boolean isCompanion(Player player)
+	{
+		final PhantomData data = (player == null) ? null : _phantoms.get(player.getObjectId());
+		return (data != null) && data.companion;
+	}
+
+	/**
+	 * Switches a companion's own soulshots and/or spiritshots (matching its weapon grade; both for a caster that also
+	 * melees) and its best healing potion to
+	 * auto-use. Runtime settings only: nothing is added to its inventory.
+	 */
+	private static void armCompanionSupplies(Player companion, boolean mage)
+	{
+		final Item weapon = companion.getInventory().getPaperdollItem(Inventory.PAPERDOLL_RHAND);
+		if (weapon != null)
+		{
+			final CrystalType grade = weapon.getTemplate().getCrystalType();
+			final boolean physical = usesPhysicalAttacks(companion, mage);
+			for (Item item : companion.getInventory().getItems())
+			{
+				final ActionType action = item.getTemplate().getDefaultAction();
+				if ((((action == ActionType.SPIRITSHOT) && mage) || ((action == ActionType.SOULSHOT) && physical)) && (item.getTemplate().getCrystalType() == grade))
+				{
+					companion.addAutoSoulShot(item.getId());
+				}
+			}
+		}
+		for (int potionId : COMPANION_HP_POTIONS)
+		{
+			if (companion.getInventory().getItemByItemId(potionId) != null)
+			{
+				companion.getAutoUseSettings().setAutoPotionItem(potionId);
+				companion.getAutoPlaySettings().setAutoPotionPercent(HP_POTION_PERCENT);
+				break;
+			}
+		}
+	}
+
+	/**
+	 * Tears a companion down: saves and logs it out the way a real player leaves, then runs its leave callback. If its
+	 * own account has logged in meanwhile, stock character select already saved and removed this copy, and a new
+	 * instance may be in the world under the same objectId, so this stale copy is neither saved nor deleted again.
+	 */
+	private void despawnCompanion(PhantomData data)
+	{
+		final Player companion = data.player;
+		final int objectId = companion.getObjectId();
+		try
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(companion);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(companion);
+			if (World.getInstance().getPlayer(objectId) == companion)
+			{
+				Disconnection.of(companion).storeAndDelete();
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to save companion " + companion.getName() + ": " + e.getMessage());
+		}
+		_phantoms.remove(objectId);
+		LOGGER.info(getClass().getSimpleName() + ": Companion '" + companion.getName() + "' left and was saved.");
+		if (data.onCompanionLeave != null)
+		{
+			try
+			{
+				data.onCompanionLeave.run();
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Companion leave callback failed for " + companion.getName() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/** Despawns a recruited member (party disbanded / owner gone / grace elapsed / member dead). */
+	public void despawnRecruit(Player member)
+	{
+		final PhantomData data = (member == null) ? null : _phantoms.get(member.getObjectId());
+		if ((data != null) && data.recruited)
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(member);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(member);
+			despawn(data);
+		}
+	}
+
+	/**
+	 * Outfits a combat party member: brings it to {@code level}, learns its (already-correct, template-set)
+	 * class's full skill tree, gears it, swaps in a bow/dagger for the ranged/rogue roles, and registers its
+	 * offensive skills with AutoUse. Unlike {@link #outfit} there is no random class transfer - the member was
+	 * created directly from its role's class template.
+	 */
+	/**
+	 * Outfits a recruited support member (healer/buffer) already created from its support class template: brings
+	 * it to level, learns the full tree, guarantees a heal, and gives it the caster loadout. Like
+	 * {@link #outfitBuddy} but with no class transfer (the class is already correct) - works for both the default
+	 * support class and an explicitly requested one (e.g. Shillien Elder).
+	 */
+	private void outfitSupport(Player phantom, int level, PartyRole role)
+	{
+		if (level > 1)
+		{
+			final long currentExp = phantom.getExp();
+			final long targetExp = ExperienceData.getInstance().getExpForLevel(level);
+			if (targetExp > currentExp)
+			{
+				phantom.addExpAndSp(targetExp - currentExp, 0);
+			}
+		}
+		learnAllSkills(phantom);
+		grantHeal(phantom, level);
+		giveBuffReagents(phantom); // Spirit Ore etc. so consumable buffs (Greater Might/Shield, Clarity) actually land
+		gearParty(phantom, level, true, role, GearContext.PARTY); // full caster loadout + jewelry + enchant chance, so supports survive content
+		PhantomBuffs.applyFullBuffs(phantom, role == PartyRole.TANK); // a support arrives self-buffed (Acumen/Empower etc.) too
+		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+	}
+
+	private void outfitCombat(Player phantom, int level, PartyRole role)
+	{
+		if (level > 1)
+		{
+			final long currentExp = phantom.getExp();
+			final long targetExp = ExperienceData.getInstance().getExpForLevel(level);
+			if (targetExp > currentExp)
+			{
+				phantom.addExpAndSp(targetExp - currentExp, 0);
+			}
+		}
+		learnAllSkills(phantom);
+		// Recruited members gear up for real content: strong varied class-appropriate weapon + full armor + jewelry
+		// + shield (tank/one-handed caster) + a chance of enchant. gearParty resolves specialist WARRIOR weapons from
+		// the actual occupation, so Gladiators/Duelists, Warlords, Destroyers/Titans, and Dwarves keep their main type.
+		gearParty(phantom, level, role.mage, role, GearContext.PARTY);
+		PhantomBuffs.applyFullBuffs(phantom, role == PartyRole.TANK); // arrive already buffed for its archetype, so a fresh party isn't unbuffed
+		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		registerAutoSkills(phantom);
+	}
+
+	/** Standard arrow matching a bow's grade (steps down a grade if none exists at the desired one), or null. */
+	private static ItemTemplate findArrow(CrystalType desired)
+	{
+		CrystalType grade = desired;
+		while (grade != null)
+		{
+			for (ItemTemplate item : ItemData.getInstance().getAllItems())
+			{
+				if ((item instanceof EtcItem) && (((EtcItem) item).getItemType() == EtcItemType.ARROW) && (item.getCrystalType() == grade))
+				{
+					return item;
+				}
+			}
+			grade = (grade.ordinal() > 0) ? CrystalType.values()[grade.ordinal() - 1] : null;
+		}
+		return null;
+	}
+
+	private synchronized void startSupervising()
+	{
+		if (_supervising)
+		{
+			return;
+		}
+		_supervising = true;
+		ThreadPool.scheduleAtFixedRate(this::supervise, SUPERVISE_INTERVAL, SUPERVISE_INTERVAL);
+		ThreadPool.scheduleAtFixedRate(this::mageCombat, MAGE_TICK_INTERVAL, MAGE_TICK_INTERVAL);
+		ThreadPool.scheduleAtFixedRate(this::assignTargets, DECONFLICT_INTERVAL, DECONFLICT_INTERVAL);
+		ThreadPool.scheduleAtFixedRate(this::pvpCombat, PVP_TICK_INTERVAL, PVP_TICK_INTERVAL);
+		// Phase 2b: detach a watched owner's defense listener when it logs out, so a re-login re-attaches cleanly and
+		// nothing leaks. Registered only when PvP is enabled, so a PvP-disabled server adds no logout-path work.
+		if (PhantomPvpManager.pvpEnabled())
+		{
+			Containers.Players().addListener(new ConsumerEventListener(Containers.Players(), EventType.ON_PLAYER_LOGOUT, (OnPlayerLogout event) -> unwatchOwnerForPvp(event.getPlayer().getObjectId()), this));
+		}
+		LOGGER.info(getClass().getSimpleName() + ": Phantom supervisor started.");
+	}
+
+	/**
+	 * Keeps awake mage phantoms at casting range of their target and kites them out when low on MP, since
+	 * the native AutoPlay never moves a pure caster. Once in range the nuke is cast by the playstyle engine when the
+	 * mage's class has a generic playstyle (its offensive AutoUse is parked, exactly like a party caster); a mage
+	 * without a playstyle, or one too low-level to field its listed skills, keeps nuking via AutoUse instead.
+	 */
+	private void mageCombat()
+	{
+		for (PhantomData data : _phantoms.values())
+		{
+			if (!data.mage || data.olympian || data.role.isBuddy() || data.recruited || data.dormant || data.resting || data.dispersing || (data.huntPauseUntil > 0) || (data.pvpTargetOid != 0))
+			{
+				continue; // buddies/recruits never auto-hunt; otherwise skip if fanning out, on a breather, resting, asleep, or PvP-engaged
+			}
+			final Player mage = data.player;
+			try
+			{
+				if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER)
+				{
+					PhantomCombatActions.observe(mage, data.play);
+				}
+				if (mage.isDead() || mage.isCastingNow() || (!FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER && mage.isMovementDisabled()))
+				{
+					continue; // don't interrupt a cast or fight a stun
+				}
+				// Out of MP: a caster must NOT melee. Disengage and rest to regen; if a mob is on it, back away
+				// first and rest once clear. Stop the hunt so AutoPlay doesn't re-target it while it recovers.
+				if ((mage.getCurrentMpPercent() < MAGE_CAST_MP_PERCENT) && (!FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER || !(mage.getTarget() instanceof Monster active) || active.isDead() || (PhantomPlaystyleEngine.combatAvailability(mage, active, data.play, true, underAttack(mage), HUNTER_MP_RESERVE, playRole(mage, data)) == PhantomCombatPolicy.Availability.UNAVAILABLE)))
+				{
+					// Stop the hunt so AutoPlay doesn't re-target it while it recovers.
+					if (mage.isAutoPlaying())
+					{
+						AutoPlayTaskManager.getInstance().stopAutoPlay(mage);
+						AutoUseTaskManager.getInstance().stopAutoUseTask(mage);
+					}
+					mage.setTarget(null);
+					if (mage.isInCombat() || isMonsterNear(mage))
+					{
+						retreatMage(mage); // kite away from the nearest mob; rest once safe
+					}
+					else
+					{
+						startRest(mage);
+						data.resting = true;
+					}
+					continue;
+				}
+				// MP back above the floor: if the OOM handling above had stopped the hunt (recovered while
+				// backing off, without ever sitting), resume it now.
+				if (!mage.isAutoPlaying())
+				{
+					enableAutoHunt(mage, true, data);
+				}
+				final WorldObject target = mage.getTarget();
+				if (!(target instanceof Monster) || ((Monster) target).isDead())
+				{
+					continue; // AutoPlay will pick a target; nothing to position around yet
+				}
+				final Monster focus = (Monster) target;
+				positionMage(mage, focus);
+				// Once at casting range, drive the nuke through the engine (offensive AutoUse is parked for a mage with
+				// a playstyle, same as a party caster). Out of range, positionMage is walking it in and this is skipped;
+				// tryHunterPlaystyle no-ops for an unparked mage, so a no-playstyle caster keeps its AutoUse nuking.
+				if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER || (mage.calculateDistance2D(focus) <= (MAGE_CAST_RANGE + MAGE_RANGE_TOLERANCE)))
+				{
+					tryHunterPlaystyle(mage, focus, data);
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Mage combat error for " + mage.getName() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Holds a mage within casting range so AutoUse can nuke. Walks IN when out of range; once inside range it stands
+	 * and casts and does <b>not</b> back off as the mob closes - a caster that retreats every time its own target
+	 * steps toward it kites indefinitely and wanders into fresh spawns. (Out-of-MP break-off lives in
+	 * {@link #mageCombat} via {@link #retreatMage}.)
+	 */
+	private void positionMage(Player mage, Creature target)
+	{
+		if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER)
+		{
+			final PhantomData data = _phantoms.get(mage.getObjectId());
+			final PhantomPlaystyleEngine.PlayState play = (data == null) ? null : playStateFor(mage, data);
+			final int reach = PhantomCombatActions.casterReach(mage, play, (data == null) ? null : playRole(mage, data), MAGE_CAST_RANGE);
+			PhantomCombatActions.approachCaster(mage, target, reach, 0);
+			return;
+		}
+		double dx = mage.getX() - target.getX();
+		double dy = mage.getY() - target.getY();
+		double distance = Math.hypot(dx, dy);
+		if (distance <= (MAGE_CAST_RANGE + MAGE_RANGE_TOLERANCE))
+		{
+			return; // within casting range - stand and cast; never back off just because it closed in
+		}
+		if (distance < 1)
+		{
+			distance = 1;
+		}
+		// Too far to cast: close the gap to a point MAGE_CAST_RANGE units from the target, on the line toward the mage.
+		final int standX = target.getX() + (int) ((dx / distance) * MAGE_CAST_RANGE);
+		final int standY = target.getY() + (int) ((dy / distance) * MAGE_CAST_RANGE);
+		final Location destination = GeoEngine.getInstance().getValidLocation(mage, new Location(standX, standY, mage.getZ()));
+		mage.setRunning();
+		mage.getAI().setIntention(Intention.MOVE_TO, destination);
+	}
+
+	/** Kites a mage one short step directly away from the nearest mob so it can break off and rest when OOM. */
+	private void retreatMage(Player mage)
+	{
+		Monster nearest = null;
+		double best = Double.MAX_VALUE;
+		for (Monster monster : World.getInstance().getVisibleObjectsInRange(mage, Monster.class, REST_DANGER_RANGE))
+		{
+			if (monster.isDead())
+			{
+				continue;
+			}
+			final double distance = mage.calculateDistance2D(monster);
+			if (distance < best)
+			{
+				best = distance;
+				nearest = monster;
+			}
+		}
+		if (nearest == null)
+		{
+			return;
+		}
+		double dx = mage.getX() - nearest.getX();
+		double dy = mage.getY() - nearest.getY();
+		double length = Math.hypot(dx, dy);
+		if (length < 1)
+		{
+			dx = 1;
+			dy = 0;
+			length = 1;
+		}
+		final int x = mage.getX() + (int) ((dx / length) * 300);
+		final int y = mage.getY() + (int) ((dy / length) * 300);
+		final Location destination = GeoEngine.getInstance().getValidLocation(mage, new Location(x, y, mage.getZ()));
+		mage.setRunning();
+		mage.getAI().setIntention(Intention.MOVE_TO, destination);
+	}
+
+	/**
+	 * Authoritative target assignment (runs every {@link #DECONFLICT_INTERVAL}). Two passes:
+	 * <ol>
+	 * <li>Honor each phantom's current valid target, resolving collisions so the closest phantom keeps a mob
+	 * and the rest are bumped; detect kills (claimed mob now dead) and start a short post-kill breather.</li>
+	 * <li>Give every phantom that has no mob (and is past its breather) the nearest <i>unclaimed</i>, free
+	 * monster, claiming it. This is what stops phantoms ganging up: a freed mob is handed to ONE phantom
+	 * rather than left for the native AutoPlay scan to re-pick simultaneously.</li>
+	 * </ol>
+	 * Also stands a resting phantom up immediately if a threat appears, rather than waiting for the slow tick.
+	 */
+	/**
+	 * Phantom PvP self-defense tick (Phase 1). For each awake field hunter, either continues an active PvP
+	 * engagement or notices a hostile player/phantom that has attacked it and starts one. The stand-or-flee call and
+	 * the personality that shapes it live in {@link PhantomPvpManager}; this method is the wiring that reads state,
+	 * sets the target/intention, and drives the retreat. It early-returns when the master switch (or self-defense) is
+	 * off, so it costs nothing on a server with PvP disabled.
+	 *
+	 * <p>
+	 * Scope for Phase 1 is field hunters. Recruited party members and buddies are driven by PhantomPartyManager and
+	 * their PvP (party defense) is a later phase. Because the opponent is just a {@link Player}, a phantom defending
+	 * itself against another phantom is already covered here with no extra logic.
+	 * </p>
+	 */
+	private void pvpCombat()
+	{
+		if (!PhantomPvpManager.pvpEnabled() || !FakePlayersConfig.PHANTOM_PVP_SPOT_DEFENSE)
+		{
+			for (PhantomData data : _phantoms.values())
+			{
+				clearSpotDefenseState(data);
+			}
+		}
+		// Gate on the master switch, not one behavior: this driver also services active engagements, react-to-flagged,
+		// and party/clan-defense engagements armed by startPvpDefense. Each behavior is gated individually below.
+		if (!PhantomPvpManager.pvpEnabled())
+		{
+			removeDisabledEncounters();
+			// FPC-115: switched off (a config reload). Release every open engagement once, or the hunt and party ticks
+			// would keep deferring to phantoms nothing drives any more. Idle after that, as before.
+			if (_pvpWasEnabled)
+			{
+				_pvpWasEnabled = false;
+				releaseAllPvpEngagements(System.currentTimeMillis());
+			}
+		}
+		// A duel released at switch-off may still start after its countdown; cancel it then, even if PvP was switched
+		// back on meanwhile, since nothing is driving that phantom's side of it any more.
+		if (!_duelsToCancel.isEmpty())
+		{
+			cancelPendingDuels(System.currentTimeMillis());
+		}
+		if (!PhantomPvpManager.pvpEnabled())
+		{
+			return;
+		}
+		_pvpWasEnabled = true;
+		final long now = System.currentTimeMillis();
+		for (PhantomData data : _phantoms.values())
+		{
+			final Player phantom = data.player;
+			if (data.olympian || data.encounterActor || data.recruited || data.role.isBuddy() || data.resting || data.dormant || data.dispersing || phantom.isDead() || (data.pvpTargetOid != 0) || phantom.isInsideZone(ZoneId.PEACE) || phantom.isInsideZone(ZoneId.NO_PVP))
+			{
+				synchronized (data)
+				{
+					resetSpotObservation(data);
+				}
+			}
+			if (data.olympian)
+			{
+				continue; // an Olympiad noble fights only in its matches, driven by serviceOlympian
+			}
+			try
+			{
+				// A danger-encounter actor runs its own one-fight script (approach, fight, leave).
+				if (data.encounterActor)
+				{
+					serviceEncounter(phantom, data, now);
+					continue;
+				}
+				// Peace zone, dead, dormant, or mid-disperse: drop any engagement and skip (applies to every role).
+				if (phantom.isDead() || data.dormant || data.dispersing || phantom.isInsideZone(ZoneId.PEACE))
+				{
+					if (data.pvpTargetOid != 0)
+					{
+						endPvp(phantom, data, resolvePvpTarget(data));
+					}
+					continue;
+				}
+				// Service an active engagement for ANY phantom: a field hunter defending itself or reacting, or a
+				// recruited member / buddy that PhantomPartyManager peeled onto an attacker for party/clan defense.
+				if (data.pvpTargetOid != 0)
+				{
+					continuePvp(phantom, data, now);
+					continue;
+				}
+				// Initiation (self-defense detection and react-to-flagged) is field hunters only. A recruited member or
+				// buddy is engaged for defense by PhantomPartyManager via startPvpDefense, never self-initiated here.
+				if (data.recruited || data.role.isBuddy())
+				{
+					continue;
+				}
+				if (PhantomPvpManager.selfDefenseEnabled())
+				{
+					final Player attacker = hostilePvpAttacker(phantom, data, now);
+					if (attacker != null)
+					{
+						beginPvp(phantom, data, attacker, now);
+						continue;
+					}
+				}
+				// Clan/alliance defense for field hunters: help a clanmate or allymate under attack nearby. These are the
+				// phantoms the player actually meets in the open world, so this is where clan defense is visible. Not
+				// personality-gated (defending your own is not aggression); bounded by the defend radius and clan membership.
+				if (PhantomPvpManager.clanDefenseEnabled())
+				{
+					final Player defendAgainst = clanDefendTarget(phantom, now);
+					if (defendAgainst != null)
+					{
+						beginPvp(phantom, data, defendAgainst, now);
+						continue;
+					}
+				}
+				// Phase 2: an idle aggressor may react to a nearby flagged (purple) or red (PK) target. Personality,
+				// a per-consideration roll, cooldowns, level band, newbie protection, peace zones, and clan/ally
+				// membership all gate it, so reacting is occasional and never touches a friendly target.
+				reactToFlagged(phantom, data, now);
+				if (data.pvpTargetOid == 0)
+				{
+					spotDefense(phantom, data, now);
+				}
+				// Phase 3: an idle, honorable phantom occasionally challenges a nearby player (or phantom) to a duel.
+				if (data.pvpTargetOid == 0)
+				{
+					considerIssuingDuel(phantom, data, now);
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": pvpCombat error for " + phantom.getName() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Ends every open PvP engagement and duel (used once when the master switch is turned off by a reload). A stock
+	 * duel the phantom is already in is canceled first (FPC-115), so it never keeps running with nothing driving the
+	 * phantom. One that was accepted but is still counting down is canceled as soon as it starts.
+	 */
+	private void releaseAllPvpEngagements(long now)
+	{
+		for (PhantomData data : _phantoms.values())
+		{
+			if (data.pvpTargetOid == 0)
+			{
+				continue;
+			}
+			try
+			{
+				if (data.duelPhase != DUEL_NONE)
+				{
+					if (data.player.isInDuel())
+					{
+						cancelStockDuel(data.player);
+					}
+					else if ((data.duelPhase == DUEL_ASKED) || (data.duelPhase == DUEL_COUNTDOWN))
+					{
+						// Accepted (or maybe accepted just now) but not started: cancel it once it starts.
+						_duelsToCancel.put(data.player.getObjectId(), now + DUEL_COUNTDOWN_MAX_MS);
+					}
+				}
+				endPvp(data.player, data, resolvePvpTarget(data));
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": PvP release error for " + data.player.getName() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * While PvP is off: cancels any duel that was still counting down when the switch was turned off, the moment it
+	 * starts, and forgets entries whose countdown window has passed without a duel starting.
+	 */
+	private void cancelPendingDuels(long now)
+	{
+		for (Map.Entry<Integer, Long> entry : _duelsToCancel.entrySet())
+		{
+			final PhantomData data = _phantoms.get(entry.getKey());
+			if ((data != null) && (data.pvpTargetOid != 0))
+			{
+				_duelsToCancel.remove(entry.getKey()); // PvP is back on and a new engagement owns this phantom now
+				continue;
+			}
+			final WorldObject object = World.getInstance().findObject(entry.getKey());
+			if ((object instanceof Player) && ((Player) object).isInDuel())
+			{
+				cancelStockDuel((Player) object);
+				_duelsToCancel.remove(entry.getKey());
+			}
+			else if ((now >= entry.getValue()) || !(object instanceof Player))
+			{
+				_duelsToCancel.remove(entry.getKey());
+			}
+		}
+	}
+
+	/**
+	 * Cancels a running 1v1 stock duel through its own interruption path: an interrupted duelist makes the duel's next
+	 * check end it as canceled, with the stock messages and HP restore, and no winner. A duel already decided (a
+	 * winner or a defeated side) is left to finish normally.
+	 */
+	private static void cancelStockDuel(Player phantom)
+	{
+		if (phantom.getDuelState() == Duel.DUELSTATE_DUELLING)
+		{
+			phantom.setDuelState(Duel.DUELSTATE_INTERRUPTED);
+		}
+	}
+
+	/**
+	 * @param phantom the defending phantom
+	 * @param data the phantom's state bag (holds the recorded last attacker)
+	 * @param now the current time
+	 * @return the {@link Player} (real player or another phantom) that recently hit this phantom and that the phantom
+	 *         may legally strike back, or {@code null} if none. Detection is the damage record written by
+	 *         {@link #attachPvpDamageListener}: a Player's stock attack-by list is never populated, so this cannot use
+	 *         {@code getAttackByList()}. The recorded attacker must still be recent, in range, out of a peace zone,
+	 *         and legally attackable (an assault on a phantom flags the attacker, so this holds for a genuine one).
+	 */
+	private Player hostilePvpAttacker(Player phantom, PhantomData data, long now)
+	{
+		final int attackerOid = recentPvpAttackerOid(phantom, now);
+		if (attackerOid == 0)
+		{
+			return null;
+		}
+		final WorldObject object = World.getInstance().findObject(attackerOid);
+		if (!(object instanceof Player))
+		{
+			return null;
+		}
+		final Player attacker = (Player) object;
+		if (!validPvpOpponent(phantom, attacker) || attacker.isDead() || attacker.isInsideZone(ZoneId.PEACE))
+		{
+			return null; // includes the phantom-versus-phantom gate: ignore a phantom attacker when that is disabled
+		}
+		if ((phantom.calculateDistance2D(attacker) > PVP_DANGER_RANGE) || !attacker.isAutoAttackable(phantom))
+		{
+			return null;
+		}
+		return attacker;
+	}
+
+	/**
+	 * Registers the self-defense damage listener on a phantom, so a hit from a Player is recorded on its state bag for
+	 * the pvpCombat tick to react to. Only attached when PvP self-defense is enabled, so a PvP-disabled server registers
+	 * nothing and the stock damage path stays free of any phantom listener. The stock {@code ON_CREATURE_DAMAGE_RECEIVED}
+	 * event is used because a Player never populates its own attack-by list (that is Attackable/NPC-only).
+	 * @param phantom the phantom to watch
+	 * @param data the phantom's state bag (unused now; the record lives in the manager-level map)
+	 */
+	private void attachPvpDamageListener(Player phantom, PhantomData data)
+	{
+		// Self-defense reads a phantom's own record; party defense reads a party-mate phantom's record, so either
+		// behavior being on is reason to watch this phantom. Both off: register nothing (a PvP-disabled server is free).
+		if (!PhantomPvpManager.selfDefenseEnabled() && !PhantomPvpManager.partyDefenseEnabled())
+		{
+			return;
+		}
+		final int victimOid = phantom.getObjectId();
+		phantom.addListener(new ConsumerEventListener(phantom, EventType.ON_CREATURE_DAMAGE_RECEIVED, (OnCreatureDamageReceived event) -> recordPvpHit(victimOid, event), this));
+	}
+
+	/** Records a Player-on-Player hit (real player or another phantom) on a watched victim into the shared record map. */
+	private void recordPvpHit(int victimOid, OnCreatureDamageReceived event)
+	{
+		final Creature attacker = event.getAttacker();
+		if (!(attacker instanceof Player) || (attacker.getObjectId() == victimOid))
+		{
+			return; // PvE damage from monsters, or self-inflicted, is not a PvP attacker
+		}
+		final Creature victim = event.getTarget();
+		if ((victim != null) && attacker.isInDuel() && victim.isInDuel() && (attacker.getDuelId() == victim.getDuelId()))
+		{
+			return; // a hit between two duelists of the same duel is consensual: never grounds for self, party, or clan defense
+		}
+		_recentPvpVictims.put(victimOid, new long[]
+		{
+			attacker.getObjectId(),
+			System.currentTimeMillis()
+		});
+	}
+
+	/**
+	 * Phase 2 react-to-flagged: an idle aggressor phantom occasionally engages a nearby flagged (purple) or red (PK)
+	 * target. When configured, any phantom may consider red targets. Red targets are selected ahead of purple targets,
+	 * then the nearest target within that reputation class is considered. Whether it engages or declines, it waits out
+	 * the engage cooldown before reconsidering, so reactions are occasional rather than an every-tick dogpile.
+	 */
+	private void reactToFlagged(Player phantom, PhantomData data, long now)
+	{
+		if (!PhantomPvpManager.reactToFlaggedEnabled() || (now < data.nextInitiateAt))
+		{
+			return;
+		}
+		if (!PhantomPvpManager.mayReactToTarget(data.aggressor, FakePlayersConfig.PHANTOM_PVP_RED_REACT_ALL, true))
+		{
+			return;
+		}
+		final Player target = flaggedReactTarget(phantom, data.aggressor, now);
+		if (target == null)
+		{
+			data.nextInitiateAt = now + PVP_REACT_SCAN_INTERVAL_MS; // nothing to react to; scan again shortly
+			return;
+		}
+		final long cooldownMs = FakePlayersConfig.PHANTOM_PVP_ENGAGE_COOLDOWN_SECONDS * 1000L;
+		data.nextInitiateAt = now + cooldownMs; // decided (engage or decline); hold off reconsidering until it passes
+		if ((target.getKarma() > 0) ? PhantomPvpManager.rollRedReactEngage() : PhantomPvpManager.rollReactEngage())
+		{
+			_pvpVictimCooldownUntil.put(target.getObjectId(), now + cooldownMs); // stop other phantoms dogpiling it
+			beginPvp(phantom, data, target, now);
+		}
+	}
+
+	private static final String[] SPOT_WARN_LINES =
+	{
+		"hey, this is my spot",
+		"you could hunt somewhere else, you know",
+		"mind giving me some room?",
+		"that was my mob",
+		"seriously, find your own mobs",
+		"you're crowding me"
+	};
+	private static final String[] SPOT_ULTIMATUM_LINES =
+	{
+		"that's it, get out of my spot or fight me",
+		"last warning. leave, or we settle it",
+		"i'm done asking. move it",
+		"you want this spot? come and take it"
+	};
+
+	/** @return a currently eligible real player with positive native damage against this monster. */
+	private Player realPlayerOn(Player phantom, Monster monster, long now)
+	{
+		for (Map.Entry<Creature, AggroInfo> entry : monster.getAggroList().entrySet())
+		{
+			final Creature attacker = entry.getKey();
+			if (attacker.isPlayer() && (entry.getValue().getDamage() > 0) && spotOffender(phantom, attacker.asPlayer(), now))
+			{
+				return attacker.asPlayer();
+			}
+		}
+		return null;
+	}
+
+	private static void resetSpotEngagement(PhantomData data)
+	{
+		data.spotEngagedMonster = null;
+		data.spotEngagedDamage = null;
+		data.spotEngagedAt = 0;
+	}
+
+	/** All claim changes invalidate earlier theft evidence, including dropping and reclaiming the same mob. */
+	private static void setClaimedMob(PhantomData data, int objectId)
+	{
+		synchronized (data)
+		{
+			if (data.claimedOid != objectId)
+			{
+				resetSpotEngagement(data);
+			}
+			data.claimedOid = objectId;
+		}
+	}
+
+	/** Remember a real hunter hit only while the monster is still uncontested. Native totals have no hit order. */
+	private void observeSpotEngagement(PhantomData data, Monster monster, long now)
+	{
+		synchronized (data)
+		{
+			resetSpotEngagement(data);
+			if (!PhantomPvpManager.pvpEnabled() || !FakePlayersConfig.PHANTOM_PVP_SPOT_DEFENSE || (data.claimedOid != monster.getObjectId()))
+			{
+				return;
+			}
+			final AggroInfo hunterDamage = monster.getAggroList().get(data.player);
+			if ((hunterDamage == null) || (hunterDamage.getDamage() <= 0))
+			{
+				return;
+			}
+			for (Map.Entry<Creature, AggroInfo> entry : monster.getAggroList().entrySet())
+			{
+				if ((entry.getKey() != data.player) && entry.getKey().isPlayer() && !_phantoms.containsKey(entry.getKey().getObjectId()) && (entry.getValue().getDamage() > 0))
+				{
+					return; // a player hit first, or both first appeared together: do not infer theft
+				}
+			}
+			data.spotEngagedMonster = monster;
+			data.spotEngagedDamage = hunterDamage;
+			data.spotEngagedAt = now;
+		}
+	}
+
+	private static void resetSpotObservation(PhantomData data)
+	{
+		data.spotScoreAt = 0;
+		data.spotCrowding.clear();
+		data.spotAttackAt = 0;
+		data.spotWarnedOid = 0;
+		resetSpotEngagement(data);
+	}
+
+	/** Reloading either off switch forgets all grievances, even for actors skipped by the normal PvP driver. */
+	private static void clearSpotDefenseState(PhantomData data)
+	{
+		synchronized (data)
+		{
+			resetSpotObservation(data);
+			data.spotScores.clear();
+			data.spotNextAt = 0;
+			data.spotWarnNextAt = 0;
+			data.spotCooldownUntil = 0;
+			data.spotStealOid = 0;
+		}
+	}
+
+	/** A player took a mob this hunter had claimed: that adds to the hunter's annoyance with them. */
+	private void noteKillSteal(PhantomData data, Monster monster, long now)
+	{
+		synchronized (data)
+		{
+			noteKillStealLocked(data, monster, now);
+		}
+	}
+
+	private void noteKillStealLocked(PhantomData data, Monster monster, long now)
+	{
+		if (!PhantomPvpManager.pvpEnabled() || !FakePlayersConfig.PHANTOM_PVP_SPOT_DEFENSE)
+		{
+			clearSpotDefenseState(data);
+			return;
+		}
+		if (!PhantomPvpManager.pvpEnabled() || !FakePlayersConfig.PHANTOM_PVP_SPOT_DEFENSE || data.resting || data.dormant || data.dispersing || data.recruited || data.role.isBuddy() || data.olympian || data.encounterActor || (data.pvpTargetOid != 0) || (now < data.spotCooldownUntil) || (data.claimedOid != monster.getObjectId()) || (data.spotStealOid == monster.getObjectId()))
+		{
+			return;
+		}
+		final AggroInfo hunterDamage = monster.getAggroList().get(data.player);
+		if ((data.spotEngagedMonster != monster) || (data.spotEngagedDamage != hunterDamage) || (hunterDamage == null) || (hunterDamage.getDamage() <= 0) || (now <= data.spotEngagedAt) || ((now - data.spotEngagedAt) > (3 * DECONFLICT_INTERVAL)))
+		{
+			return; // an internal reservation or unordered damage totals are not evidence of a stolen pull
+		}
+		final Player thief = realPlayerOn(data.player, monster, now);
+		if (thief == null)
+		{
+			return;
+		}
+		data.spotStealOid = monster.getObjectId();
+		data.spotScores.merge(thief.getObjectId(), FakePlayersConfig.PHANTOM_PVP_SPOT_STEAL_POINTS, Double::sum);
+	}
+
+	/** @return whether this real player is out hunting where the hunter could be annoyed by it. */
+	private boolean spotOffender(Player phantom, Player p, long now)
+	{
+		if (_phantoms.containsKey(p.getObjectId()) || p.isInOfflineMode() || p.isDead() || phantom.isInsideZone(ZoneId.PEACE) || phantom.isInsideZone(ZoneId.NO_PVP) || p.isInsideZone(ZoneId.PEACE) || p.isInsideZone(ZoneId.NO_PVP))
+		{
+			return false;
+		}
+		if (!validPvpOpponent(phantom, p) || sameClanOrAlly(phantom, p) || p.isNewbie() || (phantom.isInParty() && (phantom.getParty() == p.getParty())) || phantom.isInDuel() || p.isInDuel() || phantom.isInOlympiadMode() || p.isInOlympiadMode() || phantom.isOnEvent() || p.isOnEvent() || p.inObserverMode() || p.isGM() || (phantom.getInstanceId() != 0) || (p.getInstanceId() != 0))
+		{
+			return false;
+		}
+		if (!PhantomPvpManager.mayInitiateByLevel(phantom.getLevel(), p.getLevel(), FakePlayersConfig.PHANTOM_PVP_MAX_LEVEL_GAP_ABOVE_PLAYER))
+		{
+			return false;
+		}
+		final Long until = _pvpVictimCooldownUntil.get(p.getObjectId());
+		return (until == null) || (now >= until);
+	}
+
+	/**
+	 * Spot defense: a hunter that a player keeps annoying (stolen kills, hunting right on top of it) complains, warns,
+	 * then attacks. How much it takes depends on the hunter's temper.
+	 */
+	private void spotDefense(Player phantom, PhantomData data, long now)
+	{
+		synchronized (data)
+		{
+			spotDefenseLocked(phantom, data, now);
+		}
+	}
+
+	private void spotDefenseLocked(Player phantom, PhantomData data, long now)
+	{
+		if (!PhantomPvpManager.pvpEnabled() || !FakePlayersConfig.PHANTOM_PVP_SPOT_DEFENSE)
+		{
+			clearSpotDefenseState(data);
+			return;
+		}
+		if (!PhantomPvpManager.pvpEnabled() || !FakePlayersConfig.PHANTOM_PVP_SPOT_DEFENSE || data.resting || data.dormant || data.dispersing || data.recruited || data.role.isBuddy() || data.olympian || data.encounterActor || (data.pvpTargetOid != 0) || phantom.isDead() || phantom.isInsideZone(ZoneId.PEACE) || phantom.isInsideZone(ZoneId.NO_PVP) || (now < data.spotCooldownUntil))
+		{
+			resetSpotObservation(data);
+			return;
+		}
+		if (now < data.spotNextAt)
+		{
+			return;
+		}
+		data.spotNextAt = now + 2000;
+		if (data.spotTemper == null)
+		{
+			data.spotTemper = PhantomSpotRules.rollTemper(Rnd.get(100), FakePlayersConfig.PHANTOM_PVP_SPOT_HOT_PERCENT, FakePlayersConfig.PHANTOM_PVP_SPOT_NORMAL_PERCENT);
+		}
+		final long gap = now - data.spotScoreAt;
+		// Only adjacent observed samples count. PvP, dormancy and disabled ticks leave gaps.
+		final long elapsed = ((data.spotScoreAt != 0) && (gap >= 0) && (gap <= 4000)) ? gap : 0;
+		if (elapsed == 0)
+		{
+			data.spotAttackAt = 0;
+			data.spotWarnedOid = 0;
+		}
+		data.spotScoreAt = now;
+		final Set<Integer> crowding = new HashSet<>();
+		Player worst = null;
+		for (Player p : World.getInstance().getVisibleObjectsInRange(phantom, Player.class, FakePlayersConfig.PHANTOM_PVP_SPOT_RADIUS))
+		{
+			if (spotOffender(phantom, p, now) && (p.isAttackingNow() || ((p.getTarget() instanceof Monster) && p.isInCombat())))
+			{
+				crowding.add(p.getObjectId());
+				if (data.spotCrowding.contains(p.getObjectId()) && (elapsed > 0))
+				{
+					data.spotScores.merge(p.getObjectId(), PhantomSpotRules.crowd(0, elapsed), Double::sum);
+				}
+			}
+		}
+		data.spotCrowding.clear();
+		data.spotCrowding.addAll(crowding);
+		final double limit = PhantomSpotRules.thresholdFor(data.spotTemper, FakePlayersConfig.PHANTOM_PVP_SPOT_HOT_LIMIT, FakePlayersConfig.PHANTOM_PVP_SPOT_NORMAL_LIMIT, FakePlayersConfig.PHANTOM_PVP_SPOT_PATIENT_LIMIT);
+		double worstScore = 0;
+		final Iterator<Map.Entry<Integer, Double>> it = data.spotScores.entrySet().iterator();
+		while (it.hasNext())
+		{
+			final Map.Entry<Integer, Double> e = it.next();
+			final Player p = World.getInstance().getPlayer(e.getKey());
+			if ((p == null) || !spotOffender(phantom, p, now))
+			{
+				it.remove(); // protected/offline players cannot retain hidden actionable grievances
+				continue;
+			}
+			if (!crowding.contains(e.getKey()))
+			{
+				e.setValue(PhantomSpotRules.fade(e.getValue(), elapsed)); // not offending right now: cools down
+			}
+			if (e.getValue() <= 0)
+			{
+				it.remove();
+				continue;
+			}
+			if ((p != null) && (e.getValue() > worstScore) && spotOffender(phantom, p, now) && (phantom.calculateDistance2D(p) <= (FakePlayersConfig.PHANTOM_PVP_SPOT_RADIUS * 1.5)))
+			{
+				worstScore = e.getValue();
+				worst = p;
+			}
+		}
+		if ((worst == null) || (worstScore < PhantomSpotRules.warnAt(limit)))
+		{
+			data.spotAttackAt = 0; // calmed down, or the player is gone
+			data.spotWarnedOid = 0;
+			return;
+		}
+		if (worstScore < limit)
+		{
+			data.spotAttackAt = 0;
+			data.spotWarnedOid = 0;
+			if (now >= data.spotWarnNextAt)
+			{
+				data.spotWarnNextAt = now + 120_000L;
+				sayNearby(phantom, SPOT_WARN_LINES);
+			}
+			return;
+		}
+		if ((data.spotAttackAt == 0) || (data.spotWarnedOid != worst.getObjectId()))
+		{
+			data.spotWarnedOid = worst.getObjectId();
+			data.spotAttackAt = now + ((data.spotTemper == PhantomSpotRules.Temper.HOT) ? 3000 : 6000);
+			sayNearby(phantom, SPOT_ULTIMATUM_LINES);
+			return;
+		}
+		if (now < data.spotAttackAt)
+		{
+			return;
+		}
+		data.spotAttackAt = 0;
+		data.spotWarnedOid = 0;
+		data.spotScores.clear();
+		data.spotCrowding.clear();
+		data.spotScoreAt = 0;
+		final long cooldownMs = FakePlayersConfig.PHANTOM_PVP_SPOT_COOLDOWN_SECONDS * 1000L;
+		data.spotCooldownUntil = now + cooldownMs;
+		final boolean attackable = worst.isAutoAttackable(phantom);
+		// A clean white farmer can be warned and challenged, but never gains a forced PvP exception.
+		final boolean realFight = attackable && PhantomSpotRules.realFight(Rnd.get(100), FakePlayersConfig.PHANTOM_PVP_SPOT_FIGHT_PERCENT);
+		if (!realFight)
+		{
+			if (PhantomPvpManager.duelsEnabled() && phantom.canDuel() && worst.canDuel() && !phantom.isProcessingRequest() && !worst.isProcessingRequest() && armDuel(data, worst, DUEL_APPROACH))
+			{
+				_duelTargetCooldownUntil.put(worst.getObjectId(), now + DUEL_TARGET_COOLDOWN_MS);
+			}
+			// The selected duel is authoritative. An unavailable challenge never becomes ordinary PvP.
+			return;
+		}
+		_pvpVictimCooldownUntil.put(worst.getObjectId(), now + cooldownMs);
+		beginPvp(phantom, data, worst, now);
+	}
+
+	/**
+	 * @param phantom the aggressor considering a reaction
+	 * @param now the current time
+	 * @return the nearest eligible flagged/red target, or {@code null}. A candidate is a living {@link Player} (real
+	 *         player or another phantom) that is flagged (purple) or carries karma (red), out of a peace / no-PvP
+	 *         zone, not a clan or ally member, not newbie-protected, inside the initiate level band, not on the
+	 *         per-target dogpile cooldown, and legally attackable by the phantom.
+	 */
+	private Player flaggedReactTarget(Player phantom, boolean aggressor, long now)
+	{
+		Player best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Player p : World.getInstance().getVisibleObjectsInRange(phantom, Player.class, PVP_DANGER_RANGE))
+		{
+			if (!validPvpOpponent(phantom, p) || p.isDead() || p.isInsideZone(ZoneId.PEACE) || p.isInsideZone(ZoneId.NO_PVP))
+			{
+				continue; // includes the phantom-versus-phantom gate: skip a phantom target when that is disabled
+			}
+			final boolean red = p.getKarma() > 0;
+			if (((p.getPvpFlag() == 0) && !red) || !PhantomPvpManager.mayReactToTarget(aggressor, FakePlayersConfig.PHANTOM_PVP_RED_REACT_ALL, red))
+			{
+				continue; // only flagged or red targets, and only red for non-aggressors
+			}
+			if (sameClanOrAlly(phantom, p) || p.isNewbie() || !p.isAutoAttackable(phantom))
+			{
+				continue; // never a clanmate/allymate, a newbie, or anyone the phantom may not legally strike
+			}
+			if (!PhantomPvpManager.mayInitiateByLevel(phantom.getLevel(), p.getLevel(), FakePlayersConfig.PHANTOM_PVP_MAX_LEVEL_GAP_ABOVE_PLAYER))
+			{
+				continue;
+			}
+			final Long until = _pvpVictimCooldownUntil.get(p.getObjectId());
+			if (until != null)
+			{
+				if (now < until)
+				{
+					continue; // another phantom recently engaged this target; leave it alone
+				}
+				_pvpVictimCooldownUntil.remove(p.getObjectId(), until); // stale entry; prune it
+			}
+			final double distance = phantom.calculateDistance2D(p);
+			if ((best == null) || PhantomPvpManager.preferReactTarget(red, distance, best.getKarma() > 0, bestDistance))
+			{
+				bestDistance = distance;
+				best = p;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Central participant check for every PvP path: whether {@code phantom} may take {@code target} as an opponent.
+	 * Rejects a null or self target and, when phantom-versus-phantom is disabled, any phantom target, so the
+	 * {@code PhantomPvpBetweenPhantoms} toggle actually governs phantom-on-phantom combat across self-defense,
+	 * reaction, and party/clan defense alike. Zone, legality, and side checks stay with each caller; this is only the
+	 * opponent-kind gate.
+	 * @param phantom the phantom choosing an opponent
+	 * @param target the candidate opponent
+	 * @return {@code true} if this opponent is a permitted kind
+	 */
+	public boolean validPvpOpponent(Player phantom, Player target)
+	{
+		if ((target == null) || (target == phantom))
+		{
+			return false;
+		}
+		return PhantomPvpManager.opponentKindAllowed(isPhantom(target), PhantomPvpManager.betweenPhantomsEnabled());
+	}
+
+	/** @return {@code true} if the two players share a clan or an alliance (a phantom never initiates on its own side). */
+	public static boolean sameClanOrAlly(Player phantom, Player other)
+	{
+		final Clan clan = phantom.getClan();
+		if ((clan != null) && (other.getClan() == clan))
+		{
+			return true;
+		}
+		final int allyId = phantom.getAllyId();
+		return (allyId != 0) && (allyId == other.getAllyId());
+	}
+
+	// ---------------------------------------------------------------------
+	// Phase 2b support: party / clan defense. PhantomPartyManager owns the "who defends whom" decision (it knows the
+	// party, owner, and raid state); these entry points expose the shared PvP mechanics it drives.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * Watches a real-player owner for the party-defense system, so a phantom can tell when its owner is attacked. A
+	 * Player never populates its own attack-by list, so this uses the stock damage event, mirroring the per-phantom
+	 * listener. Idempotent and gated on party defense being enabled; the listener is detached on the owner's logout.
+	 * @param owner the real player to watch
+	 */
+	public void watchOwnerForPvp(Player owner)
+	{
+		if (!PhantomPvpManager.partyDefenseEnabled() || (owner == null) || isPhantom(owner))
+		{
+			return;
+		}
+		final int ownerOid = owner.getObjectId();
+		_pvpWatchedOwners.computeIfAbsent(ownerOid, k ->
+		{
+			final ConsumerEventListener listener = new ConsumerEventListener(owner, EventType.ON_CREATURE_DAMAGE_RECEIVED, (OnCreatureDamageReceived event) -> recordPvpHit(ownerOid, event), this);
+			owner.addListener(listener);
+			return listener;
+		});
+	}
+
+	/** Detaches a watched owner's defense listener and forgets its attacker record (called on logout). */
+	private void unwatchOwnerForPvp(int ownerObjectId)
+	{
+		final AbstractEventListener listener = _pvpWatchedOwners.remove(ownerObjectId);
+		if (listener != null)
+		{
+			final WorldObject object = World.getInstance().findObject(ownerObjectId);
+			if (object instanceof Player)
+			{
+				((Player) object).removeListener(listener);
+			}
+		}
+		_recentPvpVictims.remove(ownerObjectId);
+	}
+
+	/**
+	 * @param victim a watched player: a phantom (its own listener) or a watched owner
+	 * @param now the current time
+	 * @return the objectId of the Player that recently hit {@code victim} (within {@link #PVP_ATTACKER_MEMORY_MS}), or 0.
+	 *         A stale entry is pruned as it is read, so the record map never accumulates dead victims.
+	 */
+	public int recentPvpAttackerOid(Player victim, long now)
+	{
+		if (victim == null)
+		{
+			return 0;
+		}
+		final int victimOid = victim.getObjectId();
+		final long[] record = _recentPvpVictims.get(victimOid);
+		if (record == null)
+		{
+			return 0;
+		}
+		if ((record[0] != 0) && ((now - record[1]) <= PVP_ATTACKER_MEMORY_MS))
+		{
+			return (int) record[0];
+		}
+		_recentPvpVictims.remove(victimOid, record); // stale; prune it
+		return 0;
+	}
+
+	/** @return a snapshot of the objectIds of players hit recently enough to still be defended (for the clan-defense scan). */
+	public Set<Integer> recentlyAttackedVictimOids()
+	{
+		return new HashSet<>(_recentPvpVictims.keySet());
+	}
+
+	/** @return {@code true} if this phantom is currently in a PvP engagement (so PhantomPartyManager should defer to it). */
+	public boolean isPvpEngaged(Player phantom)
+	{
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		return (data != null) && (data.pvpTargetOid != 0);
+	}
+
+	/**
+	 * Peels a recruited member or buddy onto an attacker for party/clan defense. This only ARMS the engagement (records
+	 * the target on the member's state bag); the actual driving happens on the next pvpCombat tick via continuePvp, so
+	 * all of a phantom's AI manipulation stays on the one PvP thread rather than the party tick that called this. No-op
+	 * if the phantom is not tracked, already engaged, dead, or the attacker is gone / in a peace zone / not attackable.
+	 * @param memberPhantom the defending phantom
+	 * @param attacker the hostile to engage
+	 */
+	public void startPvpDefense(Player memberPhantom, Player attacker)
+	{
+		if ((memberPhantom == null) || (attacker == null))
+		{
+			return;
+		}
+		final PhantomData data = _phantoms.get(memberPhantom.getObjectId());
+		if ((data == null) || (data.pvpTargetOid != 0) || memberPhantom.isDead() || memberPhantom.isInsideZone(ZoneId.PEACE))
+		{
+			return;
+		}
+		if (!validPvpOpponent(memberPhantom, attacker) || attacker.isDead() || attacker.isInsideZone(ZoneId.PEACE) || !attacker.isAutoAttackable(memberPhantom))
+		{
+			return; // includes the phantom-versus-phantom gate for a phantom attacker when that is disabled
+		}
+		// Arm only. Setting pvpTargetOid makes the next pvpCombat tick drive it (continuePvp -> drivePvp) and makes
+		// PhantomPartyManager defer to it (isPvpEngaged), so the party thread never drives this phantom's AI directly.
+		// The claim is atomic (FPC-114): this runs on the party thread, so a duel answer or the PvP tick may race it.
+		claimEngagement(data, attacker.getObjectId(), System.currentTimeMillis() + PVP_ENGAGE_MAX_MS, DUEL_NONE);
+	}
+
+	/**
+	 * Atomically claims an idle phantom for a PvP engagement or a duel (FPC-114). Every path that starts one goes
+	 * through here, and {@link #endPvp} releases under the same lock, so two threads (the PvP tick, the duel answer
+	 * task, the party tick) can never both claim the same phantom. Sets pvpTargetOid last, so a phantom only reads as
+	 * engaged once the rest of its engagement state is in place.
+	 * @param data the phantom's state bag
+	 * @param opponentOid the opponent's objectId
+	 * @param until the engagement's (or duel step's) deadline
+	 * @param duelPhase {@link #DUEL_NONE} for an ordinary PvP engagement, otherwise the duel step it starts in
+	 * @return {@code true} if claimed; {@code false} if the phantom was already engaged
+	 */
+	private static boolean claimEngagement(PhantomData data, int opponentOid, long until, int duelPhase)
+	{
+		synchronized (data)
+		{
+			if (data.pvpTargetOid != 0)
+			{
+				return false;
+			}
+			data.duelPhase = duelPhase;
+			data.duelAnsweredAt = 0;
+			data.duelOutcome = DUEL_OUTCOME_NONE;
+			data.pvpFleeing = false;
+			data.nextPvpDecisionAt = 0;
+			data.pvpUntil = until;
+			data.freshEngagement = true;
+			data.pvpTargetOid = opponentOid;
+			return true;
+		}
+	}
+
+	/**
+	 * @return nearby actual allies minus nearby actual hostiles, a numbers input for stand-or-flee. Counts real sides
+	 *         only: an ally is a party/clan/ally member, a hostile is a genuinely flagged or red player the phantom may
+	 *         strike. A neutral white bystander is neither, so uninvolved players never inflate the phantom's courage.
+	 */
+	private int pvpAllyAdvantage(Player phantom)
+	{
+		int allies = 0;
+		int enemies = 0;
+		final boolean inParty = phantom.isInParty();
+		for (Player p : World.getInstance().getVisibleObjectsInRange(phantom, Player.class, PVP_DANGER_RANGE))
+		{
+			if ((p == phantom) || p.isDead())
+			{
+				continue;
+			}
+			if (sameClanOrAlly(phantom, p) || (inParty && (p.getParty() == phantom.getParty())))
+			{
+				allies++; // a real ally: same clan, alliance, or party
+			}
+			else if (p.isAutoAttackable(phantom) && ((p.getPvpFlag() != 0) || (p.getKarma() > 0)))
+			{
+				enemies++; // a genuine hostile: flagged/red and legally strikeable (not a neutral bystander)
+			}
+			// else: a neutral, uninvolved player - counts as neither side
+		}
+		return allies - enemies;
+	}
+
+	/**
+	 * Field-hunter clan/alliance defense: the nearest hostile that is attacking a clanmate or allymate of
+	 * {@code defender} within the defend radius, that the defender may legally strike and that is not on the
+	 * defender's own side, or {@code null}. Iterates only players hit recently (no world scan), so it is cheap when no
+	 * PvP is happening. Recruited members and buddies get clan defense through {@link PhantomPartyManager} instead.
+	 * @param defender the field-hunter phantom considering a defense
+	 * @param now the current time
+	 * @return the attacker to engage, or {@code null}
+	 */
+	private Player clanDefendTarget(Player defender, long now)
+	{
+		final int radius = FakePlayersConfig.PHANTOM_PVP_DEFEND_RADIUS;
+		Player best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (int victimOid : _recentPvpVictims.keySet())
+		{
+			final WorldObject victimObject = World.getInstance().findObject(victimOid);
+			if (!(victimObject instanceof Player))
+			{
+				continue;
+			}
+			final Player victim = (Player) victimObject;
+			// A clanmate/allymate being hit, near enough to reach, and not the defender itself.
+			if ((victim == defender) || victim.isDead() || (defender.calculateDistance2D(victim) > radius) || !sameClanOrAlly(defender, victim))
+			{
+				continue;
+			}
+			final int attackerOid = recentPvpAttackerOid(victim, now);
+			if (attackerOid == 0)
+			{
+				continue;
+			}
+			final WorldObject attackerObject = World.getInstance().findObject(attackerOid);
+			if (!(attackerObject instanceof Player))
+			{
+				continue;
+			}
+			final Player attacker = (Player) attackerObject;
+			if ((attacker == defender) || attacker.isDead() || attacker.isInsideZone(ZoneId.PEACE))
+			{
+				continue;
+			}
+			// Never our own side, must be a permitted opponent kind (phantom-vs-phantom gate), and legal to strike.
+			if (sameClanOrAlly(defender, attacker) || !validPvpOpponent(defender, attacker) || !attacker.isAutoAttackable(defender))
+			{
+				continue;
+			}
+			final double distance = defender.calculateDistance2D(attacker);
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				best = attacker;
+			}
+		}
+		return best;
+	}
+
+	// ---------------------------------------------------------------------
+	// Encounter engine: an actor exists only to fight one player once. Generic: a module (through ModuleEncounters)
+	// decides when to send one, how strong it is, and what a win is worth.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * Spawns one encounter actor: a fully geared recruit-style phantom outside any party, already pointed at {@code victim}.
+	 * @param group the encounter this actor belongs to (shared by all its actors; carries the style and the listener)
+	 * @param enchant the enchant on its weapon and armor
+	 * @param fixedName the actor's name, or {@code null} for a random one
+	 * @return the actor, or {@code null} if it could not be spawned
+	 */
+	public Player spawnEncounterActor(Player victim, Location where, int level, PartyRole role, int enchant, PhantomEncounterRules.EncounterGroup group, String fixedName)
+	{
+		return spawnEncounterActor(victim, where, level, role, enchant, group, fixedName, 0, 0, false, false);
+	}
+
+	public Player spawnEncounterActor(Player victim, Location where, int level, PartyRole role, int enchant, PhantomEncounterRules.EncounterGroup group, String fixedName, int classId)
+	{
+		return spawnEncounterActor(victim, where, level, role, enchant, group, fixedName, classId, 0, false, false);
+	}
+
+	/**
+	 * As above, but pinned to one class. {@code classId} is resolved for the actor's level like any named recruit
+	 * (a Titan below the third-class level comes as the Destroyer or earlier); 0 or less keeps the role's random class.
+	 */
+	public synchronized Player spawnEncounterActor(Player victim, Location where, int level, PartyRole role, int enchant, PhantomEncounterRules.EncounterGroup group, String fixedName, int classId, int escapeChance, boolean escapeOnRout, boolean cpPotions)
+	{
+		if (!PhantomPvpManager.pvpEnabled() || (victim == null) || (where == null) || (group == null))
+		{
+			return null;
+		}
+		final Player actor;
+		ENCOUNTER_ENCHANT.set(enchant);
+		ENCOUNTER_NAME.set(fixedName);
+		try
+		{
+			actor = spawnPartyMember(where, level, role, Math.max(0, classId), null);
+		}
+		finally
+		{
+			ENCOUNTER_ENCHANT.remove();
+			ENCOUNTER_NAME.remove();
+		}
+		if (actor == null)
+		{
+			return null;
+		}
+		final PhantomData data = _phantoms.get(actor.getObjectId());
+		if (data == null)
+		{
+			return actor;
+		}
+		final long now = System.currentTimeMillis();
+		data.encounterGroup = group;
+		data.encounterVictimOid = victim.getObjectId();
+		data.encounterPhase = ENC_APPROACH;
+		data.encounterDeadline = 0;
+		data.encounterPreparing = true;
+		data.encounterLastMoveAt = now;
+		data.encounterLastX = victim.getX();
+		data.encounterLastY = victim.getY();
+		data.encounterPrepUntil = now + ENC_PREP_MS;
+		data.encounterCpPotions = cpPotions;
+		stockEncounterPotions(actor, cpPotions);
+		if (escapeChance > 0)
+		{
+			actor.getInventory().addItem(ItemProcessType.REWARD, ENC_ESCAPE_SCROLL_ID, 1, actor, null);
+			data.encounterEscapeChance = Math.min(100, escapeChance);
+			data.encounterEscapeOnRout = escapeOnRout;
+		}
+		data.encounterActor = true; // last: the pvp tick treats it as an encounter actor from here on
+		return actor;
+	}
+
+	// Runs on every disabled tick, including actors finishing a spawn during the config reload.
+	// Share the spawn lock so cleanup never tears down a partially configured actor.
+	private synchronized void removeDisabledEncounters()
+	{
+		for (PhantomData data : _phantoms.values())
+		{
+			if (!data.encounterActor && !PhantomEncounterRules.isEncounterActor(data.player.getObjectId()))
+			{
+				continue;
+			}
+			PhantomEncounterRules.clearHostile(data.player.getObjectId());
+			try
+			{
+				despawnRecruit(data.player);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Failed to remove disabled encounter actor " + data.player.getObjectId() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/** Exactly {@link #ENC_POTION_COUNT} each of the best healing, CP and mana potions (the outfit's larger healing stack is trimmed). */
+	private static void stockEncounterPotions(Player actor, boolean cpPotions)
+	{
+		for (int id : new int[] { HP_POTION_ID, ENC_CP_POTION_ID, ENC_MP_POTION_ID })
+		{
+			if (!cpPotions && (id == ENC_CP_POTION_ID))
+			{
+				continue;
+			}
+			final Item have = actor.getInventory().getItemByItemId(id);
+			final int count = (have == null) ? 0 : (int) have.getCount();
+			if (count < ENC_POTION_COUNT)
+			{
+				actor.getInventory().addItem(ItemProcessType.REWARD, id, ENC_POTION_COUNT - count, actor, null);
+			}
+			else if (count > ENC_POTION_COUNT)
+			{
+				actor.getInventory().destroyItemByItemId(ItemProcessType.DESTROY, id, count - ENC_POTION_COUNT, actor, null);
+			}
+		}
+		actor.getAutoUseSettings().setAutoPotionItem(HP_POTION_ID);
+	}
+
+	/**
+	 * Once, when HP first falls under {@link #ENC_ESCAPE_BELOW_PERCENT}: a its own percent chance to read the
+	 * scroll (also on a rout, if the actor is set to). It then vanishes and counts as defeated, exactly as if it had died (the group's wipe and any reward follow).
+	 */
+	private boolean tryEncounterEscape(Player phantom, PhantomData data, Player victim, PhantomEncounterRules.EncounterGroup group, long now)
+	{
+		if (data.encounterEscapeRolled)
+		{
+			return false;
+		}
+		final boolean lowHp = phantom.getCurrentHpPercent() < ENC_ESCAPE_BELOW_PERCENT;
+		// A rout: three quarters of the group is down and the player's side now has more people than what is left.
+		final int victimSide = ((victim == null) || (victim.getParty() == null)) ? 1 : victim.getParty().getMemberCount();
+		final boolean rout = data.encounterEscapeOnRout && (group.size() > 1) && ((group.deadCount() * 4) >= (group.size() * 3)) && ((group.size() - group.deadCount()) < victimSide);
+		if (!lowHp && !rout)
+		{
+			return false;
+		}
+		data.encounterEscapeRolled = true;
+		final Item scroll = phantom.getInventory().getItemByItemId(ENC_ESCAPE_SCROLL_ID);
+		if ((scroll == null) || (Rnd.get(100) >= data.encounterEscapeChance))
+		{
+			return false;
+		}
+		sayNearby(phantom, ENC_ESCAPE_LINES); // a parting shot, then the scroll
+		phantom.getInventory().destroyItemByItemId(ItemProcessType.DESTROY, ENC_ESCAPE_SCROLL_ID, 1, phantom, null);
+		phantom.broadcastPacket(new MagicSkillUse(phantom, phantom, ENC_ESCAPE_SKILL_ID, 1, 0, 0));
+		PhantomEncounterRules.clearHostile(phantom.getObjectId());
+		stopEncounterCombat(phantom);
+		if (data.pvpTargetOid != 0)
+		{
+			endPvp(phantom, data, victim);
+		}
+		phantom.setTarget(null);
+		phantom.getAI().setIntention(Intention.IDLE);
+		data.encounterEndAt = now + 1000;
+		if (group.memberDied() && (group.listener() != null) && (victim != null))
+		{
+			try
+			{
+				group.listener().onGroupDefeated(victim.getObjectId(), phantom.getObjectId());
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Encounter listener failed: " + e.getMessage());
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Before the fight: a summoner calls its servitor (and gives it the same buffs a spawned phantom gets, plus its
+	 * shields), then everyone casts its class self-buffs. One new cast per tick, each skill tried once, for at most
+	 * {@link #ENC_PREP_MS} from the spawn. A cast already in progress can finish after that budget.
+	 * @return {@code true} while it is busy with this
+	 */
+	private boolean prepareEncounterActor(Player phantom, PhantomData data, long now)
+	{
+		if (phantom.isDead())
+		{
+			return false;
+		}
+		if (phantom.isCastingNow())
+		{
+			return true;
+		}
+		prepareEncounterPet(phantom, data);
+		if (now >= data.encounterPrepUntil)
+		{
+			return false;
+		}
+		if (!PhantomPartyManager.readyToCast(phantom))
+		{
+			return true; // standing up
+		}
+		if (phantom.getPlayerClass().isSummoner())
+		{
+			final Summon pet = phantom.getSummon();
+			if (pet == null)
+			{
+				PhantomPartyManager.stockServitorCrystals(phantom);
+				final int summonId = PhantomServitorRules.pickSummon(id -> PhantomPartyManager.canCastSupportSkill(phantom, phantom.getKnownSkill(id), phantom));
+				if ((summonId != 0) && data.encounterPrepDone.add(-summonId))
+				{
+					phantom.setTarget(phantom);
+					phantom.doCast(phantom.getKnownSkill(summonId));
+					return true;
+				}
+			}
+			else if (pet.isServitor() && !pet.isDead())
+			{
+				for (int buffId : PhantomServitorRules.SERVITOR_BUFFS)
+				{
+					final Skill buff = phantom.getKnownSkill(buffId);
+					if ((buff != null) && !pet.isAffectedBySkill(buffId) && PhantomPartyManager.canCastSupportSkill(phantom, buff, pet) && data.encounterPrepDone.add(buffId))
+					{
+						phantom.setTarget(pet);
+						phantom.doCast(buff);
+						return true;
+					}
+				}
+			}
+		}
+		for (int id : PhantomEncounterBuffs.forClass(phantom.getPlayerClass().getId()))
+		{
+			final Skill skill = phantom.getKnownSkill(id);
+			if ((skill != null) && !phantom.isAffectedBySkill(id) && PhantomPartyManager.canCastSupportSkill(phantom, skill, phantom) && data.encounterPrepDone.add(id))
+			{
+				phantom.setTarget(phantom);
+				phantom.doCast(skill);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** A summon finishing after the cast budget still receives its kit before combat. */
+	private static void prepareEncounterPet(Player phantom, PhantomData data)
+	{
+		final Summon pet = phantom.getSummon();
+		if ((pet != null) && pet.isServitor() && !pet.isDead() && (data.encounterPetBuffedOid != pet.getObjectId()))
+		{
+			PhantomBuffs.applyFullBuffsToServitor(pet);
+			data.encounterPetBuffedOid = pet.getObjectId();
+		}
+	}
+
+	/** Encounter companions leave immediately when their owner's one fight ends. */
+	private static void stopEncounterCombat(Player phantom)
+	{
+		phantom.abortAttack();
+		phantom.abortCast();
+		final Summon pet = phantom.getSummon();
+		PhantomPartyManager.stopServitorCombat(phantom);
+		if (pet != null)
+		{
+			pet.unSummon(phantom);
+		}
+	}
+
+	/** Recheck the exact encounter pair and native owner target gate before forcing a pet skill. */
+	private static boolean encounterPetAttackAllowed(Player phantom, PhantomData data, Player target)
+	{
+		return (target != null) && !phantom.isDead() && !target.isDead() && data.encounterActor && FakePlayersConfig.PHANTOM_PVP_ENABLED //
+			&& (data.encounterPhase == ENC_FIGHT) && (data.encounterEndAt == 0) //
+			&& PhantomEncounterRules.isHostile(phantom.getObjectId(), target.getObjectId()) //
+			&& (phantom.getInstanceId() == 0) && (target.getInstanceId() == 0) //
+			&& !phantom.isInDuel() && !target.isInDuel() && !phantom.isInOlympiadMode() && !target.isInOlympiadMode() //
+			&& !phantom.isOnEvent() && !target.isOnEvent() && !target.inObserverMode() //
+			&& !phantom.isInsideZone(ZoneId.PEACE) && !phantom.isInsideZone(ZoneId.NO_PVP) //
+			&& !target.isInsideZone(ZoneId.PEACE) && !target.isInsideZone(ZoneId.NO_PVP) && target.isAutoAttackable(phantom);
+	}
+
+	/** Send the servitor at the fight's target and periodically try a native damage skill. */
+	private static void commandEncounterPet(Player phantom, PhantomData data, Player target)
+	{
+		final Summon pet = phantom.getSummon();
+		if (!encounterPetAttackAllowed(phantom, data, target))
+		{
+			PhantomPartyManager.stopServitorCombat(phantom);
+			if (pet != null)
+			{
+				pet.unSummon(phantom);
+			}
+			return;
+		}
+		if ((pet == null) || !pet.isServitor() || pet.isDead() || pet.isCastingNow())
+		{
+			return;
+		}
+		if ((pet.getAI().getIntention() != Intention.ATTACK) || (pet.getAI().getAttackTarget() != target))
+		{
+			pet.doSummonAttack(target);
+		}
+		final long now = System.currentTimeMillis();
+		if ((now - data.encounterPetSkillAt) < ENC_PET_SKILL_GAP_MS)
+		{
+			return;
+		}
+		if (PhantomPartyManager.tryServitorUtility(pet, target, true))
+		{
+			data.encounterPetSkillAt = now;
+			return;
+		}
+		for (Skill skill : PetSkillData.getInstance().getKnownSkills(pet))
+		{
+			if (!skill.isPassive() && skill.isDamage() && !pet.isSkillDisabled(skill) && (pet.getCurrentMp() >= skill.getMpConsume()))
+			{
+				pet.setTarget(target);
+				if (pet.useMagic(skill, true, false))
+				{
+					data.encounterPetSkillAt = now;
+					return;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Every tick, each potion that is needed and off its own cooldown is drunk: CP and HP below full, MP below 90%. Each
+	 * kind waits on its item's reuse (CP and mana 0.5 s, healing 10 s), so CP and mana are spammed and healing goes the
+	 * moment it is ready.
+	 */
+	private static void drinkEncounterPotions(Player phantom, PhantomData data)
+	{
+		if (phantom.isDead() || phantom.isAlikeDead())
+		{
+			return;
+		}
+		final int[] ids = { ENC_CP_POTION_ID, HP_POTION_ID, ENC_MP_POTION_ID };
+		final boolean[] needed = { data.encounterCpPotions && (phantom.getCurrentCpPercent() < ENC_CP_BELOW_PERCENT), phantom.getCurrentHpPercent() < ENC_HP_BELOW_PERCENT, phantom.getCurrentMpPercent() < ENC_MP_BELOW_PERCENT };
+		for (int i = 0; i < ids.length; i++)
+		{
+			if (!needed[i])
+			{
+				continue;
+			}
+			final Item potion = phantom.getInventory().getItemByItemId(ids[i]);
+			if ((potion == null) || (potion.getCount() <= 0) || (potion.getEtcItem() == null) || (phantom.getItemRemainingReuseTime(potion.getObjectId()) > 0))
+			{
+				continue;
+			}
+			try
+			{
+				ItemHandler.getInstance().getHandler(potion.getEtcItem()).onItemUse(phantom, potion, false);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(PhantomManager.class.getSimpleName() + ": Encounter potion failed: " + e.getMessage());
+			}
+		}
+	}
+
+	/** @return how many encounters are running (a group of actors counts once, until its last actor is gone). */
+	public int activeEncounterCount()
+	{
+		final java.util.Set<PhantomEncounterRules.EncounterGroup> groups = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+		for (PhantomData data : _phantoms.values())
+		{
+			if (data.encounterActor && (data.encounterGroup != null))
+			{
+				groups.add(data.encounterGroup);
+			}
+		}
+		return groups.size();
+	}
+
+	/** @return {@code true} if an encounter actor is currently out for this player. */
+	public boolean hasEncounterFor(Player victim)
+	{
+		if (victim == null)
+		{
+			return false;
+		}
+		final int oid = victim.getObjectId();
+		for (PhantomData data : _phantoms.values())
+		{
+			if (data.encounterActor && (data.encounterVictimOid == oid))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private Player encounterVictim(PhantomData data)
+	{
+		final WorldObject object = World.getInstance().findObject(data.encounterVictimOid);
+		return (object instanceof Player) ? (Player) object : null;
+	}
+
+	/** One tick of an encounter actor's script: close in, (maybe ask), fight once, then leave. */
+	private void serviceEncounter(Player phantom, PhantomData data, long now)
+	{
+		final PhantomEncounterRules.EncounterGroup group = data.encounterGroup;
+		final PhantomEncounterRules.Style style = group.style();
+		if (data.encounterEndAt > 0)
+		{
+			if (now >= data.encounterEndAt)
+			{
+				despawnRecruit(phantom);
+			}
+			return;
+		}
+		final Player victim = encounterVictim(data);
+		if (phantom.isDead())
+		{
+			PhantomEncounterRules.clearHostile(phantom.getObjectId());
+			stopEncounterCombat(phantom);
+			if ((style.defeatLines.length > 0) && group.claimDefeatLine())
+			{
+				sayNearby(phantom, style.defeatLines); // the first to fall whines
+			}
+			data.encounterEndAt = now + ENC_CORPSE_MS; // it lost: the body lies there a moment, then goes
+			if (group.memberDied() && (group.listener() != null) && (victim != null))
+			{
+				try
+				{
+					group.listener().onGroupDefeated(victim.getObjectId(), phantom.getObjectId()); // the whole group is down
+				}
+				catch (Exception e)
+				{
+					LOGGER.warning(getClass().getSimpleName() + ": Encounter listener failed: " + e.getMessage());
+				}
+			}
+			return;
+		}
+		final boolean gone = (victim == null) || !victim.isOnline() || victim.isInsideZone(ZoneId.PEACE) || victim.isInsideZone(ZoneId.NO_PVP) || (victim.getInstanceId() != 0) //
+			|| phantom.isInsideZone(ZoneId.PEACE) || phantom.isInsideZone(ZoneId.NO_PVP) || (phantom.getInstanceId() != 0) //
+			|| victim.isInDuel() || phantom.isInDuel() || victim.isInOlympiadMode() || phantom.isInOlympiadMode() //
+			|| victim.isOnEvent() || phantom.isOnEvent() || victim.inObserverMode() || (phantom.calculateDistance2D(victim) > ENC_LEASH);
+		if (gone || (!data.encounterPreparing && (now >= data.encounterDeadline)))
+		{
+			endEncounter(phantom, data, victim, now, 1500, false); // victim escaped or the clock ran out: it simply leaves
+			return;
+		}
+		if (victim.isDead())
+		{
+			endEncounter(phantom, data, victim, now, ENC_LEAVE_MS, true); // it won
+			return;
+		}
+		if ((data.encounterEscapeChance > 0) && tryEncounterEscape(phantom, data, victim, group, now))
+		{
+			return; // it read its scroll and is gone: counted as down
+		}
+		prepareEncounterPet(phantom, data);
+		if (data.encounterPreparing)
+		{
+			if (prepareEncounterActor(phantom, data, now))
+			{
+				return; // let an initial cast finish, even if the group's fight has started
+			}
+			data.encounterPreparing = false;
+			data.encounterDeadline = now + (style.approachSeconds * 1000L);
+		}
+		final double distance = phantom.calculateDistance2D(victim);
+		switch (data.encounterPhase)
+		{
+			case ENC_APPROACH:
+			{
+				// Once any actor of the group attacks, they all join in.
+				if (group.isFighting() || (style.approach == PhantomEncounterRules.Approach.STRIKE_ON_ARRIVAL))
+				{
+					startEncounterFight(phantom, data, victim, now);
+					return;
+				}
+				if (style.approach == PhantomEncounterRules.Approach.ASK_FIRST)
+				{
+					if (distance > ENC_CLOSE_RANGE)
+					{
+						walkToward(phantom, victim);
+						return;
+					}
+					phantom.getAI().setIntention(Intention.IDLE);
+					phantom.setTarget(victim);
+					if (group.claimSpeech(now) && (style.askLines.length > 0))
+					{
+						sayNearby(phantom, style.askLines); // one of the group asks, the rest stand by
+					}
+					data.encounterPhase = ENC_WARN;
+					return;
+				}
+				// WAIT_FOR_MOMENT: close in quietly, then pick the moment.
+				if (distance > ENC_STRIKE_RANGE)
+				{
+					walkToward(phantom, victim);
+					return;
+				}
+				if ((Math.abs(victim.getX() - data.encounterLastX) + Math.abs(victim.getY() - data.encounterLastY)) > 40)
+				{
+					data.encounterLastX = victim.getX();
+					data.encounterLastY = victim.getY();
+					data.encounterLastMoveAt = now;
+				}
+				final boolean busy = (victim.getTarget() != null) && victim.getTarget().isMonster() && AttackStanceTaskManager.getInstance().hasAttackStanceTask(victim);
+				if (PhantomEncounterRules.momentReady(busy, now - data.encounterLastMoveAt, style.stillSeconds * 1000L))
+				{
+					startEncounterFight(phantom, data, victim, now);
+				}
+				else if (distance > (ENC_CLOSE_RANGE * 2))
+				{
+					walkToward(phantom, victim); // keep on its tail while it moves
+				}
+				return;
+			}
+			case ENC_WARN:
+			{
+				final boolean hitFirst = hostilePvpAttacker(phantom, data, now) == victim;
+				if (group.isFighting() || PhantomEncounterRules.mayStrikeAfterWarning(now, group.warnedAt(), style.warnSeconds * 1000L, hitFirst))
+				{
+					startEncounterFight(phantom, data, victim, now);
+				}
+				return;
+			}
+			default:
+			{
+				drinkEncounterPotions(phantom, data);
+				if (data.pvpTargetOid != 0)
+				{
+					continuePvp(phantom, data, now);
+				}
+				else if (distance <= PVP_LEASH_RANGE)
+				{
+					beginPvp(phantom, data, victim, now); // the 60 s engagement cap lapsed mid-fight: it is still one fight
+				}
+				else
+				{
+					endEncounter(phantom, data, victim, now, 1500, false);
+				}
+			}
+		}
+	}
+
+	private void startEncounterFight(Player phantom, PhantomData data, Player victim, long now)
+	{
+		if (data.encounterGroup.claimStrikeLine() && (data.encounterGroup.style().strikeLines.length > 0))
+		{
+			sayNearby(phantom, data.encounterGroup.style().strikeLines); // one of them talks trash as it starts
+		}
+		data.encounterGroup.startFight();
+		data.encounterPhase = ENC_FIGHT;
+		data.encounterDeadline = now + (data.encounterGroup.style().fightSeconds * 1000L);
+		PhantomEncounterRules.markHostile(phantom.getObjectId(), victim.getObjectId());
+		LOGGER.info(getClass().getSimpleName() + ": Encounter fight starts: " + phantom.getName() + " (lvl " + phantom.getLevel() + ") vs " + victim.getName() + " (lvl " + victim.getLevel() + ").");
+		beginPvp(phantom, data, victim, now);
+	}
+
+	private void endEncounter(Player phantom, PhantomData data, Player victim, long now, long leaveMs, boolean won)
+	{
+		PhantomEncounterRules.clearHostile(phantom.getObjectId());
+		stopEncounterCombat(phantom);
+		if (data.pvpTargetOid != 0)
+		{
+			endPvp(phantom, data, victim);
+		}
+		phantom.setTarget(null);
+		phantom.getAI().setIntention(Intention.IDLE);
+		final String[] winLines = data.encounterGroup.style().winLines;
+		if (won && (winLines.length > 0) && data.encounterGroup.claimWinLine())
+		{
+			sayNearby(phantom, winLines);
+		}
+		LOGGER.info(getClass().getSimpleName() + ": Encounter over: " + phantom.getName() + (won ? " won" : " left") + ".");
+		data.encounterEndAt = now + leaveMs;
+	}
+
+	private static void walkToward(Player phantom, Player victim)
+	{
+		if (phantom.isCastingNow())
+		{
+			return;
+		}
+		phantom.setRunning();
+		phantom.getAI().setIntention(Intention.MOVE_TO, new Location(victim.getX(), victim.getY(), victim.getZ()));
+	}
+
+	/** Begins a PvP engagement: records the opponent, detaches the phantom from the hunt, and drives the first decision. */
+	private void beginPvp(Player phantom, PhantomData data, Player attacker, long now)
+	{
+		// Claim atomically (FPC-114); nextPvpDecisionAt starts at 0 so stand-or-flee is decided now.
+		if (!claimEngagement(data, attacker.getObjectId(), now + PVP_ENGAGE_MAX_MS, DUEL_NONE))
+		{
+			return; // a duel answer or party defense claimed this phantom first
+		}
+		detachFromHunt(phantom, data);
+		// The playstyle skills stay PARKED in the engine: drivePvp drives them through tryHunterPlaystyle against the
+		// Player target (the engine is now Creature-typed), so every class uses its tuned rotation in PvP, not just a
+		// round-robin AutoUse dump, and a mage kites and nukes instead of meleeing. A no-playstyle phantom has nothing
+		// parked, so its AutoUse keeps casting as before.
+		drivePvp(phantom, data, attacker, now);
+	}
+
+	/**
+	 * Detaches a field hunter from its hunt for a PvP engagement or a duel. Idempotent, so a duel phase can call it
+	 * every tick. A recruited member or buddy is left alone: PhantomPartyManager defers while pvpTargetOid != 0.
+	 */
+	private void detachFromHunt(Player phantom, PhantomData data)
+	{
+		if (data.recruited || data.role.isBuddy())
+		{
+			return;
+		}
+		// Stop the native auto-play target scanner so it does not re-acquire a monster over our player target; keep
+		// AutoUse running so shots, self-buffs, and (for a no-playstyle phantom) offensive skills still fire in PvP.
+		if (phantom.isAutoPlaying())
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+		}
+		if (data.resting)
+		{
+			endRest(phantom);
+			data.resting = false;
+		}
+		setClaimedMob(data, 0); // release any monster it owned to the hunt pool
+	}
+
+	/** Validates the current opponent (alive, in range, out of a peace zone, engagement not expired) then drives it, or disengages. */
+	private void continuePvp(Player phantom, PhantomData data, long now)
+	{
+		if (data.duelPhase != DUEL_NONE)
+		{
+			continueDuel(phantom, data, now); // a formal duel has its own lifecycle, cap, and no flee
+			return;
+		}
+		final Player target = resolvePvpTarget(data);
+		final boolean gone = (target == null) || target.isDead() || target.isInsideZone(ZoneId.PEACE) || (phantom.calculateDistance2D(target) > PVP_LEASH_RANGE);
+		if ((now >= data.pvpUntil) || gone)
+		{
+			endPvp(phantom, data, target);
+			return;
+		}
+		drivePvp(phantom, data, target, now);
+	}
+
+	/**
+	 * The per-tick stand-or-flee driver. Re-decides at most once per {@link #PVP_DECISION_HOLD_MS} to avoid thrashing.
+	 * A fleeing phantom that still cannot open distance from its attacker (cornered) turns and fights.
+	 */
+	private void drivePvp(Player phantom, PhantomData data, Player target, long now)
+	{
+		PhantomClassRecovery.cancel(phantom); // release meditation before either fighting or fleeing
+		if (now >= data.nextPvpDecisionAt)
+		{
+			data.nextPvpDecisionAt = now + PVP_DECISION_HOLD_MS;
+			final boolean cornered = data.pvpFleeing && (phantom.calculateDistance2D(target) < PVP_CORNERED_RANGE);
+			// Situational sizing (FPC-081): outnumbering the enemy lets it stand longer, being outnumbered flees sooner,
+			// and an out-of-mana caster flees sooner. allyAdvantage is nearby allies minus nearby hostiles.
+			final int allyAdvantage = pvpAllyAdvantage(phantom);
+			final boolean casterLowMp = data.mage && (phantom.getCurrentMpPercent() < PVP_CASTER_LOW_MP_PERCENT);
+			final boolean flee = !data.encounterActor && !cornered && PhantomPvpManager.shouldFlee((int) phantom.getCurrentHpPercent(), FakePlayersConfig.PHANTOM_PVP_FLEE_HP_PERCENT, data.bravery, phantom.getLevel(), target.getLevel(), allyAdvantage, casterLowMp);
+			data.pvpFleeing = flee;
+		}
+		if (data.pvpFleeing)
+		{
+			fleeFrom(phantom, target);
+		}
+		else
+		{
+			pvpStandCombat(phantom, data, target);
+		}
+	}
+
+	/**
+	 * Stand-and-fight combat for a PvP tick, using the same class-combat primitives as the PvE hunt so every class
+	 * fights in PvP the way it fights monsters. A mage kites to cast range and nukes (it never melees); a fighter
+	 * approaches and auto-attacks. Offensive skills come from the (now Creature-typed) playstyle engine via
+	 * {@link #tryHunterPlaystyle}; a no-playstyle class falls back to its AutoUse casting, exactly as in PvE.
+	 */
+	private void pvpStandCombat(Player phantom, PhantomData data, Player target)
+	{
+		phantom.setTarget(target);
+		if (data.encounterActor && phantom.getPlayerClass().isSummoner())
+		{
+			commandEncounterPet(phantom, data, target); // a summoner's servitor fights beside it
+		}
+		if (data.mage)
+		{
+			if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER)
+			{
+				positionMage(phantom, target);
+				tryHunterPlaystyle(phantom, target, data);
+				return;
+			}
+			// Caster: hold at cast range and nuke, never walk in to melee. Out of range, close the gap first.
+			if (phantom.calculateDistance2D(target) > (MAGE_CAST_RANGE + MAGE_RANGE_TOLERANCE))
+			{
+				positionMage(phantom, target);
+				return;
+			}
+			tryHunterPlaystyle(phantom, target, data); // in range: cast the tuned rotation (or AutoUse for a no-playstyle mage)
+			return;
+		}
+		// Archer: step back from a melee opponent that has closed in, then shoot from range again (L2Solo style).
+		if (kiteFrom(phantom, data, target))
+		{
+			return;
+		}
+		// Dagger: step to the opponent's back while it cannot turn on us (FPC-144); the attack resumes once there.
+		if (positionHunterRear(phantom, data, target))
+		{
+			return;
+		}
+		// Fighter: approach and auto-attack (the base ATTACK intention), then let the engine fire its class skills at
+		// the paced moments. tryHunterPlaystyle no-ops for a no-playstyle fighter, whose AutoUse casts as before.
+		engageTarget(phantom, target);
+		tryHunterPlaystyle(phantom, target, data);
+	}
+
+	/**
+	 * Archer kiting in PvP: a bow phantom whose melee opponent has closed to {@link PhantomPvpManager#KITE_TRIGGER_RANGE}
+	 * runs straight away from it to about {@link PhantomPvpManager#KITE_RETREAT_DISTANCE}, at most once per
+	 * {@link PhantomPvpManager#KITE_COOLDOWN_MS}, and is left to finish that run before it re-engages. A party member
+	 * never kites to a spot far from its leader, and a spot the geodata cannot reach is skipped (it shoots on instead).
+	 * @return {@code true} while a kite step is under way (the caller skips its attack this tick)
+	 */
+	private boolean kiteFrom(Player phantom, PhantomData data, Player target)
+	{
+		final long now = System.currentTimeMillis();
+		if ((data.lastKiteAt > 0) && ((now - data.lastKiteAt) < KITE_RUN_MS) && phantom.isMoving())
+		{
+			return true; // mid-step: let it land before re-engaging (an ATTACK now would cancel the run)
+		}
+		final Weapon weapon = phantom.getActiveWeaponItem();
+		final Weapon opponentWeapon = target.getActiveWeaponItem();
+		final boolean bow = (weapon != null) && (weapon.getItemType() == WeaponType.BOW);
+		final boolean opponentMelee = !target.getPlayerClass().isMage() && ((opponentWeapon == null) || (opponentWeapon.getItemType() != WeaponType.BOW));
+		final boolean canMove = !phantom.isMovementDisabled() && !phantom.isCastingNow();
+		if (!PhantomPvpManager.shouldKite(PhantomPvpManager.archerKitingEnabled(), bow, opponentMelee, phantom.calculateDistance2D(target), canMove, phantom.isInsideZone(ZoneId.PEACE), data.lastKiteAt, now))
+		{
+			return false;
+		}
+		final double angle = Math.atan2(phantom.getY() - target.getY(), phantom.getX() - target.getX());
+		final int x = target.getX() + (int) (Math.cos(angle) * PhantomPvpManager.KITE_RETREAT_DISTANCE);
+		final int y = target.getY() + (int) (Math.sin(angle) * PhantomPvpManager.KITE_RETREAT_DISTANCE);
+		final Location destination = GeoEngine.getInstance().getValidLocation(phantom, new Location(x, y, phantom.getZ()));
+		if (phantom.calculateDistance2D(destination) < KITE_MIN_STEP)
+		{
+			data.lastKiteAt = now; // cornered: no room to back off, so shoot on and try again after the cooldown
+			return false;
+		}
+		final Party party = phantom.getParty();
+		if ((party != null) && (party.getLeader() != phantom) && (party.getLeader().calculateDistance2D(destination) > KITE_LEADER_LEASH))
+		{
+			data.lastKiteAt = now;
+			return false;
+		}
+		data.lastKiteAt = now;
+		if (phantom.isAttackingNow())
+		{
+			phantom.abortAttack();
+		}
+		phantom.setRunning();
+		phantom.getAI().setIntention(Intention.MOVE_TO, destination);
+		return true;
+	}
+
+	/** Turns the phantom to attack the target, letting the core AI drive the approach, swing, and AutoUse casting. */
+	private void engageTarget(Player phantom, Player target)
+	{
+		phantom.setTarget(target);
+		if ((phantom.getAI().getIntention() != Intention.ATTACK) || (phantom.getAI().getAttackTarget() != target))
+		{
+			phantom.getAI().setIntention(Intention.ATTACK, target);
+		}
+	}
+
+	/**
+	 * Retreats the phantom one short {@link #PVP_FLEE_STEP} away from its attacker, re-issued each time the previous
+	 * step finishes so the client animates a continuous run rather than one long lurch. Two things keep it from
+	 * reading as a teleport: it never yanks the phantom out of a cast mid-animation (that abrupt cast-to-move handoff
+	 * is what the client snaps), and it drops the attack target only once at the start of the flight rather than every
+	 * tick, so AutoUse does not keep pulling it back into a swing.
+	 */
+	private void fleeFrom(Player phantom, Player attacker)
+	{
+		// Let any in-progress cast finish before moving; issuing MOVE_TO mid-cast is what pops the client position.
+		if (phantom.isCastingNow() || phantom.isMoving())
+		{
+			return;
+		}
+		// Stop aiming a target while running, so AutoUse does not re-engage; do it once (target is null after).
+		if (phantom.getTarget() != null)
+		{
+			phantom.setTarget(null);
+		}
+		final double angle = Math.atan2(phantom.getY() - attacker.getY(), phantom.getX() - attacker.getX());
+		final int x = phantom.getX() + (int) (Math.cos(angle) * PVP_FLEE_STEP);
+		final int y = phantom.getY() + (int) (Math.sin(angle) * PVP_FLEE_STEP);
+		final Location destination = GeoEngine.getInstance().getValidLocation(phantom, new Location(x, y, phantom.getZ()));
+		phantom.getAI().setIntention(Intention.MOVE_TO, destination);
+	}
+
+	/** Ends a PvP engagement, forgets the opponent so it does not instantly re-trigger, and resumes normal hunting. */
+	private void endPvp(Player phantom, PhantomData data, Player target)
+	{
+		// Clear the "you hit me" record so self-defense does not immediately re-fire on the same, now-resolved attacker.
+		// A fresh hit after this point rewrites it through the damage listener and re-engages normally.
+		_recentPvpVictims.remove(phantom.getObjectId());
+		if (data.duelPhase == DUEL_ASKED)
+		{
+			releaseDuelRequest(phantom, target); // FPC-113: never leave a challenge open that nothing will follow up
+		}
+		// The next engagement starts fresh: its openers (Ultimate Evasion) may fire again on this same player, and a dagger
+		// that gave up reaching this player's back (a wall) tries again.
+		if (target != null)
+		{
+			PhantomPlaystyleEngine.forgetTarget(playStateFor(phantom, data), target.getObjectId());
+		}
+		data.rearTargetId = 0;
+		data.rearTries = 0;
+		synchronized (data)
+		{
+			data.pvpUntil = 0;
+			data.pvpFleeing = false;
+			data.nextPvpDecisionAt = 0;
+			data.duelPhase = DUEL_NONE;
+			data.duelAnsweredAt = 0;
+			data.duelOutcome = DUEL_OUTCOME_NONE;
+			data.pvpTargetOid = 0; // last, under the claim lock (FPC-114)
+		}
+		if (phantom.isDead() || data.dormant || data.dispersing)
+		{
+			return; // nothing to resume
+		}
+		if (!data.recruited && !data.role.isBuddy())
+		{
+			yieldTarget(phantom);
+			enableAutoHunt(phantom, data.mage, data);
+			return;
+		}
+		// A recruited member or buddy defender: hand control back to PhantomPartyManager by dropping the PvP target and
+		// idling. It is no longer deferred (pvpTargetOid == 0), so its next party tick re-establishes follow/assist.
+		phantom.setTarget(null);
+		phantom.getAI().setIntention(Intention.IDLE);
+	}
+
+	// ---------------------------------------------------------------------
+	// Phase 3: duels. The stock duel system runs the duel itself (countdown, no death, no karma, HP restore); this
+	// code answers challenges a phantom cannot answer without a client, issues the occasional challenge, and drives
+	// the phantom's fight through the same PvP driver every other engagement uses.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * Stock seam, called from {@code RequestDuelStart} once every stock check has passed for a 1v1 challenge. A
+	 * phantom has no client to show the challenge dialog to, so the phantom answers it here after a short pause.
+	 * @param challenger the player issuing the challenge
+	 * @param target the challenged player
+	 * @return {@code true} if the target is a phantom and the challenge was taken over here, so the stock handler must
+	 *         not send it to a client; {@code false} for any other target (the stock flow runs unchanged)
+	 */
+	public boolean answerDuelChallenge(Player challenger, Player target)
+	{
+		if ((challenger == null) || (target == null) || !isPhantom(target))
+		{
+			return false;
+		}
+		if (target.isProcessingRequest())
+		{
+			return false; // busy with another request: the stock handler sends its normal "busy" reply
+		}
+		challenger.onTransactionRequest(target);
+		final SystemMessage challenged = new SystemMessage(SystemMessageId.S1_HAS_BEEN_CHALLENGED_TO_A_DUEL);
+		challenged.addString(target.getName());
+		challenger.sendPacket(challenged);
+		ThreadPool.schedule(() -> resolveDuelChallenge(challenger, target), Rnd.get(DUEL_ANSWER_DELAY_MIN_MS, DUEL_ANSWER_DELAY_MAX_MS));
+		return true;
+	}
+
+	/**
+	 * Stock seam, called from {@code RequestDuelStart} for a party duel whose opposing party leader is a phantom. A
+	 * phantom never leads a party today, so this is a safety net: the challenge is declined instead of left unanswered.
+	 * @param challenger the party leader issuing the challenge
+	 * @param partyLeader the opposing party's leader
+	 * @return {@code true} if the leader is a phantom and the challenge was declined here
+	 */
+	public boolean declinePartyDuelChallenge(Player challenger, Player partyLeader)
+	{
+		if ((challenger == null) || !isPhantom(partyLeader))
+		{
+			return false;
+		}
+		challenger.sendPacket(SystemMessageId.THE_OPPOSING_PARTY_HAS_DECLINED_YOUR_CHALLENGE_TO_A_DUEL);
+		return true;
+	}
+
+	/** Answers a pending challenge to a phantom: accept or decline, with the same messages the stock answer handler sends. */
+	private void resolveDuelChallenge(Player challenger, Player phantom)
+	{
+		if (phantom.getActiveRequester() != challenger)
+		{
+			return; // the request expired or was replaced while the phantom was "thinking"
+		}
+		try
+		{
+			final PhantomData data = _phantoms.get(phantom.getObjectId());
+			// Reserve the phantom before starting the duel (FPC-114), so a claim that won the race makes it decline.
+			if ((data != null) && mayAcceptDuel(challenger, phantom, data) && armDuel(data, challenger, DUEL_COUNTDOWN))
+			{
+				final SystemMessage accepted = new SystemMessage(SystemMessageId.S1_HAS_ACCEPTED_YOUR_CHALLENGE_TO_A_DUEL_THE_DUEL_WILL_BEGIN_IN_A_FEW_MOMENTS);
+				accepted.addString(phantom.getName());
+				challenger.sendPacket(accepted);
+				sayNearby(phantom, DUEL_ACCEPT_LINES);
+				DuelManager.getInstance().addDuel(challenger, phantom, 0);
+			}
+			else
+			{
+				final SystemMessage declined = new SystemMessage(SystemMessageId.S1_HAS_DECLINED_YOUR_CHALLENGE_TO_A_DUEL);
+				declined.addPcName(phantom);
+				challenger.sendPacket(declined);
+				sayNearby(phantom, DUEL_DECLINE_LINES);
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": duel answer error for " + phantom.getName() + ": " + e.getMessage());
+		}
+		finally
+		{
+			phantom.setActiveRequester(null);
+			challenger.onTransactionResponse();
+		}
+	}
+
+	/**
+	 * @param challenger the player (or phantom) issuing the challenge
+	 * @param phantom the challenged phantom
+	 * @param data the challenged phantom's state bag
+	 * @return {@code true} if the phantom accepts. It must be free (not already fighting, dispersing, or dormant) and
+	 *         both sides must still pass the stock {@code canDuel} checks, since a monster may have pulled either one
+	 *         while the phantom was deciding. A recruited member, buddy, or befriended regular of the challenger
+	 *         always spars with it; anyone else rolls on honor and the level gap.
+	 */
+	private boolean mayAcceptDuel(Player challenger, Player phantom, PhantomData data)
+	{
+		if (!PhantomPvpManager.duelsEnabled() || !challenger.isOnline() || challenger.isDead() || phantom.isDead())
+		{
+			return false;
+		}
+		if (data.olympian || data.dormant || data.dispersing || (data.pvpTargetOid != 0) || challenger.isInDuel() || phantom.isInDuel())
+		{
+			return false;
+		}
+		if ((phantom.getPvpFlag() != 0) || (challenger.getPvpFlag() != 0))
+		{
+			return false; // the stock duel refuses to start while either side is PvP-flagged
+		}
+		if (!validPvpOpponent(phantom, challenger) || !phantom.canDuel() || !challenger.canDuel())
+		{
+			return false; // includes the phantom-versus-phantom gate for a phantom challenger
+		}
+		if (isBoundTo(phantom, data, challenger))
+		{
+			return true;
+		}
+		return PhantomPvpManager.shouldAcceptDuel(Rnd.get(100), data.honor, phantom.getLevel(), challenger.getLevel());
+	}
+
+	/** @return {@code true} if this phantom serves {@code player}: its recruited party member, buddy, or befriended regular. */
+	private static boolean isBoundTo(Player phantom, PhantomData data, Player player)
+	{
+		if (data.friendOwnerId == player.getObjectId())
+		{
+			return true;
+		}
+		return (data.recruited || data.role.isBuddy()) && phantom.isInParty() && (phantom.getParty() == player.getParty());
+	}
+
+	/**
+	 * Claims a phantom for a duel step. Only records state (the pvpCombat tick does all AI work), so it is safe to call
+	 * from the duel answer task. The claim is atomic, so a phantom already engaged is never double-booked.
+	 * @return {@code true} if the phantom was free and is now reserved for this duel
+	 */
+	private static boolean armDuel(PhantomData data, Player opponent, int phase)
+	{
+		final long until = System.currentTimeMillis() + ((phase == DUEL_APPROACH) ? DUEL_APPROACH_MAX_MS : DUEL_COUNTDOWN_MAX_MS);
+		return claimEngagement(data, opponent.getObjectId(), until, phase);
+	}
+
+	/**
+	 * Withdraws a phantom's open duel challenge to a real player (FPC-113): the player's pending request, if it still
+	 * points at this phantom, and the phantom's own request timer. After this a late click on the player's dialog does
+	 * nothing, exactly as if the request had expired. Phantoms send no other transaction requests, so clearing the
+	 * phantom's timer never cancels anything else.
+	 */
+	private static void releaseDuelRequest(Player phantom, Player opponent)
+	{
+		if ((opponent != null) && (opponent.getActiveRequester() == phantom))
+		{
+			opponent.setActiveRequester(null);
+		}
+		phantom.onTransactionResponse();
+	}
+
+	/** @return {@code true} if this phantom is in any step of a formal duel (so PhantomBuddyManager holds its support routine). */
+	public boolean isDuelEngaged(Player phantom)
+	{
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		return (data != null) && (data.pvpTargetOid != 0) && (data.duelPhase != DUEL_NONE);
+	}
+
+	/** Drives one pvpCombat tick of a duel engagement through its current phase. */
+	private void continueDuel(Player phantom, PhantomData data, long now)
+	{
+		final Player opponent = resolvePvpTarget(data);
+		switch (data.duelPhase)
+		{
+			case DUEL_APPROACH -> approachDuel(phantom, data, opponent, now);
+			case DUEL_ASKED -> awaitDuelAnswer(phantom, data, opponent, now);
+			case DUEL_COUNTDOWN -> awaitDuelStart(phantom, data, opponent, now);
+			default -> fightDuel(phantom, data, opponent, now);
+		}
+	}
+
+	/**
+	 * A challenging phantom walks up to its opponent, then asks. A real player gets the stock challenge dialog and
+	 * answers through the stock {@code RequestDuelAnswerStart}; a phantom opponent answers here at once.
+	 */
+	private void approachDuel(Player phantom, PhantomData data, Player opponent, long now)
+	{
+		if ((opponent == null) || opponent.isDead() || (now >= data.pvpUntil) || opponent.isProcessingRequest())
+		{
+			endPvp(phantom, data, opponent);
+			return;
+		}
+		detachFromHunt(phantom, data);
+		if (phantom.calculateDistance2D(opponent) > DUEL_ASK_RANGE)
+		{
+			phantom.getAI().setIntention(Intention.MOVE_TO, opponent.getLocation()); // re-aimed each tick as the opponent moves
+			return;
+		}
+		holdForDuel(phantom, opponent);
+		if (!phantom.canDuel() || !opponent.canDuel())
+		{
+			endPvp(phantom, data, opponent); // something pulled one of them into a fight on the way over
+			return;
+		}
+		sayNearby(phantom, DUEL_CHALLENGE_LINES);
+		final PhantomData other = _phantoms.get(opponent.getObjectId());
+		if (other != null)
+		{
+			// Phantom versus phantom: the opponent has no client either, so it answers right here.
+			// Reserve the opponent first (FPC-114), so it cannot be booked by another challenge or engagement meanwhile.
+			if (mayAcceptDuel(phantom, opponent, other) && armDuel(other, phantom, DUEL_COUNTDOWN))
+			{
+				sayNearby(opponent, DUEL_ACCEPT_LINES);
+				DuelManager.getInstance().addDuel(phantom, opponent, 0);
+				data.duelPhase = DUEL_COUNTDOWN;
+				data.pvpUntil = now + DUEL_COUNTDOWN_MAX_MS;
+			}
+			else
+			{
+				sayNearby(opponent, DUEL_DECLINE_LINES);
+				endPvp(phantom, data, opponent);
+			}
+			return;
+		}
+		// A real player: the same packets the stock RequestDuelStart sends, so the normal accept dialog appears.
+		phantom.onTransactionRequest(opponent);
+		opponent.sendPacket(new ExDuelAskStart(phantom.getName(), 0));
+		final SystemMessage challenged = new SystemMessage(SystemMessageId.S1_HAS_CHALLENGED_YOU_TO_A_DUEL);
+		challenged.addString(phantom.getName());
+		opponent.sendPacket(challenged);
+		data.duelPhase = DUEL_ASKED;
+		data.duelAnsweredAt = 0;
+		data.pvpUntil = now + (Player.REQUEST_TIMEOUT * 1000L) + DUEL_COUNTDOWN_MAX_MS;
+	}
+
+	/**
+	 * A challenging phantom waits for a real player's answer. Accepting starts the stock countdown and the phantom sees
+	 * itself enter the duel; declining or letting the request expire ends the wait once the countdown window passes.
+	 */
+	private void awaitDuelAnswer(Player phantom, PhantomData data, Player opponent, long now)
+	{
+		// Answered or expired once the request timer clears. An acceptance starts the duel within the stock countdown;
+		// nothing starting by then means a decline or no answer. endPvp withdraws any request still open (FPC-113).
+		final boolean pending = phantom.isProcessingRequest();
+		if (!pending && (data.duelAnsweredAt == 0))
+		{
+			data.duelAnsweredAt = now;
+		}
+		applyDuelWaitStep(phantom, data, opponent, now, PhantomPvpManager.duelWaitStep(opponent != null, phantom.isInDuel(), pending, data.duelAnsweredAt, now, data.pvpUntil, DUEL_COUNTDOWN_MAX_MS));
+	}
+
+	/** An accepted duel is counting down: hold still facing the opponent until the stock duel starts. */
+	private void awaitDuelStart(Player phantom, PhantomData data, Player opponent, long now)
+	{
+		detachFromHunt(phantom, data);
+		// No request is pending here, so this holds until the duel starts or the deadline passes (it never started).
+		applyDuelWaitStep(phantom, data, opponent, now, PhantomPvpManager.duelWaitStep(opponent != null, phantom.isInDuel(), false, 0, now, data.pvpUntil, DUEL_COUNTDOWN_MAX_MS));
+	}
+
+	/** Carries out a {@link PhantomPvpManager#duelWaitStep} verdict for the asked and countdown steps. */
+	private void applyDuelWaitStep(Player phantom, PhantomData data, Player opponent, long now, int step)
+	{
+		if (step == PhantomPvpManager.DUEL_WAIT_FIGHT)
+		{
+			startDuelFight(data, now);
+		}
+		else if (step == PhantomPvpManager.DUEL_WAIT_END)
+		{
+			endPvp(phantom, data, opponent);
+		}
+		else
+		{
+			holdForDuel(phantom, opponent);
+		}
+	}
+
+	private void startDuelFight(PhantomData data, long now)
+	{
+		data.duelPhase = DUEL_FIGHTING;
+		data.pvpUntil = now + DUEL_FIGHT_MAX_MS;
+		data.nextPvpDecisionAt = 0;
+	}
+
+	/**
+	 * The duel is running: fight with the class playstyle through the shared PvP driver, never flee (running past the
+	 * stock 1600 range would only cancel the duel), and let a timid phantom that is losing surrender instead. Once the
+	 * stock duel ends for any reason the phantom says its closing line and goes back to what it was doing.
+	 */
+	private void fightDuel(Player phantom, PhantomData data, Player opponent, long now)
+	{
+		if (!phantom.isInDuel() || (now >= data.pvpUntil))
+		{
+			finishDuel(phantom, data, opponent);
+			return;
+		}
+		final int state = phantom.getDuelState();
+		if (state == Duel.DUELSTATE_WINNER)
+		{
+			if (data.duelOutcome == DUEL_OUTCOME_NONE)
+			{
+				data.duelOutcome = DUEL_OUTCOME_WON;
+			}
+			return; // the stock duel stops the fighting and ends it shortly
+		}
+		if (state == Duel.DUELSTATE_DEAD)
+		{
+			if (data.duelOutcome == DUEL_OUTCOME_NONE)
+			{
+				data.duelOutcome = DUEL_OUTCOME_LOST;
+			}
+			return;
+		}
+		if ((state != Duel.DUELSTATE_DUELLING) || (opponent == null))
+		{
+			return; // interrupted: the stock duel is about to cancel
+		}
+		if (now >= data.nextPvpDecisionAt)
+		{
+			data.nextPvpDecisionAt = now + PVP_DECISION_HOLD_MS;
+			if (PhantomPvpManager.shouldSurrenderDuel((int) phantom.getCurrentHpPercent(), FakePlayersConfig.PHANTOM_PVP_FLEE_HP_PERCENT, data.bravery, phantom.getLevel(), opponent.getLevel()))
+			{
+				data.duelOutcome = DUEL_OUTCOME_SURRENDERED;
+				sayNearby(phantom, DUEL_SURRENDER_LINES);
+				DuelManager.getInstance().doSurrender(phantom);
+				return;
+			}
+		}
+		pvpStandCombat(phantom, data, opponent);
+	}
+
+	/** Closes a finished duel: the closing line (unless it already surrendered), then the normal engagement teardown. */
+	private void finishDuel(Player phantom, PhantomData data, Player opponent)
+	{
+		if (data.duelOutcome == DUEL_OUTCOME_WON)
+		{
+			sayNearby(phantom, DUEL_WIN_LINES);
+		}
+		else if (data.duelOutcome == DUEL_OUTCOME_LOST)
+		{
+			sayNearby(phantom, DUEL_LOSE_LINES);
+		}
+		endPvp(phantom, data, opponent);
+	}
+
+	/** Stands the phantom still facing its duel opponent (countdown, or waiting for an answer). */
+	private static void holdForDuel(Player phantom, Player opponent)
+	{
+		phantom.setTarget(opponent);
+		final Intention intention = phantom.getAI().getIntention();
+		if ((intention != Intention.ACTIVE) && (intention != Intention.IDLE))
+		{
+			phantom.getAI().setIntention(Intention.ACTIVE);
+		}
+	}
+
+	/**
+	 * An idle, honorable field hunter occasionally challenges a nearby player of a similar level, or (when phantoms may
+	 * fight each other) another idle field hunter while a real player is close enough to watch. Considered at most
+	 * once per {@link #DUEL_CONSIDER_INTERVAL_MS}; a challenge then puts the phantom on a long cooldown, and its
+	 * opponent on a per-target cooldown so no one is asked over and over.
+	 */
+	private void considerIssuingDuel(Player phantom, PhantomData data, long now)
+	{
+		if (!PhantomPvpManager.duelsEnabled() || (now < data.nextDuelConsiderAt))
+		{
+			return;
+		}
+		data.nextDuelConsiderAt = now + DUEL_CONSIDER_INTERVAL_MS;
+		if ((data.honor < PhantomPvpManager.DUEL_CHALLENGER_MIN_HONOR) || data.resting || (data.claimedOid != 0) || (data.huntPauseUntil > 0))
+		{
+			return; // not the challenging kind, or busy with a monster, a breather, or a rest
+		}
+		if (phantom.isProcessingRequest() || (phantom.getPvpFlag() != 0) || !phantom.canDuel())
+		{
+			return;
+		}
+		final Player opponent = duelChallengeTarget(phantom, data, now);
+		if ((opponent == null) || !PhantomPvpManager.rollIssueDuel())
+		{
+			return;
+		}
+		if (!armDuel(data, opponent, DUEL_APPROACH))
+		{
+			return; // something else claimed this phantom first
+		}
+		data.nextDuelConsiderAt = now + DUEL_CHALLENGE_COOLDOWN_MS;
+		_duelTargetCooldownUntil.put(opponent.getObjectId(), now + DUEL_TARGET_COOLDOWN_MS);
+	}
+
+	/** @return the nearest opponent this phantom may challenge to a duel right now, or {@code null}. */
+	private Player duelChallengeTarget(Player phantom, PhantomData data, long now)
+	{
+		Player best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Player p : World.getInstance().getVisibleObjectsInRange(phantom, Player.class, DUEL_NOTICE_RANGE))
+		{
+			if ((p == phantom) || p.isDead() || p.isInDuel() || (p.getPvpFlag() != 0) || p.isProcessingRequest() || !p.canDuel())
+			{
+				continue;
+			}
+			if (!PhantomPvpManager.mayIssueDuel(data.honor, phantom.getLevel(), p.getLevel()))
+			{
+				continue;
+			}
+			final Long until = _duelTargetCooldownUntil.get(p.getObjectId());
+			if (until != null)
+			{
+				if (now < until)
+				{
+					continue; // challenged recently; leave it alone
+				}
+				_duelTargetCooldownUntil.remove(p.getObjectId(), until); // stale entry; prune it
+			}
+			final PhantomData other = _phantoms.get(p.getObjectId());
+			if (other != null)
+			{
+				// Another phantom: only when phantoms may fight each other, only an idle field hunter, and only with a
+				// real player close enough to see it.
+				if (!validPvpOpponent(phantom, p) || other.recruited || other.olympian || other.role.isBuddy() || (other.pvpTargetOid != 0) || (other.claimedOid != 0) || !realPlayerNear(p, DUEL_AUDIENCE_RANGE))
+				{
+					continue;
+				}
+			}
+			final double distance = phantom.calculateDistance2D(p);
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				best = p;
+			}
+		}
+		return best;
+	}
+
+	/** @return {@code true} if a real (non-phantom) player is within {@code range} of {@code center}. */
+	private boolean realPlayerNear(Player center, int range)
+	{
+		for (Player p : World.getInstance().getVisibleObjectsInRange(center, Player.class, range))
+		{
+			if (!isPhantom(p))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Says one random line from {@code lines} in normal (nearby) chat. */
+	private static void sayNearby(Player phantom, String[] lines)
+	{
+		phantom.broadcastPacket(new CreatureSay(phantom, ChatType.GENERAL, phantom.getName(), lines[Rnd.get(lines.length)]));
+	}
+
+	/** @return the phantom's current PvP opponent as a {@link Player}, or {@code null} if it left the world or is not a player. */
+	private Player resolvePvpTarget(PhantomData data)
+	{
+		if (data.pvpTargetOid == 0)
+		{
+			return null;
+		}
+		final WorldObject target = World.getInstance().findObject(data.pvpTargetOid);
+		return (target instanceof Player) ? (Player) target : null;
+	}
+
+	private void assignTargets()
+	{
+		final long now = System.currentTimeMillis();
+		final Map<Integer, Player> owner = new HashMap<>();
+		final List<PhantomData> needsTarget = new ArrayList<>();
+
+		// Pass 1: keep valid targets, resolve collisions, detect kills, manage breathers and rest-on-threat.
+		for (PhantomData data : _phantoms.values())
+		{
+			final Player phantom = data.player;
+			try
+			{
+				if (data.olympian || data.role.isBuddy() || data.recruited || data.dormant || data.dispersing || phantom.isDead())
+				{
+					continue; // Olympiad nobles, buddies and recruited party members are not part of the hunt/deconflict
+				}
+				if ((data.play != null) && PhantomClassRecovery.tick(phantom, data.play,
+					FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER && (data.huntPauseUntil == 0) && (data.pvpTargetOid == 0) && !phantom.isInCombat() && !hasLiveMonsterTarget(phantom) && !isMonsterNear(phantom)))
+				{
+					data.classRecovering = true;
+					AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+					continue;
+				}
+				if (data.classRecovering)
+				{
+					data.classRecovering = false;
+					if (data.pvpTargetOid == 0)
+					{
+						enableAutoHunt(phantom, data.mage, data);
+					}
+				}
+
+				// PvP owns this phantom this tick: the pvpCombat tick has it engaged with (or fleeing from) a player.
+				// Leave its target and intention alone so the hunt loop does not yank it back onto a monster.
+				if (data.pvpTargetOid != 0)
+				{
+					continue;
+				}
+
+				// Resting phantom that just came under threat: stand now, don't wait for the 5s supervise tick.
+				if (data.resting)
+				{
+					if (phantom.isInCombat() || isMonsterNear(phantom))
+					{
+						endRest(phantom);
+						data.resting = false;
+						needsTarget.add(data);
+					}
+					continue;
+				}
+
+				// Post-kill breather + looting: a fighter is already on the corpse; a mage was sent to walk to it.
+				// Collect the drops here (adena + items) rather than relying on the native AutoPlay pickup, which is
+				// starved because the hunt loop re-assigns a target the instant the breather ends. Resume the hunt once
+				// the minimum pause has elapsed and there is nothing left to collect (nor a mage still en route), or
+				// when the hard loot cap is hit.
+				if (data.huntPauseUntil > 0)
+				{
+					if ((now < data.lootCapAt) && sweepFieldCorpses(phantom, data))
+					{
+						continue; // corpse work owns the same bounded post-kill window before pickup or a fresh pull
+					}
+					final boolean enRoute = data.mage && ((data.lastMobX != 0) || (data.lastMobY != 0)) && (Math.hypot(phantom.getX() - data.lastMobX, phantom.getY() - data.lastMobY) > LOOT_WALK_RANGE);
+					final boolean looting = grabLoot(phantom);
+					if ((!enRoute && !looting && (now >= data.huntPauseUntil)) || (now >= data.lootCapAt))
+					{
+						data.huntPauseUntil = 0;
+						enableAutoHunt(phantom, data.mage, data);
+						needsTarget.add(data);
+					}
+					continue;
+				}
+
+				final WorldObject target = phantom.getTarget();
+				final boolean liveMonster = (target instanceof Monster) && !((Monster) target).isDead();
+
+				// Did we lose the mob we owned? If it died, take a breather; if merely lost, re-acquire at once.
+				if ((data.claimedOid != 0) && (!liveMonster || (((Monster) target).getObjectId() != data.claimedOid)))
+				{
+					final WorldObject claimed = World.getInstance().findObject(data.claimedOid);
+					final boolean killed = (claimed == null) || ((claimed instanceof Monster) && ((Monster) claimed).isDead());
+					setClaimedMob(data, 0);
+					if (killed)
+					{
+						beginHuntPause(phantom, data, now);
+						continue;
+					}
+				}
+
+				if (!liveMonster)
+				{
+					needsTarget.add(data);
+					continue;
+				}
+				final Monster monster = (Monster) target;
+				// Always defer to a real player fighting this monster.
+				if (isContestedByPlayer(monster))
+				{
+					noteKillSteal(data, monster, System.currentTimeMillis());
+					yieldTarget(phantom);
+					setClaimedMob(data, 0);
+					needsTarget.add(data);
+					continue;
+				}
+				observeSpotEngagement(data, monster, now);
+				// Retaliation: turn on a mob that is attacking this hunter while it IGNORES it - typically an add that
+				// jumped the hunter while it was running to a not-yet-engaged target. Only when the current focus is
+				// NOT itself already fighting the hunter: once the hunter is trading blows with a mob, a second mob
+				// also on it is not a reason to keep flipping targets (that ping-pongs forever between two attackers,
+				// since each becomes the other's "attacker" the moment it stops being the focus). The switch also
+				// respects the anti-thrash cooldown and never abandons a near-kill. It goes through the same yield +
+				// owner-claim path as normal hunting, so mob spread and player deference are preserved; fighters engage
+				// now, a mage just takes the target (its tick positions and nukes it).
+				if (FakePlayersConfig.PHANTOM_HUNTER_RETALIATE && (monster.getTarget() != phantom) && (now >= data.nextRetargetAt) && (monster.getCurrentHpPercent() > RETALIATE_NEAR_KILL_PERCENT))
+				{
+					final Monster attacker = nearestAttacker(phantom, owner, monster);
+					if (attacker != null)
+					{
+						yieldTarget(phantom); // drop the old focus (it was not yet claimed by us this tick)
+						final int attackerId = attacker.getObjectId();
+						owner.put(attackerId, phantom);
+						setClaimedMob(data, attackerId);
+						data.nextRetargetAt = now + RETARGET_COOLDOWN;
+						data.lastMobX = attacker.getX();
+						data.lastMobY = attacker.getY();
+						phantom.setTarget(attacker);
+						if (!data.mage)
+						{
+							phantom.getAI().setIntention(Intention.ATTACK, attacker);
+						}
+						continue; // switched; the next tick (or the mage tick) drives combat on the new target
+					}
+				}
+				// Remember where the mob is, so a caster can walk to its drop after the kill (loot is at the
+				// corpse, well outside a mage's cast-range pickup radius).
+				data.lastMobX = monster.getX();
+				data.lastMobY = monster.getY();
+				final int id = monster.getObjectId();
+				final Player cur = owner.get(id);
+				if (cur == null)
+				{
+					owner.put(id, phantom);
+					setClaimedMob(data, id);
+				}
+				else if (phantom.calculateDistance2D(monster) < cur.calculateDistance2D(monster))
+				{
+					// This phantom is closer: it keeps the mob, the previous owner is bumped to re-acquire.
+					yieldTarget(cur);
+					final PhantomData curData = _phantoms.get(cur.getObjectId());
+					if (curData != null)
+					{
+						setClaimedMob(curData, 0);
+						needsTarget.add(curData);
+					}
+					owner.put(id, phantom);
+					setClaimedMob(data, id);
+				}
+				else
+				{
+					yieldTarget(phantom);
+					setClaimedMob(data, 0);
+					needsTarget.add(data);
+				}
+				// A field fighter that owns this live focus drives its class playstyle from here (paced by the
+				// engine, so the 1s tick does not machine-gun). Mages cast from the mage tick instead (positioning
+				// first); a phantom that just yielded (claimedOid 0) is skipped - it re-acquires in pass 2 first.
+				if (!data.mage && (data.claimedOid == id) && !positionHunterRear(phantom, data, monster))
+				{
+					tryHunterPlaystyle(phantom, monster, data);
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Assign(pass1) error for " + phantom.getName() + ": " + e.getMessage());
+			}
+		}
+
+		// Pass 2: hand each idle phantom the nearest free, unclaimed monster so they spread over the spawn.
+		for (PhantomData data : needsTarget)
+		{
+			final Player phantom = data.player;
+			try
+			{
+				if (data.dormant || data.dispersing || data.resting || (data.huntPauseUntil > 0) || phantom.isDead())
+				{
+					continue;
+				}
+				final Monster mob = nearestFreeMonster(phantom, owner);
+				if (mob != null)
+				{
+					owner.put(mob.getObjectId(), phantom);
+					setClaimedMob(data, mob.getObjectId());
+					phantom.setTarget(mob);
+					// Fighters engage now; mages just take the target - the mage tick positions and AutoUse nukes.
+					if (!data.mage)
+					{
+						phantom.getAI().setIntention(Intention.ATTACK, mob);
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Assign(pass2) error for " + phantom.getName() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Whether a phantom must never attack this monster - whether hunting on its own OR assisting a target its owner
+	 * explicitly picked. Three categories are off-limits:
+	 * <ul>
+	 * <li>fake players ({@link org.l2jmobius.gameserver.model.actor.Npc#isFakePlayer()}): living-world population -
+	 * shopkeepers, wanderers - not mobs. Attacking one flags the phantom for PvP and is never intended, even when the
+	 * owner clicks it;</li>
+	 * <li>treasure boxes (a {@link Chest} where {@link Chest#isBox()}): openable only with a key, they just explode
+	 * and drop nothing when attacked. A mimic (a non-box {@code Chest}) is a real monster with loot, so it is NOT
+	 * excluded;</li>
+	 * <li>quest monsters ({@link org.l2jmobius.gameserver.model.actor.Npc#isQuestMonster()}): title-flagged mobs
+	 * that give no grind XP or drops.</li>
+	 * </ul>
+	 * Raid bosses stay excluded by each caller's own {@code isRaid()} gate, so they are not repeated here.
+	 * @param monster the candidate target
+	 * @return {@code true} if a phantom must not attack this monster
+	 */
+	public static boolean isPhantomForbiddenTarget(Monster monster)
+	{
+		return monster.isFakePlayer() || ((monster instanceof Chest) && ((Chest) monster).isBox()) || monster.isQuestMonster();
+	}
+
+	/** @return the nearest live, auto-attackable monster not already claimed this tick (nor fought by a player). */
+	private Monster nearestFreeMonster(Player phantom, Map<Integer, Player> claimed)
+	{
+		Monster best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Monster monster : World.getInstance().getVisibleObjectsInRange(phantom, Monster.class, AutoPlayConfig.AUTO_PLAY_LONG_RANGE))
+		{
+			if (monster.isDead() || monster.isAlikeDead() || claimed.containsKey(monster.getObjectId()) || isContestedByPlayer(monster) || isPhantomForbiddenTarget(monster))
+			{
+				continue;
+			}
+			if (!monster.isAutoAttackable(phantom) || !GeoEngine.getInstance().canSeeTarget(phantom, monster))
+			{
+				continue;
+			}
+			final double distance = phantom.calculateDistance2D(monster);
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				best = monster;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * The mob a hunter should retaliate against: the nearest live, auto-attackable monster within danger range that
+	 * is currently targeting this phantom, is not its current focus, is not fought by a real player, and is not
+	 * already owned by another phantom this tick ({@code claimed}). Free-claim only on purpose - taking a mob a closer
+	 * phantom already owns would require bumping that owner mid-pass, and an attacker on this hunter is almost always
+	 * unclaimed anyway; the acquisition pass handles any residual case next tick.
+	 * @return the attacker to switch to, or {@code null} when the hunter should keep its current focus
+	 */
+	private Monster nearestAttacker(Player phantom, Map<Integer, Player> claimed, Monster currentFocus)
+	{
+		Monster best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Monster monster : World.getInstance().getVisibleObjectsInRange(phantom, Monster.class, REST_DANGER_RANGE))
+		{
+			if (monster.isDead() || (monster == currentFocus) || (monster.getTarget() != phantom))
+			{
+				continue; // only a live OTHER mob that is actually on this phantom
+			}
+			if (claimed.containsKey(monster.getObjectId()) || isContestedByPlayer(monster) || !monster.isAutoAttackable(phantom))
+			{
+				continue; // taken by another phantom this tick, a real player's kill, or not attackable
+			}
+			final double distance = phantom.calculateDistance2D(monster);
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				best = monster;
+			}
+		}
+		return best;
+	}
+
+	/** Managed field Sweeper runs before pickup while the existing post-kill deadline still owns the scanner. */
+	private boolean sweepFieldCorpses(Player phantom, PhantomData data)
+	{
+		if (!FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER || (data.play == null) || !data.play.controllerOwned || underAttack(phantom))
+		{
+			return false;
+		}
+		final Skill sweeper = phantom.getKnownSkill(FIELD_SWEEP_SKILL_ID);
+		if (sweeper == null)
+		{
+			return false;
+		}
+		if (phantom.isCastingNow())
+		{
+			return (phantom.getLastSkillCast() != null) && (phantom.getLastSkillCast().getId() == FIELD_SWEEP_SKILL_ID);
+		}
+		Monster closest = null;
+		double distance = Double.MAX_VALUE;
+		for (Monster corpse : World.getInstance().getVisibleObjectsInRange(phantom, Monster.class, 600))
+		{
+			if (corpse.isDead() && corpse.isSweepActive() && (corpse.getSpoilerObjectId() == phantom.getObjectId()) && corpse.checkSpoilOwner(phantom, false)
+				&& (phantom.calculateDistance2D(corpse) < distance))
+			{
+				closest = corpse;
+				distance = phantom.calculateDistance2D(corpse);
+			}
+		}
+		if ((closest == null) || (PhantomCombatActions.availability(phantom, closest, sweeper, phantom.getCharges()) == PhantomCombatPolicy.Availability.UNAVAILABLE))
+		{
+			return false;
+		}
+		final PhantomPlaystyleEngine.CastAction action = new PhantomPlaystyleEngine.CastAction(sweeper, closest, false, 0, FIELD_SWEEP_SKILL_ID, 1000, 200, 0);
+		final PhantomCombatController.Outcome outcome = PhantomCombatActions.execute(phantom, null, data.play, action, false);
+		return (outcome == PhantomCombatController.Outcome.STARTED) || (outcome == PhantomCombatController.Outcome.BUSY) || (outcome == PhantomCombatController.Outcome.APPROACHING);
+	}
+
+	/**
+	 * Stops the auto-hunt and opens a bounded post-kill window for sweep and pickup before a fresh pull.
+	 * A fighter stays near the corpse; a mage walks in from cast range. lootCapAt bounds every loot action.
+	 */
+	private void beginHuntPause(Player phantom, PhantomData data, long now)
+	{
+		if (phantom.isAutoPlaying())
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(phantom);
+		}
+		phantom.setTarget(null);
+		data.huntPauseUntil = now + Rnd.get((int) POST_KILL_DELAY_MIN, (int) POST_KILL_DELAY_MAX);
+		data.lootCapAt = now + LOOT_WALK_MAX;
+		if (data.mage && ((data.lastMobX != 0) || (data.lastMobY != 0)))
+		{
+			final Location loot = GeoEngine.getInstance().getValidLocation(phantom, new Location(data.lastMobX, data.lastMobY, phantom.getZ()));
+			phantom.setRunning();
+			phantom.getAI().setIntention(Intention.MOVE_TO, loot);
+		}
+		else
+		{
+			phantom.getAI().setIntention(Intention.IDLE);
+		}
+	}
+
+	/**
+	 * Collects the nearest reachable ground drop for a phantom during its post-kill loot window: walks to it and, once
+	 * close enough, picks it up. Mirrors the native AutoPlay pickup filters (spawned, not on the ignore list,
+	 * geo-reachable, and either unprotected or owned by this phantom) - needed because that native pickup only runs
+	 * when a phantom has no target, which the hunt loop almost never allows.
+	 * @return {@code true} while it is still handling a drop (moving toward one or having just picked one up), so the
+	 *         caller keeps the loot window open; {@code false} when nothing pickable is in range.
+	 */
+	private boolean grabLoot(Player phantom)
+	{
+		if (!phantom.isInventoryUnder90(false))
+		{
+			return false;
+		}
+		Item best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Item item : World.getInstance().getVisibleObjectsInRange(phantom, Item.class, LOOT_SCAN_RANGE))
+		{
+			if ((item == null) || !item.isSpawned() || AutoPlayConfig.IGNORED_AUTO_PICK_ITEMS.contains(item.getId()))
+			{
+				continue;
+			}
+			if (item.isProtected() && (item.getOwnerId() != phantom.getObjectId()))
+			{
+				continue; // someone else's drop-protection window - not ours to take
+			}
+			if (!GeoEngine.getInstance().canMoveToTarget(phantom.getX(), phantom.getY(), phantom.getZ(), item.getX(), item.getY(), item.getZ(), phantom.getInstanceId()))
+			{
+				continue; // unreachable - skip so the loot window can close instead of looping on it
+			}
+			final double distance = phantom.calculateDistance2D(item);
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				best = item;
+			}
+		}
+		if (best == null)
+		{
+			return false;
+		}
+		if (bestDistance > LOOT_PICKUP_RANGE)
+		{
+			if (!phantom.isMoving())
+			{
+				phantom.setRunning();
+				phantom.getAI().setIntention(Intention.MOVE_TO, best);
+			}
+			return true; // still walking to the drop
+		}
+		phantom.doPickupItem(best);
+		return true; // picked one up (or attempted); more may remain for the next tick
+	}
+
+	/** Begins the initial fan-out: marks the phantom dispersing and sends it toward its area's perimeter. */
+	private void beginDisperse(Player phantom, PhantomData data)
+	{
+		data.dispersing = true;
+		data.disperseUntil = System.currentTimeMillis() + DISPERSE_DURATION;
+		data.resting = false;
+		data.huntPauseUntil = 0;
+		setClaimedMob(data, 0);
+		if (phantom.isSitting())
+		{
+			phantom.standUp();
+		}
+		disperseMove(phantom, data);
+	}
+
+	/** Pushes a phantom outward from its group's centre toward the perimeter (with jitter) so the group fans out. */
+	private void disperseMove(Player phantom, PhantomData data)
+	{
+		final Location center = (data.population != null) ? data.population.center : data.home;
+		final int radius = (data.population != null) ? Math.max(ROAM_MIN_DISTANCE + 100, data.population.radius) : ROAM_RADIUS;
+		final double dx = phantom.getX() - center.getX();
+		final double dy = phantom.getY() - center.getY();
+		final double outward = (Math.hypot(dx, dy) < 1) ? (Rnd.nextDouble() * 2 * Math.PI) : Math.atan2(dy, dx);
+		Location fallback = null;
+		for (int attempt = 0; attempt < ROAM_ATTEMPTS; attempt++)
+		{
+			// +-45 degrees of jitter around the outward heading so a clustered group spreads in a fan, not a line.
+			final double angle = outward + ((Rnd.nextDouble() - 0.5) * (Math.PI / 2));
+			final int distance = (int) (radius * (DISPERSE_MIN_RADIUS_PCT + (Rnd.nextDouble() * (1.0 - DISPERSE_MIN_RADIUS_PCT))));
+			final int x = center.getX() + (int) (Math.cos(angle) * distance);
+			final int y = center.getY() + (int) (Math.sin(angle) * distance);
+			final Location destination = GeoEngine.getInstance().getValidLocation(phantom, new Location(x, y, center.getZ()));
+			if (fallback == null)
+			{
+				fallback = destination;
+			}
+			if (GeoEngine.getInstance().canMoveToTarget(phantom.getX(), phantom.getY(), phantom.getZ(), destination.getX(), destination.getY(), destination.getZ(), phantom.getInstanceId()))
+			{
+				phantom.setRunning();
+				phantom.getAI().setIntention(Intention.MOVE_TO, destination);
+				return;
+			}
+		}
+		if (fallback != null)
+		{
+			phantom.setRunning();
+			phantom.getAI().setIntention(Intention.MOVE_TO, fallback);
+		}
+	}
+
+	/** @return {@code true} if a real, client-connected player is fighting this monster (phantoms must defer). */
+	private static boolean isContestedByPlayer(Monster monster)
+	{
+		// Phantoms/offline players have no client; only a genuine player counts as "the player is hitting it".
+		final WorldObject monsterTarget = monster.getTarget();
+		if ((monsterTarget instanceof Player) && !((Player) monsterTarget).isInOfflineMode())
+		{
+			return true;
+		}
+		// getTarget() alone misses it once a phantom has locked the mob (the mob then targets the phantom), so
+		// also honour the aggro list: if any real player has put damage/hate on it, the phantom yields.
+		for (Creature attacker : monster.getAggroList().keySet())
+		{
+			if (attacker.isPlayer() && !attacker.asPlayer().isInOfflineMode())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Drops a phantom's current target and stops its attack so AutoPlay re-selects a free monster. */
+	private void yieldTarget(Player phantom)
+	{
+		if (phantom.getAI().getIntention() == Intention.ATTACK)
+		{
+			phantom.getAI().setIntention(Intention.IDLE);
+		}
+		phantom.setTarget(null);
+	}
+
+	private void supervise()
+	{
+		final long now = System.currentTimeMillis();
+		final List<Player> observers = onlineObservers();
+		// Spawn populations a player has approached; despawn ones everyone has left (after a grace delay).
+		updatePopulations(observers, now);
+
+		// Keep befriended regulars online with their owners (self-healing: respawns one that died, was
+		// despawned with a deactivating population, or failed an earlier spawn). Throttled - it's a cheap
+		// in-memory check, but there is no need to run it every tick.
+		if ((now - _lastFriendEnsure) >= 15000)
+		{
+			_lastFriendEnsure = now;
+			for (Map.Entry<Integer, Set<Integer>> entry : _friendRegularsByOwner.entrySet())
+			{
+				final Player owner = World.getInstance().getPlayer(entry.getKey());
+				if (owner != null)
+				{
+					ensureFriendRegulars(entry.getKey(), owner);
+				}
+			}
+			// Materialize any editor-authored <friend> orders whose owner is online.
+			if (!_craftedFriends.isEmpty())
+			{
+				for (Player observer : observers)
+				{
+					materializeCraftedFriends(observer);
+				}
+			}
+		}
+		for (PhantomData data : new ArrayList<>(_phantoms.values()))
+		{
+			final Player phantom = data.player;
+			try
+			{
+				// Forget phantoms that left the world for good. A teleport decays the player out of the object list but
+				// keeps it in the player list, so a phantom mid-teleport (an Olympiad noble moved to or from a stadium)
+				// is not gone: dropping it here left the noble invisible in its match (FPC-124).
+				if ((World.getInstance().findObject(phantom.getObjectId()) == null) && (World.getInstance().getPlayer(phantom.getObjectId()) == null))
+				{
+					if (data.duelPhase == DUEL_ASKED)
+					{
+						releaseDuelRequest(phantom, resolvePvpTarget(data)); // FPC-113: no open challenge from a phantom that is gone
+					}
+					_phantoms.remove(phantom.getObjectId());
+					continue;
+				}
+
+				// Olympiad roster nobles are driven by PhantomOlympiadManager's tick (serviceOlympian): no hunt, rest,
+				// roam, dormancy or respawn here.
+				if (data.olympian)
+				{
+					continue;
+				}
+
+				// Recruited combat party members are driven entirely by PhantomPartyManager (follow / assist /
+				// support / sustain). They never hunt, rest, roam or proximity-despawn on their own.
+				if (data.recruited)
+				{
+					PhantomPartyManager.getInstance().supervise(phantom);
+					continue;
+				}
+
+				// Buddies do not hunt/rest/roam: the PhantomBuddyManager owns their behaviour (idle self-buff,
+				// and - once partied - buffing/healing/following the owner). Skip all the hunter logic below.
+				if (data.role.isBuddy())
+				{
+					PhantomBuddyManager.getInstance().supervise(phantom);
+					continue;
+				}
+
+				if (phantom.isDead())
+				{
+					if (data.deadSince == 0)
+					{
+						data.deadSince = now;
+						// Population phantoms: despawn the corpse now and replace it with a fresh identity
+						// shortly after, so the zone stays populated and gear/name rotate on each death.
+						if ((data.population != null) && data.population.respawn)
+						{
+							final Population population = data.population;
+							despawn(data);
+							// Only replace it if the zone is still active when the delay elapses (a player could
+							// have left and the population deactivated in the meantime).
+							ThreadPool.schedule(() ->
+							{
+								if (population.active)
+								{
+									deployOne(population);
+								}
+							}, RESPAWN_DELAY);
+						}
+						else if (data.population != null)
+						{
+							// Population explicitly configured respawn="false": the death is permanent - despawn
+							// and do not replace or revive it (previously fell through to the ad-hoc revive branch
+							// below and stood back up anyway, ignoring respawn="false").
+							despawn(data);
+						}
+					}
+					else if ((data.population == null) && ((now - data.deadSince) >= RESPAWN_DELAY))
+					{
+						// Ad-hoc (admin test) phantom only: revive it in place so the test count stays stable.
+						revive(data);
+					}
+					continue;
+				}
+
+				// Alive again / still alive: clear the death stamp.
+				data.deadSince = 0;
+
+				// Proximity dormancy: only compute the auto-hunt while a real player is near (hysteresis).
+				final double nearest = nearestObserverDistance(phantom, observers);
+				if (data.dormant)
+				{
+					if (nearest <= WAKE_RANGE)
+					{
+						data.dormant = false;
+						data.resting = false;
+						data.huntPauseUntil = 0;
+						// Re-spread on re-approach too, then hunt - same reason as the initial spawn.
+						beginDisperse(phantom, data);
+					}
+					continue; // stay parked while no one is near
+				}
+				if (nearest > SLEEP_RANGE)
+				{
+					sleep(phantom);
+					data.dormant = true;
+					data.resting = false;
+					continue;
+				}
+
+				// Initial dispersal: fan out, then switch the auto-hunt on once the timer elapses.
+				if (data.dispersing)
+				{
+					if (now >= data.disperseUntil)
+					{
+						data.dispersing = false;
+						enableAutoHunt(phantom, data.mage, data);
+					}
+					continue; // don't hunt/rest/roam while still spreading out
+				}
+
+				// Post-kill breather is managed by assignTargets (1s): leave it standing, don't roam it here.
+				if (data.huntPauseUntil > 0)
+				{
+					continue;
+				}
+
+				// PvP-engaged: the pvpCombat tick owns this phantom's target and movement while it fights or flees a
+				// player. Don't let the rest/roam/idle-clear logic below (whose danger check only sees monsters) sit it
+				// down, clear its target, or wander it off mid-fight.
+				if (data.pvpTargetOid != 0)
+				{
+					continue;
+				}
+
+				// Resting: when safe and low on HP/MP, sit to regen; stand when recovered or threatened.
+				if (data.classRecovering)
+				{
+					continue; // assignTargets owns safe class recovery and cancels it on danger
+				}
+				final boolean danger = phantom.isInCombat() || hasLiveMonsterTarget(phantom) || isMonsterNear(phantom);
+				final boolean active = phantom.isMoving() || phantom.isCastingNow() || phantom.isAttackingNow();
+				// Out of the fight: turn off a stance that drains MP (Vicious Stance); the next fight turns it back on.
+				if (!phantom.isInCombat())
+				{
+					PhantomPlaystyleEngine.dropStances(phantom, data.play);
+				}
+				if (data.resting)
+				{
+					if (danger || ((phantom.getCurrentHpPercent() >= REST_STAND_PERCENT) && (phantom.getCurrentMpPercent() >= REST_MP_STAND_PERCENT)))
+					{
+						endRest(phantom);
+						data.resting = false;
+					}
+				}
+				else if (!danger && ((phantom.getCurrentHpPercent() < REST_SIT_PERCENT) || (phantom.getCurrentMpPercent() < REST_MP_SIT_PERCENT)))
+				{
+					startRest(phantom);
+					data.resting = true;
+				}
+				else if (active)
+				{
+					data.idleTargetTicks = 0;
+				}
+				else if (hasLiveMonsterTarget(phantom))
+				{
+					data.idleTargetTicks++;
+					if (data.idleTargetTicks >= IDLE_TARGET_CLEAR_TICKS)
+					{
+						phantom.setTarget(null);
+						data.idleTargetTicks = 0;
+						if (data.mage && (phantom.getCurrentMpPercent() < MAGE_CAST_MP_PERCENT) && !phantom.isInCombat() && !isMonsterNear(phantom))
+						{
+							startRest(phantom);
+							data.resting = true;
+						}
+						else
+						{
+							roam(phantom, data);
+						}
+					}
+				}
+				// Roam when idle: nothing to fight, not already walking and not resting. Relocating it lets the
+				// next AutoPlay scan pick up monsters it could not previously reach, so it stops standing still.
+				else if (!data.resting && !danger && (phantom.getTarget() == null))
+				{
+					data.idleTargetTicks = 0;
+					roam(phantom, data);
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Supervise error for " + phantom.getName() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/** @return {@code true} if the phantom currently has a living monster target (engaged - don't rest). */
+	private static boolean hasLiveMonsterTarget(Player phantom)
+	{
+		final WorldObject target = phantom.getTarget();
+		return (target instanceof Monster) && !((Monster) target).isDead();
+	}
+
+	/**
+	 * Walks an idle phantom to a random reachable spot inside its home area, so the next native AutoPlay
+	 * scan can find monsters it could not previously reach. Without this a phantom that runs out of nearby
+	 * mobs just stands still, because AutoPlay never roams beyond its own search radius.
+	 */
+	private void roam(Player phantom, PhantomData data)
+	{
+		final int radius = (data.population != null) ? Math.max(ROAM_MIN_DISTANCE + 100, data.population.radius) : ROAM_RADIUS;
+		Location fallback = null;
+		for (int attempt = 0; attempt < ROAM_ATTEMPTS; attempt++)
+		{
+			final double angle = Rnd.nextDouble() * 2 * Math.PI;
+			final int distance = Rnd.get(ROAM_MIN_DISTANCE, radius);
+			final int x = data.home.getX() + (int) (Math.cos(angle) * distance);
+			final int y = data.home.getY() + (int) (Math.sin(angle) * distance);
+			final Location destination = GeoEngine.getInstance().getValidLocation(phantom, new Location(x, y, data.home.getZ()));
+			if (fallback == null)
+			{
+				fallback = destination;
+			}
+			if (GeoEngine.getInstance().canMoveToTarget(phantom.getX(), phantom.getY(), phantom.getZ(), destination.getX(), destination.getY(), destination.getZ(), phantom.getInstanceId()))
+			{
+				phantom.setRunning();
+				phantom.getAI().setIntention(Intention.MOVE_TO, destination);
+				return;
+			}
+		}
+		if (fallback != null)
+		{
+			phantom.setRunning();
+			phantom.getAI().setIntention(Intention.MOVE_TO, fallback);
+		}
+	}
+
+	/** @return {@code true} if a live monster is close enough that the phantom should not sit to rest. */
+	private static boolean isMonsterNear(Player phantom)
+	{
+		for (Monster monster : World.getInstance().getVisibleObjectsInRange(phantom, Monster.class, REST_DANGER_RANGE))
+		{
+			if (!monster.isDead())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Sits the phantom down to regenerate, pausing the auto-hunt while it rests. */
+	private void startRest(Player phantom)
+	{
+		// Stop both unconditionally: the OOM-mage path may have already stopped AutoPlay on its own, and a
+		// sitting phantom must not keep an AutoUse task trying to act.
+		if (phantom.isAutoPlaying())
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+		}
+		AutoUseTaskManager.getInstance().stopAutoUseTask(phantom);
+		if (!phantom.isSitting())
+		{
+			// sitDown(false): a phantom mage's lingering cast flag would otherwise hit the "Cannot sit while
+			// casting" guard in sitDown(true) and never rest.
+			phantom.abortCast();
+			phantom.sitDown(false);
+		}
+	}
+
+	/** Stands the phantom back up and resumes the auto-hunt after resting. */
+	private void endRest(Player phantom)
+	{
+		if (phantom.isSitting())
+		{
+			phantom.standUp();
+		}
+		wake(phantom);
+	}
+
+	/** Genuine, client-connected players (excludes phantoms and offline shops, which have no client). */
+	private static List<Player> onlineObservers()
+	{
+		final List<Player> observers = new ArrayList<>();
+		for (Player player : World.getInstance().getPlayers())
+		{
+			if (!player.isInOfflineMode() && !player.isDead())
+			{
+				observers.add(player);
+			}
+		}
+		return observers;
+	}
+
+	/** Distance to the closest observer, or {@code MAX_VALUE} if there are none. */
+	private static double nearestObserverDistance(Player phantom, List<Player> observers)
+	{
+		double best = Double.MAX_VALUE;
+		for (Player observer : observers)
+		{
+			final double distance = phantom.calculateDistance2D(observer);
+			if (distance < best)
+			{
+				best = distance;
+			}
+		}
+		return best;
+	}
+
+	/** Resumes the native auto-hunt for a phantom a real player has approached. */
+	private void wake(Player phantom)
+	{
+		if (phantom.isSitting())
+		{
+			phantom.standUp();
+		}
+		phantom.setRunning();
+		if (!phantom.isAutoPlaying())
+		{
+			AutoPlayTaskManager.getInstance().startAutoPlay(phantom);
+			AutoUseTaskManager.getInstance().startAutoUseTask(phantom);
+		}
+	}
+
+	/** Pauses the auto-hunt and freezes a phantom that no real player is near (saves the per-tick cost). */
+	private void sleep(Player phantom)
+	{
+		if (phantom.isAutoPlaying())
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(phantom);
+		}
+		phantom.getAI().setIntention(Intention.IDLE); // stop any in-progress movement so it parks
+	}
+
+	/** Brings a dead phantom back to full health at its home spot and resumes the auto-hunt. */
+	private void revive(PhantomData data)
+	{
+		final Player phantom = data.player;
+		phantom.doRevive();
+		phantom.setCurrentHp(phantom.getMaxHp());
+		phantom.setCurrentMp(phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		phantom.teleToLocation(data.home);
+		phantom.setRunning();
+		data.deadSince = 0;
+		// AutoPlay keeps the player pooled across death; only restart if it somehow dropped out.
+		if (!phantom.isAutoPlaying())
+		{
+			AutoPlayTaskManager.getInstance().startAutoPlay(phantom);
+			AutoUseTaskManager.getInstance().startAutoUseTask(phantom);
+		}
+	}
+
+	// ---------------------------------------------------------------------
+	// Olympiad roster nobles. PhantomOlympiadManager owns the roster and the sign-ups; this creates, logs in and logs
+	// out each noble, and drives its body: the stock match teleports, the fight, and idling near the Olympiad Manager.
+	// ---------------------------------------------------------------------
+
+	/** @return charId to base class id of every roster noble stored on the {@link #ACCOUNT_NAME_NOBLE} account */
+	public Map<Integer, Integer> loadOlympiadRoster()
+	{
+		final Map<Integer, Integer> roster = new HashMap<>();
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("SELECT charId, base_class FROM characters WHERE account_name=?"))
+		{
+			ps.setString(1, ACCOUNT_NAME_NOBLE);
+			try (ResultSet rs = ps.executeQuery())
+			{
+				while (rs.next())
+				{
+					roster.put(rs.getInt("charId"), rs.getInt("base_class"));
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to load the Olympiad roster: " + e.getMessage());
+		}
+		return roster;
+	}
+
+	/** @return {@code false} only when the database says this roster noble's row is gone (errors count as present) */
+	public boolean olympiadNobleExists(int charId)
+	{
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("SELECT 1 FROM characters WHERE charId=? AND account_name=?"))
+		{
+			ps.setInt(1, charId);
+			ps.setString(2, ACCOUNT_NAME_NOBLE);
+			try (ResultSet rs = ps.executeQuery())
+			{
+				return rs.next();
+			}
+		}
+		catch (Exception e)
+		{
+			return true;
+		}
+	}
+
+	/**
+	 * Creates a new persistent roster noble of the given third class and logs it in at {@code location}.
+	 * @return the noble, or {@code null} on failure (nothing is left behind)
+	 */
+	public Player createOlympiadNoble(int classId, int level, Location location)
+	{
+		if (_phantoms.size() >= MAX_PHANTOMS)
+		{
+			return null;
+		}
+		final PlayerClass playerClass = PlayerClass.getPlayerClass(classId);
+		final PlayerTemplate template = (playerClass == null) ? null : PlayerTemplateData.getInstance().getTemplate(playerClass);
+		if (template == null)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": No player template for Olympiad noble class " + classId + ".");
+			return null;
+		}
+		// Orc and dwarf bodies skew male, like the field phantoms.
+		final Race race = playerClass.getRace();
+		final boolean female = ((race == Race.ORC) || (race == Race.DWARF)) ? (Rnd.get(100) < 30) : Rnd.nextBoolean();
+		final PlayerAppearance appearance = new PlayerAppearance((byte) Rnd.get(0, 2), (byte) Rnd.get(0, 3), (byte) Rnd.get(0, 2), female);
+		final Player noble = Player.create(template, ACCOUNT_NAME_NOBLE, nextName(), appearance, true);
+		if (noble == null)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Player.create returned null for an Olympiad noble (duplicate name / db error?).");
+			return null;
+		}
+		try
+		{
+			return spawnOlympian(noble, location, level, false);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to create Olympiad noble '" + noble.getName() + "': " + e.getMessage());
+			_phantoms.remove(noble.getObjectId());
+			try
+			{
+				noble.deleteMe();
+			}
+			catch (Exception ignored)
+			{
+				// best effort; the row delete below is what matters
+			}
+			GameClient.deleteCharByObjId(noble.getObjectId()); // don't leave a half-made row behind
+			return null;
+		}
+	}
+
+	/**
+	 * Logs a stored roster noble in at {@code location} (near an Olympiad Manager, not its last stored spot).
+	 * @return the noble, or {@code null} if it is already online, the cap is reached, or it failed to load
+	 */
+	public Player spawnOlympiadNoble(int charId, Location location)
+	{
+		if (_phantoms.containsKey(charId) || (_phantoms.size() >= MAX_PHANTOMS))
+		{
+			return null;
+		}
+		Player noble = null;
+		try
+		{
+			noble = Player.load(charId);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to load Olympiad noble " + charId + ": " + e.getMessage());
+		}
+		if ((noble == null) || !ACCOUNT_NAME_NOBLE.equals(noble.getAccountName()))
+		{
+			return null;
+		}
+		try
+		{
+			return spawnOlympian(noble, location, noble.getLevel(), true);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to log in Olympiad noble '" + noble.getName() + "': " + e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * Gears a created-or-loaded roster noble with the full friend kit, makes it noble, drops it into the world and
+	 * registers it. It gets no hunt: serviceOlympian drives it from here.
+	 */
+	private Player spawnOlympian(Player noble, Location location, int level, boolean loaded)
+	{
+		noble.setDietMode(true); // same reason as finishSpawn: potions and shots must never overload it
+		noble.setOnlineStatus(true, false);
+		if (loaded)
+		{
+			noble.getInventory().destroyAllItems(ItemProcessType.DESTROY, noble, null);
+		}
+		final boolean mage = noble.getPlayerClass().isMage();
+		outfitFriend(noble, level, mage, GearContext.OLYMPIAD); // a fixed weapon, no spare
+		noble.setNoble(true);
+		noble.refreshOverloaded();
+		enterWorld(noble, location);
+		final PhantomData data = new PhantomData(noble, location, null, mage, BuddyRole.NONE);
+		data.olympian = true;
+		data.olyNextWanderAt = System.currentTimeMillis() + Rnd.get(OLYMPIAN_WANDER_MIN_MS, OLYMPIAN_WANDER_MAX_MS);
+		_phantoms.put(noble.getObjectId(), data);
+		if (!loaded)
+		{
+			noble.storeMe(); // keep its level, class and noble status even if the server is killed before it logs out
+		}
+		startSupervising(); // the supervisor forgets a noble that left the world
+		LOGGER.info(getClass().getSimpleName() + ": Olympiad noble '" + noble.getName() + "' logged in (objId=" + noble.getObjectId() + ", " + noble.getPlayerClass() + ", level " + noble.getLevel() + ").");
+		return noble;
+	}
+
+	/** @return {@code true} if the player is a live Olympiad roster noble. */
+	public boolean isOlympian(Player player)
+	{
+		final PhantomData data = (player == null) ? null : _phantoms.get(player.getObjectId());
+		return (data != null) && data.olympian;
+	}
+
+	/** @return {@code true} if this roster noble is logged in (spawned, or decayed mid-teleport) */
+	public boolean isOlympianLoggedIn(int charId)
+	{
+		final PhantomData data = _phantoms.get(charId);
+		return (data != null) && data.olympian;
+	}
+
+	/**
+	 * @return every roster noble that is logged in. A noble in the middle of a teleport is decayed and out of the
+	 *         world's object list, but it is still included: its tick is what finishes the teleport.
+	 */
+	public List<Player> onlineOlympians()
+	{
+		final List<Player> nobles = new ArrayList<>();
+		for (PhantomData data : _phantoms.values())
+		{
+			if (data.olympian && (data.player != null))
+			{
+				nobles.add(data.player);
+			}
+		}
+		return nobles;
+	}
+
+	/** Logs a roster noble out, keeping its row (and with it its Olympiad record). */
+	public void despawnOlympian(Player noble)
+	{
+		final PhantomData data = (noble == null) ? null : _phantoms.get(noble.getObjectId());
+		if ((data != null) && data.olympian)
+		{
+			despawn(data);
+		}
+	}
+
+	/**
+	 * One tick of a roster noble's body, from PhantomOlympiadManager. In a match it holds still through the countdown,
+	 * then fights its opponent with the same stand-and-fight combat as PvP (its class playstyle, never fleeing: the
+	 * match is timed and ends at 0 HP without death). Out of a match it strolls near its Olympiad Manager.
+	 */
+	public void serviceOlympian(Player noble, long now)
+	{
+		final PhantomData data = _phantoms.get(noble.getObjectId());
+		if ((data == null) || !data.olympian)
+		{
+			return;
+		}
+		try
+		{
+			// The stock match teleports (to the stadium and back) only finish by themselves for a player with a client;
+			// a clientless one stays decayed and frozen until onTeleported runs, so finish them here. Only on a later
+			// tick than the one that first saw it: the stock teleport runs on another thread and sets the flag before it
+			// decays and moves the body, so finishing at once could respawn the noble at its old spot and leave the moved
+			// body out of the world with the flag already cleared (FPC-124).
+			if (noble.isTeleporting())
+			{
+				if (data.olyTeleportSeenAt == 0)
+				{
+					data.olyTeleportSeenAt = now;
+				}
+				else if (!noble.isSpawned())
+				{
+					data.olyTeleportSeenAt = 0;
+					noble.onTeleported();
+					noble.broadcastUserInfo();
+				}
+			}
+			else
+			{
+				data.olyTeleportSeenAt = 0;
+				if (!noble.isSpawned() && (World.getInstance().getPlayer(noble.getObjectId()) == noble))
+				{
+					// A body left out of the world with no teleport pending (and not logging out): put it back where it
+					// stands.
+					noble.spawnMe(noble.getX(), noble.getY(), noble.getZ());
+					noble.broadcastUserInfo();
+				}
+			}
+			if (noble.isInOlympiadMode())
+			{
+				if (!data.olyInMatch)
+				{
+					data.olyInMatch = true;
+					prepareOlympiadFight(noble, data);
+				}
+				final Player opponent = (noble.isDead() || !noble.isOlympiadStart()) ? null : olympiadOpponent(noble);
+				if ((opponent == null) || opponent.isDead())
+				{
+					holdOlympiadPosition(noble); // the countdown, a finished fight, or no opponent in sight
+					return;
+				}
+				keepOlympiadShots(noble, data);
+				pvpStandCombat(noble, data, opponent);
+				return;
+			}
+			if (data.olyInMatch)
+			{
+				data.olyInMatch = false;
+				endOlympiadFight(noble, data);
+				PhantomOlympiadManager.getInstance().onMatchEnded(noble, now);
+			}
+			if (noble.isDead())
+			{
+				// A loser stays "dead" until the stock return teleport revives it. If that did not happen, stand it up.
+				if (data.deadSince == 0)
+				{
+					data.deadSince = now;
+				}
+				else if ((now - data.deadSince) >= OLYMPIAN_REVIVE_DELAY_MS)
+				{
+					noble.doRevive();
+					noble.setCurrentHpMp(noble.getMaxHp(), noble.getMaxMp());
+					noble.setCurrentCp(noble.getMaxCp());
+					data.deadSince = 0;
+				}
+				return;
+			}
+			data.deadSince = 0;
+			wanderOlympian(noble, data, now);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Olympiad noble error for " + noble.getName() + ": " + e.getMessage());
+		}
+	}
+
+	/** Arms the fight kit once the noble is moved to a stadium: auto-attack, class playstyle, AutoUse. */
+	private void prepareOlympiadFight(Player noble, PhantomData data)
+	{
+		if (noble.isSitting())
+		{
+			noble.standUp();
+		}
+		noble.setRunning();
+		if (!data.mage && !noble.getAutoUseSettings().getAutoActions().contains(AUTO_ATTACK_ACTION))
+		{
+			noble.getAutoUseSettings().getAutoActions().add(AUTO_ATTACK_ACTION);
+		}
+		parkHunterPlaystyle(noble, data);
+		AutoUseTaskManager.getInstance().startAutoUseTask(noble);
+	}
+
+	/**
+	 * The stock match prep (run just after the move to the stadium) switches every auto shot off; switch the weapon's
+	 * own shots back on. Called every fight tick, since that prep may land after prepareOlympiadFight (a set, so cheap).
+	 */
+	private void keepOlympiadShots(Player noble, PhantomData data)
+	{
+		final Weapon weapon = noble.getActiveWeaponItem();
+		if (weapon != null)
+		{
+			noble.addAutoSoulShot(data.mage ? spiritshotIdFor(weapon.getCrystalType()) : soulshotIdFor(weapon.getCrystalType()));
+		}
+	}
+
+	/** Takes the fight kit off again after the match. */
+	private void endOlympiadFight(Player noble, PhantomData data)
+	{
+		AutoUseTaskManager.getInstance().stopAutoUseTask(noble);
+		PhantomPlaystyleEngine.dropStances(noble, data.play); // before unparking, while the playstyle is still resolved
+		PhantomPlaystyleEngine.forgetAllTargets(data.play); // the next match opens fresh, even against the same noble
+		data.rearTargetId = 0;
+		data.rearTries = 0;
+		unparkHunterPlaystyle(noble, data);
+		noble.setTarget(null);
+		noble.getAI().setIntention(Intention.IDLE);
+	}
+
+	/** Stands still without a target (the countdown, or after the fight is decided). Self-buffs may still land. */
+	private static void holdOlympiadPosition(Player noble)
+	{
+		if (noble.getTarget() != null)
+		{
+			noble.setTarget(null);
+		}
+		if (noble.isAttackingNow())
+		{
+			noble.abortAttack();
+		}
+		if (!noble.isCastingNow() && (noble.getAI().getIntention() != Intention.IDLE))
+		{
+			noble.getAI().setIntention(Intention.IDLE);
+		}
+	}
+
+	/** @return the other side of this noble's match, or {@code null} if it is not in sight */
+	private static Player olympiadOpponent(Player noble)
+	{
+		for (Player other : World.getInstance().getVisibleObjectsInRange(noble, Player.class, OLYMPIAD_OPPONENT_RANGE))
+		{
+			if ((other != noble) && other.isInOlympiadMode() && (other.getOlympiadGameId() == noble.getOlympiadGameId()) && (other.getOlympiadSide() != noble.getOlympiadSide()))
+			{
+				return other;
+			}
+		}
+		return null;
+	}
+
+	/** Every so often, walks an idle noble to a nearby spot around where it logged in. */
+	private static void wanderOlympian(Player noble, PhantomData data, long now)
+	{
+		if ((now < data.olyNextWanderAt) || noble.isMoving() || noble.isCastingNow() || noble.isSitting())
+		{
+			return;
+		}
+		data.olyNextWanderAt = now + Rnd.get(OLYMPIAN_WANDER_MIN_MS, OLYMPIAN_WANDER_MAX_MS);
+		final double angle = Rnd.nextDouble() * 2 * Math.PI;
+		final int radius = Rnd.get(40, OLYMPIAN_WANDER_RADIUS);
+		final int x = data.home.getX() + (int) (Math.cos(angle) * radius);
+		final int y = data.home.getY() + (int) (Math.sin(angle) * radius);
+		final Location destination = GeoEngine.getInstance().getValidLocation(noble, new Location(x, y, noble.getZ()));
+		noble.setWalking();
+		noble.getAI().setIntention(Intention.MOVE_TO, destination);
+	}
+
+	/** A unique, pronounceable character name (reuses the NPC name generator), checked against the DB. */
+	private String nextName()
+	{
+		for (int attempt = 0; attempt < 50; attempt++)
+		{
+			final String name = FakePlayerAppearanceFactory.generateName();
+			if (!CharInfoTable.getInstance().doesCharNameExist(name))
+			{
+				return name;
+			}
+		}
+		// Extremely unlikely fallback.
+		String name;
+		do
+		{
+			name = "Phantom" + Rnd.get(100000);
+		}
+		while (CharInfoTable.getInstance().doesCharNameExist(name));
+		return name;
+	}
+
+	public static PhantomManager getInstance()
+	{
+		return SingletonHolder.INSTANCE;
+	}
+
+	private static class SingletonHolder
+	{
+		protected static final PhantomManager INSTANCE = new PhantomManager();
+	}
+}

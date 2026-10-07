@@ -1,0 +1,538 @@
+/*
+ * Copyright (c) 2013 L2jMobius
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+import org.l2jmobius.gameserver.config.custom.FakePlayersConfig;
+import org.l2jmobius.gameserver.managers.PhantomPvpManager;
+
+/**
+ * Standalone (no JUnit, no game server) regression harness for the pure decision functions of
+ * {@link PhantomPvpManager} - the phantom PvP decision layer. The stand-or-flee math and the flee-threshold
+ * shaping (bravery and level gap) take all their inputs as parameters, so they are verified deterministically
+ * without a live world. The config-gating methods are also checked against the (unloaded) config defaults.
+ *
+ * <p>Run from the project root ("L2J_Mobius_CT_0_Interlude github"):
+ * <pre>
+ *   javac -d build/test-classes \
+ *         "java/org/l2jmobius/commons/util/Rnd.java" \
+ *         "java/org/l2jmobius/commons/time/TimeUtil.java" \
+ *         "java/org/l2jmobius/commons/util/ConfigReader.java" \
+ *         "java/org/l2jmobius/gameserver/config/custom/FakePlayersConfig.java" \
+ *         "java/org/l2jmobius/gameserver/managers/PhantomPvpManager.java" \
+ *         "tests/java/PhantomPvpManagerTest.java"
+ *   java -cp build/test-classes PhantomPvpManagerTest
+ * </pre>
+ * Exit code is 0 when every check passes, 1 otherwise.
+ */
+public class PhantomPvpManagerTest
+{
+	private static int checks = 0;
+	private static int failures = 0;
+
+	// The design's default base flee threshold (docs/PVP_SYSTEM_DESIGN.md / FakePlayers.ini).
+	private static final int BASE = 30;
+	private static final int NEUTRAL = 50; // bravery midpoint that leaves the threshold unshifted
+
+	public static void main(String[] args)
+	{
+		testFleeThresholdBravery();
+		testFleeThresholdLevelGap();
+		testFleeThresholdClamped();
+		testShouldFlee();
+		testHopelessLevelGapAlwaysFlees();
+		testGatingOffByDefault();
+		testGatingMasterSwitch();
+		testPersonalityRollsInRange();
+		testInitiateLevelBand();
+		testReactRollBoundaries();
+		testReactTargetPreference();
+		testSizingEnrichment();
+		testOpponentKind();
+		testDriverGateComposition();
+		testDuelAcceptChance();
+		testDuelAcceptRoll();
+		testDuelIssueGate();
+		testDuelSurrender();
+		testDuelRolls();
+		testDuelWaitAccepted();
+		testDuelWaitDeclinedOrIgnored();
+		testDuelWaitCountdownAndGone();
+		testArcherKite();
+
+		System.out.println();
+		System.out.println("Ran " + checks + " checks, " + failures + " failure(s).");
+		if (failures > 0)
+		{
+			System.exit(1);
+		}
+		System.out.println("OK");
+	}
+
+	/** Neutral bravery leaves the base unchanged; a timid phantom flees sooner (higher threshold), a brave one later. */
+	private static void testFleeThresholdBravery()
+	{
+		final int neutral = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 40);
+		eq(BASE, neutral, "neutral bravery, equal levels -> base threshold");
+
+		final int timid = PhantomPvpManager.effectiveFleeHpPercent(BASE, 0, 40, 40);
+		final int brave = PhantomPvpManager.effectiveFleeHpPercent(BASE, 100, 40, 40);
+		gt(timid, neutral, "timid (bravery 0) flees sooner than neutral");
+		lt(brave, neutral, "brave (bravery 100) flees later than neutral");
+		// The swing is symmetric around neutral (both +/- BRAVERY_SWING = 15).
+		eq(BASE + PhantomPvpManager.BRAVERY_SWING, timid, "timid threshold is base + full bravery swing");
+		eq(BASE - PhantomPvpManager.BRAVERY_SWING, brave, "brave threshold is base - full bravery swing");
+	}
+
+	/** Facing a higher-level enemy raises the threshold (flee sooner); out-leveling the enemy lowers it. */
+	private static void testFleeThresholdLevelGap()
+	{
+		final int even = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 40);
+		final int outmatched = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 45); // enemy 5 higher
+		final int dominant = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 45, 40); // phantom 5 higher
+		gt(outmatched, even, "enemy 5 levels higher -> flee sooner");
+		lt(dominant, even, "phantom 5 levels higher -> flee later");
+		eq(BASE + (5 * PhantomPvpManager.LEVEL_GAP_HP_WEIGHT), outmatched, "level term is gap * weight");
+	}
+
+	/** The result is always clamped into a sane HP percentage band. */
+	private static void testFleeThresholdClamped()
+	{
+		// Hugely outmatched, timid, high base: still capped at the ceiling.
+		final int high = PhantomPvpManager.effectiveFleeHpPercent(85, 0, 20, 60);
+		le(high, PhantomPvpManager.FLEE_HP_CEIL, "threshold never exceeds the ceiling");
+		// Dominant, brave, low base: still at least the floor.
+		final int low = PhantomPvpManager.effectiveFleeHpPercent(5, 100, 60, 20);
+		ge(low, PhantomPvpManager.FLEE_HP_FLOOR, "threshold never drops below the floor");
+	}
+
+	/** shouldFlee is exactly "current HP at or below the effective threshold" (for a non-hopeless gap). */
+	private static void testShouldFlee()
+	{
+		final int threshold = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 40); // == 30
+		eqBool(true, PhantomPvpManager.shouldFlee(threshold, BASE, NEUTRAL, 40, 40), "HP == threshold -> flee");
+		eqBool(true, PhantomPvpManager.shouldFlee(threshold - 1, BASE, NEUTRAL, 40, 40), "HP below threshold -> flee");
+		eqBool(false, PhantomPvpManager.shouldFlee(threshold + 1, BASE, NEUTRAL, 40, 40), "HP above threshold -> stand");
+		eqBool(false, PhantomPvpManager.shouldFlee(100, BASE, NEUTRAL, 40, 40), "full HP, even fight -> stand");
+	}
+
+	/** A hopeless level gap makes a phantom flee at any HP, even full. */
+	private static void testHopelessLevelGapAlwaysFlees()
+	{
+		final int self = 40;
+		final int hopelessEnemy = self + PhantomPvpManager.HOPELESS_LEVEL_GAP; // exactly the hopeless gap
+		eqBool(true, PhantomPvpManager.shouldFlee(100, BASE, 100, self, hopelessEnemy), "hopeless gap at full HP + max bravery -> flee");
+		eqBool(false, PhantomPvpManager.shouldFlee(100, BASE, NEUTRAL, self, hopelessEnemy - 1), "one below the hopeless gap, full HP -> stand");
+	}
+
+	/** Initiation level band: never stomp a target far below, never start on one hopelessly above; self-defense is unaffected. */
+	private static void testInitiateLevelBand()
+	{
+		final int max = 6; // PhantomPvpMaxLevelGapAbovePlayer default
+		eqBool(true, PhantomPvpManager.mayInitiateByLevel(40, 40, max), "even levels -> may initiate");
+		eqBool(true, PhantomPvpManager.mayInitiateByLevel(46, 40, max), "exactly max levels above -> may initiate");
+		eqBool(false, PhantomPvpManager.mayInitiateByLevel(47, 40, max), "one over the max above -> no stomp");
+		eqBool(false, PhantomPvpManager.mayInitiateByLevel(50, 40, max), "far above the target -> no stomp");
+		final int hopeless = PhantomPvpManager.HOPELESS_LEVEL_GAP;
+		eqBool(false, PhantomPvpManager.mayInitiateByLevel(40, 40 + hopeless, max), "target hopelessly above -> do not start");
+		eqBool(true, PhantomPvpManager.mayInitiateByLevel(40, (40 + hopeless) - 1, max), "one below the hopeless gap -> may initiate");
+	}
+
+	/** The react roll is a pure percentage of the configured chance: 0 never engages, 100 always does. */
+	private static void testReactRollBoundaries()
+	{
+		FakePlayersConfig.PHANTOM_PVP_REACT_CHANCE_PERCENT = 0;
+		boolean anyAtZero = false;
+		for (int i = 0; i < 500; i++)
+		{
+			if (PhantomPvpManager.rollReactEngage())
+			{
+				anyAtZero = true;
+			}
+		}
+		eqBool(false, anyAtZero, "react chance 0 never engages");
+
+		FakePlayersConfig.PHANTOM_PVP_REACT_CHANCE_PERCENT = 100;
+		boolean allAtFull = true;
+		for (int i = 0; i < 500; i++)
+		{
+			if (!PhantomPvpManager.rollReactEngage())
+			{
+				allAtFull = false;
+			}
+		}
+		eqBool(true, allAtFull, "react chance 100 always engages");
+
+		FakePlayersConfig.PHANTOM_PVP_REACT_CHANCE_PERCENT = 0; // restore the unloaded default
+
+		FakePlayersConfig.PHANTOM_PVP_RED_REACT_CHANCE_PERCENT = 0;
+		boolean anyRedAtZero = false;
+		for (int i = 0; i < 500; i++)
+		{
+			anyRedAtZero |= PhantomPvpManager.rollRedReactEngage();
+		}
+		eqBool(false, anyRedAtZero, "red react chance 0 never engages");
+
+		FakePlayersConfig.PHANTOM_PVP_RED_REACT_CHANCE_PERCENT = 100;
+		boolean allRedAtFull = true;
+		for (int i = 0; i < 500; i++)
+		{
+			allRedAtFull &= PhantomPvpManager.rollRedReactEngage();
+		}
+		eqBool(true, allRedAtFull, "red react chance 100 always engages");
+		FakePlayersConfig.PHANTOM_PVP_RED_REACT_CHANCE_PERCENT = 0;
+	}
+
+	/** Red players take priority over purple players; distance chooses within each reputation class. */
+	private static void testReactTargetPreference()
+	{
+		eqBool(true, PhantomPvpManager.preferReactTarget(true, 800, false, 200), "farther red target outranks nearer purple target");
+		eqBool(false, PhantomPvpManager.preferReactTarget(false, 100, true, 800), "purple target cannot replace selected red target");
+		eqBool(true, PhantomPvpManager.preferReactTarget(true, 100, true, 200), "nearer red target replaces farther red target");
+		eqBool(true, PhantomPvpManager.preferReactTarget(false, 100, false, 200), "nearer purple target replaces farther purple target");
+		eqBool(false, PhantomPvpManager.preferReactTarget(false, 100, false, 100), "equal-distance candidate preserves first target");
+		eqBool(true, PhantomPvpManager.mayReactToTarget(true, false, false), "aggressor may react to purple regardless of red setting");
+		eqBool(true, PhantomPvpManager.mayReactToTarget(true, false, true), "aggressor may react to red regardless of red setting");
+		eqBool(true, PhantomPvpManager.mayReactToTarget(false, true, true), "red-react-all lets non-aggressor react to red");
+		eqBool(false, PhantomPvpManager.mayReactToTarget(false, true, false), "red-react-all does not let non-aggressor react to purple");
+		eqBool(false, PhantomPvpManager.mayReactToTarget(false, false, true), "red-react-all off keeps reactions aggressor-only");
+	}
+
+	/** Phase 2 sizing: outnumbering the enemy lets a phantom stand longer; being outnumbered or out of mana flees sooner. */
+	private static void testSizingEnrichment()
+	{
+		// Ally advantage lowers the threshold (stand longer); disadvantage raises it (flee sooner). Base 30, even fight.
+		final int outnumber = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 40, 3, false);
+		final int outnumbered = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 40, -3, false);
+		lt(outnumber, BASE, "outnumbering the enemy -> flee later (lower threshold)");
+		gt(outnumbered, BASE, "being outnumbered -> flee sooner (higher threshold)");
+		eq(BASE - (3 * PhantomPvpManager.ALLY_ADVANTAGE_HP_WEIGHT), outnumber, "ally term is advantage * weight");
+		eq(BASE + (3 * PhantomPvpManager.ALLY_ADVANTAGE_HP_WEIGHT), outnumbered, "disadvantage term is symmetric");
+
+		// The ally term is clamped, so a huge advantage cannot swing the threshold without limit.
+		final int huge = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 40, 100, false);
+		eq(BASE - PhantomPvpManager.ALLY_ADVANTAGE_HP_MAX, huge, "ally advantage is clamped to the max");
+
+		// An out-of-mana caster flees sooner by the full penalty.
+		final int lowMp = PhantomPvpManager.effectiveFleeHpPercent(BASE, NEUTRAL, 40, 40, 0, true);
+		eq(BASE + PhantomPvpManager.CASTER_LOW_MP_PENALTY, lowMp, "out-of-mana caster adds the full penalty");
+
+		// shouldFlee honors the situational inputs.
+		eqBool(false, PhantomPvpManager.shouldFlee(BASE, BASE, NEUTRAL, 40, 40, 3, false), "outnumbering, HP at base -> stand");
+		eqBool(true, PhantomPvpManager.shouldFlee(BASE, BASE, NEUTRAL, 40, 40, -3, false), "outnumbered, HP at base -> flee");
+		eqBool(true, PhantomPvpManager.shouldFlee(BASE + 10, BASE, NEUTRAL, 40, 40, 0, true), "out-of-mana caster flees above the base HP");
+	}
+
+	/** The phantom-versus-phantom participant gate: a real player is always allowed; a phantom only when enabled. */
+	private static void testOpponentKind()
+	{
+		eqBool(true, PhantomPvpManager.opponentKindAllowed(false, false), "real player opponent always allowed (between off)");
+		eqBool(true, PhantomPvpManager.opponentKindAllowed(false, true), "real player opponent always allowed (between on)");
+		eqBool(true, PhantomPvpManager.opponentKindAllowed(true, true), "phantom opponent allowed when between-phantoms on");
+		eqBool(false, PhantomPvpManager.opponentKindAllowed(true, false), "phantom opponent blocked when between-phantoms off");
+	}
+
+	/**
+	 * The PvP driver must run whenever the master switch is on, even if self-defense is off, because it also drives
+	 * react-to-flagged and party-defense engagements. This pins the gate composition the pvpCombat tick depends on.
+	 */
+	private static void testDriverGateComposition()
+	{
+		FakePlayersConfig.PHANTOM_PVP_ENABLED = true;
+		FakePlayersConfig.PHANTOM_PVP_SELF_DEFENSE = false;
+		FakePlayersConfig.PHANTOM_PVP_REACT_TO_FLAGGED = true;
+		FakePlayersConfig.PHANTOM_PVP_PARTY_DEFENSE = true;
+		eqBool(true, PhantomPvpManager.pvpEnabled(), "master on -> driver runs even with self-defense off");
+		eqBool(false, PhantomPvpManager.selfDefenseEnabled(), "self-defense reports off");
+		eqBool(true, PhantomPvpManager.reactToFlaggedEnabled(), "react-to-flagged still on with self-defense off");
+		eqBool(true, PhantomPvpManager.partyDefenseEnabled(), "party defense still on with self-defense off");
+		// Restore the unloaded defaults so test ordering does not matter.
+		FakePlayersConfig.PHANTOM_PVP_ENABLED = false;
+		FakePlayersConfig.PHANTOM_PVP_SELF_DEFENSE = false;
+		FakePlayersConfig.PHANTOM_PVP_REACT_TO_FLAGGED = false;
+		FakePlayersConfig.PHANTOM_PVP_PARTY_DEFENSE = false;
+	}
+
+	/** With config never loaded, all statics are false/0, so every gate is off (safe default). */
+	private static void testGatingOffByDefault()
+	{
+		eqBool(false, PhantomPvpManager.pvpEnabled(), "master switch off by default");
+		eqBool(false, PhantomPvpManager.selfDefenseEnabled(), "self-defense off while master off");
+		eqBool(false, PhantomPvpManager.reactToFlaggedEnabled(), "flag reaction off while master off");
+		eqBool(false, PhantomPvpManager.duelsEnabled(), "duels off while master off");
+		eqBool(false, PhantomPvpManager.partyDefenseEnabled(), "party defense off while master off");
+		eqBool(false, PhantomPvpManager.betweenPhantomsEnabled(), "phantom-vs-phantom off while master off");
+		eqBool(false, PhantomPvpManager.openWorldGankEnabled(), "ganking off while master off");
+	}
+
+	/** Every behavior gate is AND-ed with the master switch: master off forces the behavior off even when its own flag is on. */
+	private static void testGatingMasterSwitch()
+	{
+		FakePlayersConfig.PHANTOM_PVP_ENABLED = false;
+		FakePlayersConfig.PHANTOM_PVP_SELF_DEFENSE = true;
+		eqBool(false, PhantomPvpManager.selfDefenseEnabled(), "self-defense flag on but master off -> still off");
+
+		FakePlayersConfig.PHANTOM_PVP_ENABLED = true;
+		eqBool(true, PhantomPvpManager.selfDefenseEnabled(), "both master and self-defense on -> on");
+
+		FakePlayersConfig.PHANTOM_PVP_SELF_DEFENSE = false;
+		eqBool(false, PhantomPvpManager.selfDefenseEnabled(), "master on but self-defense flag off -> off");
+
+		// Restore the unloaded defaults so ordering of tests does not matter.
+		FakePlayersConfig.PHANTOM_PVP_ENABLED = false;
+		FakePlayersConfig.PHANTOM_PVP_SELF_DEFENSE = false;
+	}
+
+	/** Personality rolls stay inside their declared ranges across many samples. */
+	private static void testPersonalityRollsInRange()
+	{
+		FakePlayersConfig.PHANTOM_PVP_AGGRESSOR_PERCENT = 15;
+		boolean allBraveryInRange = true;
+		int aggressorCount = 0;
+		final int samples = 2000;
+		for (int i = 0; i < samples; i++)
+		{
+			final int bravery = PhantomPvpManager.rollBravery();
+			if ((bravery < PhantomPvpManager.BRAVERY_MIN) || (bravery > PhantomPvpManager.BRAVERY_MAX))
+			{
+				allBraveryInRange = false;
+			}
+			if (PhantomPvpManager.rollAggressor())
+			{
+				aggressorCount++;
+			}
+		}
+		eqBool(true, allBraveryInRange, "every bravery roll is within [MIN, MAX]");
+		// With a 15% aggressor rate over 2000 samples, the count should land well inside a wide sanity band.
+		final int pct = (aggressorCount * 100) / samples;
+		eqBool(true, (pct >= 5) && (pct <= 30), "aggressor share near 15% (got " + pct + "%)");
+
+		// A 0% rate must never roll an aggressor; a 100% rate must always roll one.
+		FakePlayersConfig.PHANTOM_PVP_AGGRESSOR_PERCENT = 0;
+		boolean anyAtZero = false;
+		for (int i = 0; i < 500; i++)
+		{
+			anyAtZero |= PhantomPvpManager.rollAggressor();
+		}
+		eqBool(false, anyAtZero, "0% aggressor rate never rolls an aggressor");
+
+		FakePlayersConfig.PHANTOM_PVP_AGGRESSOR_PERCENT = 100;
+		boolean allAtHundred = true;
+		for (int i = 0; i < 500; i++)
+		{
+			allAtHundred &= PhantomPvpManager.rollAggressor();
+		}
+		eqBool(true, allAtHundred, "100% aggressor rate always rolls an aggressor");
+
+		FakePlayersConfig.PHANTOM_PVP_AGGRESSOR_PERCENT = 0; // restore
+	}
+
+	// ===== tiny assertion helpers =====
+
+	/** Acceptance starts at honor, drops per level the challenger is above, and is clamped; a hopeless gap always refuses. */
+	private static void testDuelAcceptChance()
+	{
+		eq(60, PhantomPvpManager.duelAcceptChancePercent(60, 40, 40), "even levels -> chance is honor");
+		eq(60, PhantomPvpManager.duelAcceptChancePercent(60, 45, 40), "challenger below -> chance is honor");
+		eq(60 - (3 * PhantomPvpManager.DUEL_LEVEL_GAP_ACCEPT_WEIGHT), PhantomPvpManager.duelAcceptChancePercent(60, 40, 43), "challenger 3 above -> honor minus 3 * weight");
+		eq(PhantomPvpManager.DUEL_ACCEPT_FLOOR, PhantomPvpManager.duelAcceptChancePercent(0, 40, 40), "zero honor -> floor");
+		eq(PhantomPvpManager.DUEL_ACCEPT_CEIL, PhantomPvpManager.duelAcceptChancePercent(100, 40, 40), "full honor -> ceiling");
+		eq(PhantomPvpManager.DUEL_ACCEPT_FLOOR, PhantomPvpManager.duelAcceptChancePercent(60, 40, 49), "large gap below hopeless -> floor, not zero");
+		eq(0, PhantomPvpManager.duelAcceptChancePercent(100, 40, 40 + PhantomPvpManager.HOPELESS_LEVEL_GAP), "hopeless gap -> never accepts");
+	}
+
+	/** shouldAcceptDuel is exactly "roll below the chance". */
+	private static void testDuelAcceptRoll()
+	{
+		final int chance = PhantomPvpManager.duelAcceptChancePercent(60, 40, 40); // 60
+		eqBool(true, PhantomPvpManager.shouldAcceptDuel(chance - 1, 60, 40, 40), "roll just under chance -> accept");
+		eqBool(false, PhantomPvpManager.shouldAcceptDuel(chance, 60, 40, 40), "roll equal to chance -> decline");
+		eqBool(true, PhantomPvpManager.shouldAcceptDuel(0, 0, 40, 40), "floor chance still accepts a zero roll");
+		eqBool(false, PhantomPvpManager.shouldAcceptDuel(0, 100, 40, 40 + PhantomPvpManager.HOPELESS_LEVEL_GAP), "hopeless gap refuses even a zero roll");
+	}
+
+	/** Only an honorable phantom challenges, and only within the level band either way. */
+	private static void testDuelIssueGate()
+	{
+		final int min = PhantomPvpManager.DUEL_CHALLENGER_MIN_HONOR;
+		final int band = PhantomPvpManager.DUEL_CHALLENGE_LEVEL_BAND;
+		eqBool(true, PhantomPvpManager.mayIssueDuel(min, 40, 40), "minimum honor, even levels -> may challenge");
+		eqBool(false, PhantomPvpManager.mayIssueDuel(min - 1, 40, 40), "below minimum honor -> never challenges");
+		eqBool(true, PhantomPvpManager.mayIssueDuel(100, 40, 40 + band), "target at the top of the band -> may challenge");
+		eqBool(true, PhantomPvpManager.mayIssueDuel(100, 40 + band, 40), "target at the bottom of the band -> may challenge");
+		eqBool(false, PhantomPvpManager.mayIssueDuel(100, 40, 41 + band), "target above the band -> no challenge");
+		eqBool(false, PhantomPvpManager.mayIssueDuel(100, 41 + band, 40), "target below the band -> no challenge");
+	}
+
+	/** Only a timid phantom surrenders, and only once it is at its flee threshold. */
+	private static void testDuelSurrender()
+	{
+		final int timid = PhantomPvpManager.DUEL_SURRENDER_MAX_BRAVERY - 1;
+		final int threshold = PhantomPvpManager.effectiveFleeHpPercent(BASE, timid, 40, 40);
+		eqBool(true, PhantomPvpManager.shouldSurrenderDuel(threshold, BASE, timid, 40, 40), "timid at threshold -> surrender");
+		eqBool(false, PhantomPvpManager.shouldSurrenderDuel(threshold + 1, BASE, timid, 40, 40), "timid above threshold -> fight on");
+		eqBool(false, PhantomPvpManager.shouldSurrenderDuel(1, BASE, PhantomPvpManager.DUEL_SURRENDER_MAX_BRAVERY, 40, 40), "not timid -> never surrenders, even at 1 HP");
+		eqBool(false, PhantomPvpManager.shouldSurrenderDuel(1, BASE, 100, 40, 40 + PhantomPvpManager.HOPELESS_LEVEL_GAP), "brave vs hopeless gap -> still fights the duel out");
+	}
+
+	/** Honor rolls stay in range, and the challenge roll honors a 0% and a 100% chance. */
+	private static void testDuelRolls()
+	{
+		boolean allHonorInRange = true;
+		for (int i = 0; i < 2000; i++)
+		{
+			final int honor = PhantomPvpManager.rollHonor();
+			if ((honor < PhantomPvpManager.HONOR_MIN) || (honor > PhantomPvpManager.HONOR_MAX))
+			{
+				allHonorInRange = false;
+			}
+		}
+		eqBool(true, allHonorInRange, "every honor roll is within [MIN, MAX]");
+		final int saved = FakePlayersConfig.PHANTOM_PVP_DUEL_CHANCE_PERCENT;
+		FakePlayersConfig.PHANTOM_PVP_DUEL_CHANCE_PERCENT = 0;
+		boolean anyAtZero = false;
+		for (int i = 0; i < 500; i++)
+		{
+			anyAtZero |= PhantomPvpManager.rollIssueDuel();
+		}
+		eqBool(false, anyAtZero, "0% duel chance never issues");
+		FakePlayersConfig.PHANTOM_PVP_DUEL_CHANCE_PERCENT = 100;
+		boolean allAtFull = true;
+		for (int i = 0; i < 500; i++)
+		{
+			allAtFull &= PhantomPvpManager.rollIssueDuel();
+		}
+		eqBool(true, allAtFull, "100% duel chance always issues");
+		FakePlayersConfig.PHANTOM_PVP_DUEL_CHANCE_PERCENT = saved;
+	}
+
+	// Duel wait timings used below: a 15s request timeout plus a 12s start grace, as PhantomManager uses them.
+	private static final long GRACE = 12000;
+	private static final long ASK_DEADLINE = 15000 + GRACE;
+
+	/** A player who accepts: the phantom holds while the request is pending and through the countdown, then fights. */
+	private static void testDuelWaitAccepted()
+	{
+		eq(PhantomPvpManager.DUEL_WAIT_HOLD, PhantomPvpManager.duelWaitStep(true, false, true, 0, 1000, ASK_DEADLINE, GRACE), "request pending -> hold");
+		eq(PhantomPvpManager.DUEL_WAIT_HOLD, PhantomPvpManager.duelWaitStep(true, false, false, 5000, 9000, ASK_DEADLINE, GRACE), "accepted, countdown running -> hold");
+		eq(PhantomPvpManager.DUEL_WAIT_FIGHT, PhantomPvpManager.duelWaitStep(true, true, false, 5000, 13000, ASK_DEADLINE, GRACE), "duel started -> fight");
+		eq(PhantomPvpManager.DUEL_WAIT_FIGHT, PhantomPvpManager.duelWaitStep(true, true, false, 5000, ASK_DEADLINE + 1, ASK_DEADLINE, GRACE), "duel started just past the deadline -> still fight, never abandon a running duel");
+	}
+
+	/** A player who declines, or never answers: the phantom gives up once the start grace passes with no duel. */
+	private static void testDuelWaitDeclinedOrIgnored()
+	{
+		// Declined at 3s: hold through the grace window, then end.
+		eq(PhantomPvpManager.DUEL_WAIT_HOLD, PhantomPvpManager.duelWaitStep(true, false, false, 3000, 3000 + GRACE, ASK_DEADLINE, GRACE), "declined, at the edge of the grace -> hold");
+		eq(PhantomPvpManager.DUEL_WAIT_END, PhantomPvpManager.duelWaitStep(true, false, false, 3000, 3001 + GRACE, ASK_DEADLINE, GRACE), "declined, grace passed -> end");
+		// Ignored: pending the whole 15s, then the timer expires and is seen answered at 15s.
+		eq(PhantomPvpManager.DUEL_WAIT_HOLD, PhantomPvpManager.duelWaitStep(true, false, true, 0, 14999, ASK_DEADLINE, GRACE), "ignored, still inside the request timeout -> hold");
+		eq(PhantomPvpManager.DUEL_WAIT_HOLD, PhantomPvpManager.duelWaitStep(true, false, false, 0, 15000, ASK_DEADLINE, GRACE), "expired but not yet recorded -> hold one tick");
+		eq(PhantomPvpManager.DUEL_WAIT_END, PhantomPvpManager.duelWaitStep(true, false, false, 15000, ASK_DEADLINE, ASK_DEADLINE, GRACE), "ignored, deadline reached -> end");
+		// A stuck pending flag can never hold past the hard deadline.
+		eq(PhantomPvpManager.DUEL_WAIT_END, PhantomPvpManager.duelWaitStep(true, false, true, 0, ASK_DEADLINE, ASK_DEADLINE, GRACE), "still pending at the deadline -> end");
+	}
+
+	/** Countdown after an accepted challenge, and an opponent who leaves at any point. */
+	private static void testDuelWaitCountdownAndGone()
+	{
+		final long countdownDeadline = GRACE;
+		eq(PhantomPvpManager.DUEL_WAIT_HOLD, PhantomPvpManager.duelWaitStep(true, false, false, 0, 4000, countdownDeadline, GRACE), "countdown -> hold");
+		eq(PhantomPvpManager.DUEL_WAIT_FIGHT, PhantomPvpManager.duelWaitStep(true, true, false, 0, 8000, countdownDeadline, GRACE), "countdown over, duel running -> fight");
+		eq(PhantomPvpManager.DUEL_WAIT_END, PhantomPvpManager.duelWaitStep(true, false, false, 0, countdownDeadline, countdownDeadline, GRACE), "duel never started by the deadline -> end");
+		eq(PhantomPvpManager.DUEL_WAIT_END, PhantomPvpManager.duelWaitStep(false, false, true, 0, 1000, ASK_DEADLINE, GRACE), "opponent gone while asked -> end");
+		eq(PhantomPvpManager.DUEL_WAIT_END, PhantomPvpManager.duelWaitStep(false, true, false, 0, 1000, countdownDeadline, GRACE), "opponent gone, even mid-duel -> end");
+	}
+
+	/** Archer kiting: only a bow phantom, only against melee in trigger range, never rooted or in town, on a cooldown. */
+	private static void testArcherKite()
+	{
+		final long now = 100_000;
+		eqBool(true, PhantomPvpManager.shouldKite(true, true, true, 200, true, false, 0, now), "melee in range: kite");
+		eqBool(true, PhantomPvpManager.shouldKite(true, true, true, PhantomPvpManager.KITE_TRIGGER_RANGE, true, false, 0, now), "exactly at the trigger range: kite");
+		eqBool(false, PhantomPvpManager.shouldKite(true, true, true, PhantomPvpManager.KITE_TRIGGER_RANGE + 1, true, false, 0, now), "outside the trigger range: shoot");
+		eqBool(false, PhantomPvpManager.shouldKite(false, true, true, 200, true, false, 0, now), "switched off");
+		eqBool(false, PhantomPvpManager.shouldKite(true, false, true, 200, true, false, 0, now), "no bow: no kite");
+		eqBool(false, PhantomPvpManager.shouldKite(true, true, false, 200, true, false, 0, now), "ranged or mage opponent: no kite");
+		eqBool(false, PhantomPvpManager.shouldKite(true, true, true, 200, false, false, 0, now), "rooted or casting: no kite");
+		eqBool(false, PhantomPvpManager.shouldKite(true, true, true, 200, true, true, 0, now), "never in a peace zone");
+		eqBool(false, PhantomPvpManager.shouldKite(true, true, true, 200, true, false, now - 1000, now), "inside the cooldown");
+		eqBool(true, PhantomPvpManager.shouldKite(true, true, true, 200, true, false, now - PhantomPvpManager.KITE_COOLDOWN_MS, now), "cooldown over");
+	}
+
+	private static void eq(int expected, int actual, String what)
+	{
+		checks++;
+		if (expected != actual)
+		{
+			failures++;
+			System.out.println("FAIL: " + what + " -> expected [" + expected + "] but got [" + actual + "]");
+		}
+	}
+
+	private static void eqBool(boolean expected, boolean actual, String what)
+	{
+		checks++;
+		if (expected != actual)
+		{
+			failures++;
+			System.out.println("FAIL: " + what + " -> expected [" + expected + "] but got [" + actual + "]");
+		}
+	}
+
+	private static void gt(int a, int b, String what)
+	{
+		checks++;
+		if (a <= b)
+		{
+			failures++;
+			System.out.println("FAIL: " + what + " -> expected [" + a + "] > [" + b + "]");
+		}
+	}
+
+	private static void lt(int a, int b, String what)
+	{
+		checks++;
+		if (a >= b)
+		{
+			failures++;
+			System.out.println("FAIL: " + what + " -> expected [" + a + "] < [" + b + "]");
+		}
+	}
+
+	private static void ge(int a, int b, String what)
+	{
+		checks++;
+		if (a < b)
+		{
+			failures++;
+			System.out.println("FAIL: " + what + " -> expected [" + a + "] >= [" + b + "]");
+		}
+	}
+
+	private static void le(int a, int b, String what)
+	{
+		checks++;
+		if (a > b)
+		{
+			failures++;
+			System.out.println("FAIL: " + what + " -> expected [" + a + "] <= [" + b + "]");
+		}
+	}
+}

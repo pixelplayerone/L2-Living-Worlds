@@ -1,0 +1,10 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Windows batch/cmd scripts MUST stay CRLF - cmd.exe mis-parses multi-line
+# ( ) blocks with LF endings ("was unexpected at this time" on a fresh PC).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts stay LF.
+*.sh text eol=lf

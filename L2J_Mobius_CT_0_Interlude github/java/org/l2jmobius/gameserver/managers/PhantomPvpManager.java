@@ -1,0 +1,531 @@
+/*
+ * This file is part of the L2J Mobius project.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+package org.l2jmobius.gameserver.managers;
+
+import org.l2jmobius.commons.util.Rnd;
+import org.l2jmobius.gameserver.config.custom.FakePlayersConfig;
+
+/**
+ * The phantom PvP decision layer.
+ *
+ * <p>
+ * Player-versus-phantom (and phantom-versus-phantom) combat is not new game mechanics: a field phantom is a real
+ * {@link org.l2jmobius.gameserver.model.actor.Player}, so the stock PvP flag, karma / PK, and duel systems already
+ * apply to it. What this class owns is the <b>decision</b>: whether a phantom should engage, and whether it should
+ * stand and fight or break off and flee. The wiring that reads a phantom's state each tick, sets its target, and
+ * moves it lives in {@link PhantomManager} (which owns the per-phantom state bag); the pure, side-effect-free
+ * decision functions live here so they can be unit tested without a live server.
+ * </p>
+ *
+ * <p>
+ * Everything is gated behind {@link FakePlayersConfig#PHANTOM_PVP_ENABLED}. With the master switch off, the gate
+ * methods all return {@code false} and no PvP behavior runs. See {@code docs/PVP_SYSTEM_DESIGN.md}.
+ * </p>
+ *
+ * <p>
+ * Phase 0 delivers the config gating and personality rolls; Phase 1 adds the self-defense stand-or-flee decision.
+ * Later phases (flag / PK reaction, party defense, duels, open-world ganking) reuse the same gates and the same
+ * stand-or-flee routine. Phase 3 adds the duel decisions: honor, acceptance, challenging, and surrender.
+ * </p>
+ */
+public class PhantomPvpManager
+{
+	/** Bravery is rolled on this 0-100 scale; 50 is the neutral midpoint that leaves the flee threshold unshifted. */
+	public static final int BRAVERY_MIN = 0;
+	public static final int BRAVERY_MAX = 100;
+
+	/** A level gap this large against the phantom is hopeless: it flees regardless of its current HP or bravery. */
+	public static final int HOPELESS_LEVEL_GAP = 10;
+
+	/** Bravery shifts the flee threshold by at most this many HP points either way (timid flees sooner, brave later). */
+	public static final int BRAVERY_SWING = 15;
+
+	/** Each level the enemy is above the phantom raises the flee threshold (flee sooner) by this many HP points. */
+	public static final int LEVEL_GAP_HP_WEIGHT = 3;
+
+	/** Clamp on the level-gap contribution to the flee threshold, so a huge gap does not push it past the bravery term. */
+	public static final int LEVEL_GAP_HP_MAX = 30;
+
+	/** Each net nearby ally (phantom's side minus enemy's side) shifts the flee threshold by this many HP points. */
+	public static final int ALLY_ADVANTAGE_HP_WEIGHT = 4;
+
+	/** Clamp on the ally-count contribution, so being badly outnumbered still cannot swing the threshold without limit. */
+	public static final int ALLY_ADVANTAGE_HP_MAX = 20;
+
+	/** An out-of-mana caster/healer cannot fight effectively, so it flees this many HP points sooner. */
+	public static final int CASTER_LOW_MP_PENALTY = 15;
+
+	/** Hard floor / ceiling for the effective flee threshold, so it is always a sane HP percentage. */
+	public static final int FLEE_HP_FLOOR = 5;
+	public static final int FLEE_HP_CEIL = 90;
+
+	/** Honor (duel acceptance and challenging) is rolled on this 0-100 scale. */
+	public static final int HONOR_MIN = 0;
+	public static final int HONOR_MAX = 100;
+
+	/** Each level the challenger is above the phantom lowers its duel acceptance chance by this many points. */
+	public static final int DUEL_LEVEL_GAP_ACCEPT_WEIGHT = 8;
+
+	/** Hard floor / ceiling for the duel acceptance chance, so any phantom may surprise either way. */
+	public static final int DUEL_ACCEPT_FLOOR = 5;
+	public static final int DUEL_ACCEPT_CEIL = 95;
+
+	/** Only a phantom with at least this much honor ever issues a duel challenge of its own. */
+	public static final int DUEL_CHALLENGER_MIN_HONOR = 60;
+
+	/** A phantom only challenges an opponent within this many levels of itself (either way). */
+	public static final int DUEL_CHALLENGE_LEVEL_BAND = 5;
+
+	/** A phantom with bravery below this is timid: when a duel turns against it, it surrenders instead of fighting on. */
+	public static final int DUEL_SURRENDER_MAX_BRAVERY = 35;
+
+	/** {@link #duelWaitStep} verdicts: keep holding, start fighting (the duel began), or give up on the duel. */
+	public static final int DUEL_WAIT_HOLD = 0;
+	public static final int DUEL_WAIT_FIGHT = 1;
+	public static final int DUEL_WAIT_END = 2;
+	/** Archer kiting (L2Solo style): a melee opponent this close makes a bow phantom step back. */
+	public static final int KITE_TRIGGER_RANGE = 300;
+	/** How far from the opponent a kiting archer aims to stand after its step. */
+	public static final int KITE_RETREAT_DISTANCE = 500;
+	/** At most one kite step per this long, so the archer spends most of the fight shooting. */
+	public static final long KITE_COOLDOWN_MS = 3500;
+
+	protected PhantomPvpManager()
+	{
+	}
+
+	// ---------------------------------------------------------------------
+	// Config gating. All false when the master switch is off.
+	// ---------------------------------------------------------------------
+
+	/** @return {@code true} if any phantom PvP behavior may run at all (the master switch). */
+	public static boolean pvpEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_PVP_ENABLED;
+	}
+
+	/** @return {@code true} if a phantom should fight back (or flee) when it is attacked. */
+	public static boolean selfDefenseEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_PVP_ENABLED && FakePlayersConfig.PHANTOM_PVP_SELF_DEFENSE;
+	}
+
+	/** @return {@code true} if a phantom may engage an already-flagged or red combatant (Phase 2). */
+	public static boolean reactToFlaggedEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_PVP_ENABLED && FakePlayersConfig.PHANTOM_PVP_REACT_TO_FLAGGED;
+	}
+
+	/** @return {@code true} if a phantom takes part in formal duels (Phase 3): answers challenges and issues its own. */
+	public static boolean duelsEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_PVP_ENABLED && FakePlayersConfig.PHANTOM_PVP_DUELS;
+	}
+
+	/** @return {@code true} if allies defend their party against a hostile (Phase 2). */
+	public static boolean partyDefenseEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_PVP_ENABLED && FakePlayersConfig.PHANTOM_PVP_PARTY_DEFENSE;
+	}
+
+	/** @return {@code true} if defense extends to clan and alliance members, not only the party (Phase 2b). */
+	public static boolean clanDefenseEnabled()
+	{
+		return partyDefenseEnabled() && FakePlayersConfig.PHANTOM_PVP_CLAN_DEFENSE;
+	}
+
+	/** @return {@code true} if phantoms may fight each other, not only the player. */
+	public static boolean betweenPhantomsEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_PVP_ENABLED && FakePlayersConfig.PHANTOM_PVP_BETWEEN_PHANTOMS;
+	}
+
+	/**
+	 * Whether a phantom may fight an opponent of the given kind. A real player is always allowed; a phantom opponent
+	 * (phantom-versus-phantom) is allowed only when {@code betweenPhantomsAllowed}. Pure, so the participant rule is
+	 * unit tested without a world; the world-facing {@code validPvpOpponent} in {@link PhantomManager} calls this.
+	 * @param targetIsPhantom whether the opponent is itself a phantom (Player-based bot)
+	 * @param betweenPhantomsAllowed the {@link #betweenPhantomsEnabled()} value
+	 * @return {@code true} if this opponent kind is allowed
+	 */
+	public static boolean opponentKindAllowed(boolean targetIsPhantom, boolean betweenPhantomsAllowed)
+	{
+		return !targetIsPhantom || betweenPhantomsAllowed;
+	}
+
+	/** @return {@code true} if a phantom may start PvP on an unprovoked target in the open field (Phase 4). */
+	public static boolean openWorldGankEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_PVP_ENABLED && FakePlayersConfig.PHANTOM_PVP_OPEN_WORLD_GANK;
+	}
+
+	// ---------------------------------------------------------------------
+	// Personality, rolled once per phantom at construction.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * Rolls whether this phantom is an aggressor. An aggressor is a candidate to INITIATE PvP (react to a flag / PK,
+	 * or gank); a non-aggressor only ever defends itself or its party. The share of aggressors is
+	 * {@link FakePlayersConfig#PHANTOM_PVP_AGGRESSOR_PERCENT}.
+	 * @return {@code true} if this phantom is an aggressor
+	 */
+	public static boolean rollAggressor()
+	{
+		return Rnd.get(100) < FakePlayersConfig.PHANTOM_PVP_AGGRESSOR_PERCENT;
+	}
+
+	/**
+	 * Rolls a bravery value on the {@link #BRAVERY_MIN}..{@link #BRAVERY_MAX} scale. Higher bravery lets a phantom
+	 * tolerate being more outmatched before it flees.
+	 * @return the rolled bravery
+	 */
+	public static int rollBravery()
+	{
+		return Rnd.get(BRAVERY_MIN, BRAVERY_MAX);
+	}
+
+	/**
+	 * Rolls an honor value on the {@link #HONOR_MIN}..{@link #HONOR_MAX} scale. Higher honor makes a phantom more
+	 * willing to accept a duel, and only a phantom with at least {@link #DUEL_CHALLENGER_MIN_HONOR} issues one.
+	 * @return the rolled honor
+	 */
+	public static int rollHonor()
+	{
+		return Rnd.get(HONOR_MIN, HONOR_MAX);
+	}
+
+	/**
+	 * Rolls whether an eligible idle phantom issues a duel challenge this consideration. The share is
+	 * {@link FakePlayersConfig#PHANTOM_PVP_DUEL_CHANCE_PERCENT}.
+	 * @return {@code true} to issue a challenge this time
+	 */
+	public static boolean rollIssueDuel()
+	{
+		return Rnd.get(100) < FakePlayersConfig.PHANTOM_PVP_DUEL_CHANCE_PERCENT;
+	}
+
+	// ---------------------------------------------------------------------
+	// Duels (Phase 3). Pure functions, no world access, so they unit test cleanly.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The chance, as a percentage, that a phantom accepts a duel challenge. It starts at the phantom's honor. A
+	 * challenger above the phantom lowers it by {@link #DUEL_LEVEL_GAP_ACCEPT_WEIGHT} per level; a challenger at or
+	 * below the phantom's level does not change it. The result is clamped to {@link #DUEL_ACCEPT_FLOOR} ..
+	 * {@link #DUEL_ACCEPT_CEIL}, except that a hopelessly higher challenger ({@link #HOPELESS_LEVEL_GAP}) is always
+	 * refused.
+	 * @param honor this phantom's honor, {@link #HONOR_MIN}..{@link #HONOR_MAX}
+	 * @param selfLevel the phantom's level
+	 * @param challengerLevel the challenger's level
+	 * @return the acceptance chance, 0..100
+	 */
+	public static int duelAcceptChancePercent(int honor, int selfLevel, int challengerLevel)
+	{
+		final int levelGap = challengerLevel - selfLevel; // positive means the challenger is higher level
+		if (levelGap >= HOPELESS_LEVEL_GAP)
+		{
+			return 0;
+		}
+		final int clampedHonor = Math.max(HONOR_MIN, Math.min(HONOR_MAX, honor));
+		final int chance = clampedHonor - (Math.max(0, levelGap) * DUEL_LEVEL_GAP_ACCEPT_WEIGHT);
+		return Math.max(DUEL_ACCEPT_FLOOR, Math.min(DUEL_ACCEPT_CEIL, chance));
+	}
+
+	/**
+	 * Whether a phantom accepts a duel, given a 0..99 roll. Taking the roll as a parameter keeps this deterministic
+	 * for tests; the live caller passes {@code Rnd.get(100)}.
+	 * @param roll a uniform roll in 0..99
+	 * @param honor this phantom's honor
+	 * @param selfLevel the phantom's level
+	 * @param challengerLevel the challenger's level
+	 * @return {@code true} to accept
+	 */
+	public static boolean shouldAcceptDuel(int roll, int honor, int selfLevel, int challengerLevel)
+	{
+		return roll < duelAcceptChancePercent(honor, selfLevel, challengerLevel);
+	}
+
+	/**
+	 * Whether a phantom's personality and the level match allow it to issue a duel challenge. It needs at least
+	 * {@link #DUEL_CHALLENGER_MIN_HONOR} honor, and the opponent must be within {@link #DUEL_CHALLENGE_LEVEL_BAND}
+	 * levels either way, so a challenge is always a fair match.
+	 * @param honor this phantom's honor
+	 * @param selfLevel the phantom's level
+	 * @param targetLevel the prospective opponent's level
+	 * @return {@code true} if this phantom may challenge that opponent
+	 */
+	public static boolean mayIssueDuel(int honor, int selfLevel, int targetLevel)
+	{
+		return (honor >= DUEL_CHALLENGER_MIN_HONOR) && (Math.abs(selfLevel - targetLevel) <= DUEL_CHALLENGE_LEVEL_BAND);
+	}
+
+	/**
+	 * Whether a phantom that is losing a duel surrenders. Only a timid phantom (bravery below
+	 * {@link #DUEL_SURRENDER_MAX_BRAVERY}) ever surrenders, and only once its HP has fallen to its effective flee
+	 * threshold (the same threshold that makes it flee an ordinary fight). A braver phantom fights the duel out.
+	 * @param selfHpPercent the phantom's current HP percentage (0-100)
+	 * @param baseFleeHpPercent the configured base flee threshold
+	 * @param bravery this phantom's bravery
+	 * @param selfLevel the phantom's level
+	 * @param enemyLevel the opponent's level
+	 * @return {@code true} to surrender
+	 */
+	public static boolean shouldSurrenderDuel(int selfHpPercent, int baseFleeHpPercent, int bravery, int selfLevel, int enemyLevel)
+	{
+		if (bravery >= DUEL_SURRENDER_MAX_BRAVERY)
+		{
+			return false;
+		}
+		return selfHpPercent <= effectiveFleeHpPercent(baseFleeHpPercent, bravery, selfLevel, enemyLevel);
+	}
+
+	/**
+	 * The next step for a phantom waiting for a duel to begin: after asking a real player (a request is or was
+	 * pending) or after an accepted challenge (the stock countdown). Pure, so the waiting logic is unit tested without
+	 * a world; the caller does the actual AI work and, on {@link #DUEL_WAIT_END}, withdraws any open request.
+	 * <ul>
+	 * <li>The opponent is gone: end.</li>
+	 * <li>The duel has started: fight, even if the deadline has just passed.</li>
+	 * <li>The deadline has passed: end.</li>
+	 * <li>The request is still pending, or it has not been seen answered yet: hold.</li>
+	 * <li>The request was answered or expired more than {@code answerGraceMs} ago and no duel started: end (a
+	 * decline, or no answer at all).</li>
+	 * </ul>
+	 * @param opponentPresent whether the opponent is still in the world
+	 * @param inDuel whether the phantom is now in the stock duel
+	 * @param requestPending whether the phantom's challenge is still waiting for an answer
+	 * @param answeredAt when the request was first seen answered or expired, or 0 if not yet (always 0 for a countdown)
+	 * @param now the current time
+	 * @param deadline the hard deadline for this step
+	 * @param answerGraceMs how long after an answer the duel may take to start (covers the stock countdown)
+	 * @return {@link #DUEL_WAIT_HOLD}, {@link #DUEL_WAIT_FIGHT} or {@link #DUEL_WAIT_END}
+	 */
+	public static int duelWaitStep(boolean opponentPresent, boolean inDuel, boolean requestPending, long answeredAt, long now, long deadline, long answerGraceMs)
+	{
+		if (!opponentPresent)
+		{
+			return DUEL_WAIT_END;
+		}
+		if (inDuel)
+		{
+			return DUEL_WAIT_FIGHT;
+		}
+		if (now >= deadline)
+		{
+			return DUEL_WAIT_END;
+		}
+		if (requestPending || (answeredAt == 0))
+		{
+			return DUEL_WAIT_HOLD;
+		}
+		return ((now - answeredAt) > answerGraceMs) ? DUEL_WAIT_END : DUEL_WAIT_HOLD;
+	}
+
+	/** @return {@code true} if archer phantoms may kite in PvP ({@link FakePlayersConfig#PHANTOM_ARCHER_KITING}) */
+	public static boolean archerKitingEnabled()
+	{
+		return FakePlayersConfig.PHANTOM_ARCHER_KITING;
+	}
+
+	/**
+	 * Whether a bow phantom should step back from its PvP opponent this tick. Only against a melee opponent that has
+	 * closed to {@link #KITE_TRIGGER_RANGE}, never while rooted, casting or inside a peace zone, and at most once per
+	 * {@link #KITE_COOLDOWN_MS}.
+	 * @param enabled {@link #archerKitingEnabled()}
+	 * @param bow the phantom has a bow equipped
+	 * @param opponentMelee the opponent fights in melee (no bow, not a mage)
+	 * @param distance the distance to the opponent
+	 * @param canMove the phantom is not rooted, stunned or casting
+	 * @param inPeaceZone the phantom stands in a peace zone
+	 * @param lastKiteAt when it last stepped back (0 = never)
+	 * @param now the current time
+	 */
+	public static boolean shouldKite(boolean enabled, boolean bow, boolean opponentMelee, double distance, boolean canMove, boolean inPeaceZone, long lastKiteAt, long now)
+	{
+		if (!enabled || !bow || !opponentMelee || !canMove || inPeaceZone)
+		{
+			return false;
+		}
+		if (distance > KITE_TRIGGER_RANGE)
+		{
+			return false;
+		}
+		return (lastKiteAt == 0) || ((now - lastKiteAt) >= KITE_COOLDOWN_MS);
+	}
+
+	/**
+	 * Rolls whether an eligible aggressor actually engages a flagged/red target it noticed this consideration. Keeps
+	 * PK-reaction occasional rather than automatic; the share is {@link FakePlayersConfig#PHANTOM_PVP_REACT_CHANCE_PERCENT}.
+	 * @return {@code true} to engage this time
+	 */
+	public static boolean rollReactEngage()
+	{
+		return Rnd.get(100) < FakePlayersConfig.PHANTOM_PVP_REACT_CHANCE_PERCENT;
+	}
+
+	/**
+	 * Whether a red (PK) target takes precedence over a purple target when selecting a reaction target. Within the
+	 * same reputation class, the nearer candidate wins.
+	 * @param candidateRed whether the candidate has karma
+	 * @param candidateDistance the candidate's distance
+	 * @param bestRed whether the currently selected target has karma
+	 * @param bestDistance the selected target's distance
+	 * @return {@code true} if the candidate should replace the current selection
+	 */
+	public static boolean preferReactTarget(boolean candidateRed, double candidateDistance, boolean bestRed, double bestDistance)
+	{
+		if (candidateRed != bestRed)
+		{
+			return candidateRed;
+		}
+		return candidateDistance < bestDistance;
+	}
+
+	/**
+	 * Whether this phantom may react to the candidate's reputation. Aggressors may react to purple or red targets;
+	 * non-aggressors may react only to red targets when the all-phantoms setting is enabled.
+	 * @param aggressor whether this phantom rolled the aggressor trait
+	 * @param redReactAll whether non-aggressors may react to red targets
+	 * @param targetRed whether the candidate has karma
+	 * @return {@code true} if this phantom may consider the candidate
+	 */
+	public static boolean mayReactToTarget(boolean aggressor, boolean redReactAll, boolean targetRed)
+	{
+		return aggressor || (redReactAll && targetRed);
+	}
+
+	/**
+	 * Rolls whether an eligible phantom engages a red (PK) target it noticed this consideration. Red targets use a
+	 * higher configurable chance than merely flagged targets.
+	 * @return {@code true} to engage this time
+	 */
+	public static boolean rollRedReactEngage()
+	{
+		return Rnd.get(100) < FakePlayersConfig.PHANTOM_PVP_RED_REACT_CHANCE_PERCENT;
+	}
+
+	/**
+	 * Whether a phantom may INITIATE PvP on a target given their levels. It never initiates on a target more than
+	 * {@code maxLevelsAbovePlayer} below itself (no level 70 stomping a level 25), nor on one hopelessly above it
+	 * ({@link #HOPELESS_LEVEL_GAP}, since it would just flee). Self-defense is unaffected; this only gates initiation.
+	 * @param selfLevel the phantom's level
+	 * @param targetLevel the target's level
+	 * @param maxLevelsAbovePlayer how many levels over the target the phantom may be and still initiate
+	 * @return {@code true} if initiation is allowed by level
+	 */
+	public static boolean mayInitiateByLevel(int selfLevel, int targetLevel, int maxLevelsAbovePlayer)
+	{
+		if ((selfLevel - targetLevel) > maxLevelsAbovePlayer)
+		{
+			return false; // too far above the target: an unfair stomp
+		}
+		if ((targetLevel - selfLevel) >= HOPELESS_LEVEL_GAP)
+		{
+			return false; // hopelessly outmatched: it would only flee, so do not start
+		}
+		return true;
+	}
+
+	// ---------------------------------------------------------------------
+	// Stand-or-flee. Pure functions, no world access, so they unit test cleanly.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The HP percentage at or below which a phantom flees, after its bravery and the level gap shift the configured
+	 * base. A timid phantom (low bravery) flees sooner; a brave one (high bravery) later. Facing a higher-level enemy
+	 * raises the threshold (flee sooner); out-leveling the enemy lowers it. The result is always a sane percentage
+	 * between {@link #FLEE_HP_FLOOR} and {@link #FLEE_HP_CEIL}.
+	 * @param baseFleeHpPercent the configured base flee threshold ({@link FakePlayersConfig#PHANTOM_PVP_FLEE_HP_PERCENT})
+	 * @param bravery this phantom's bravery, {@link #BRAVERY_MIN}..{@link #BRAVERY_MAX}
+	 * @param selfLevel the phantom's level
+	 * @param enemyLevel the opponent's level
+	 * @return the effective flee HP percentage
+	 */
+	public static int effectiveFleeHpPercent(int baseFleeHpPercent, int bravery, int selfLevel, int enemyLevel)
+	{
+		return effectiveFleeHpPercent(baseFleeHpPercent, bravery, selfLevel, enemyLevel, 0, false);
+	}
+
+	/**
+	 * As {@link #effectiveFleeHpPercent(int, int, int, int)}, plus two Phase 2 situational inputs. Outnumbering the
+	 * enemy lets a phantom stand longer (lower threshold); being outnumbered makes it flee sooner. An out-of-mana
+	 * caster/healer flees sooner because it cannot fight effectively. All terms are clamped and the result stays a
+	 * sane percentage between {@link #FLEE_HP_FLOOR} and {@link #FLEE_HP_CEIL}.
+	 * @param baseFleeHpPercent the configured base flee threshold
+	 * @param bravery this phantom's bravery, {@link #BRAVERY_MIN}..{@link #BRAVERY_MAX}
+	 * @param selfLevel the phantom's level
+	 * @param enemyLevel the opponent's level
+	 * @param allyAdvantage nearby allies on the phantom's side minus nearby allies on the enemy's side (may be negative)
+	 * @param casterLowMp {@code true} if this phantom is a caster/healer currently low on MP
+	 * @return the effective flee HP percentage
+	 */
+	public static int effectiveFleeHpPercent(int baseFleeHpPercent, int bravery, int selfLevel, int enemyLevel, int allyAdvantage, boolean casterLowMp)
+	{
+		int threshold = baseFleeHpPercent;
+		// Bravery term: neutral bravery (50) is 0; timid (0) adds +BRAVERY_SWING (flee sooner), brave (100) subtracts it.
+		final int clampedBravery = Math.max(BRAVERY_MIN, Math.min(BRAVERY_MAX, bravery));
+		threshold += Math.round(((BRAVERY_MAX / 2f) - clampedBravery) * (BRAVERY_SWING / (BRAVERY_MAX / 2f)));
+		// Level term: enemy above the phantom flees sooner; phantom above the enemy stands longer.
+		final int levelGap = enemyLevel - selfLevel; // positive means the enemy is higher level
+		threshold += Math.max(-LEVEL_GAP_HP_MAX, Math.min(LEVEL_GAP_HP_MAX, levelGap * LEVEL_GAP_HP_WEIGHT));
+		// Ally term: a positive advantage (phantom outnumbers) lowers the threshold (stand longer); negative raises it.
+		final int allyTerm = Math.max(-ALLY_ADVANTAGE_HP_MAX, Math.min(ALLY_ADVANTAGE_HP_MAX, allyAdvantage * ALLY_ADVANTAGE_HP_WEIGHT));
+		threshold -= allyTerm;
+		// Out-of-mana caster: flee sooner.
+		if (casterLowMp)
+		{
+			threshold += CASTER_LOW_MP_PENALTY;
+		}
+		return Math.max(FLEE_HP_FLOOR, Math.min(FLEE_HP_CEIL, threshold));
+	}
+
+	/**
+	 * Whether a phantom should break off and flee rather than keep fighting. It flees when hopelessly out-leveled
+	 * (regardless of HP), or when its current HP has fallen to or below its effective flee threshold.
+	 * @param selfHpPercent the phantom's current HP percentage (0-100)
+	 * @param baseFleeHpPercent the configured base flee threshold
+	 * @param bravery this phantom's bravery
+	 * @param selfLevel the phantom's level
+	 * @param enemyLevel the opponent's level
+	 * @return {@code true} to flee, {@code false} to stand and fight
+	 */
+	public static boolean shouldFlee(int selfHpPercent, int baseFleeHpPercent, int bravery, int selfLevel, int enemyLevel)
+	{
+		return shouldFlee(selfHpPercent, baseFleeHpPercent, bravery, selfLevel, enemyLevel, 0, false);
+	}
+
+	/**
+	 * As {@link #shouldFlee(int, int, int, int, int)}, with the Phase 2 ally-count and caster-MP inputs threaded into
+	 * the effective threshold. A hopeless level gap still forces a flee regardless of the situational terms.
+	 * @param selfHpPercent the phantom's current HP percentage (0-100)
+	 * @param baseFleeHpPercent the configured base flee threshold
+	 * @param bravery this phantom's bravery
+	 * @param selfLevel the phantom's level
+	 * @param enemyLevel the opponent's level
+	 * @param allyAdvantage nearby allies on the phantom's side minus nearby allies on the enemy's side
+	 * @param casterLowMp {@code true} if this phantom is a caster/healer currently low on MP
+	 * @return {@code true} to flee, {@code false} to stand and fight
+	 */
+	public static boolean shouldFlee(int selfHpPercent, int baseFleeHpPercent, int bravery, int selfLevel, int enemyLevel, int allyAdvantage, boolean casterLowMp)
+	{
+		if ((enemyLevel - selfLevel) >= HOPELESS_LEVEL_GAP)
+		{
+			return true;
+		}
+		return selfHpPercent <= effectiveFleeHpPercent(baseFleeHpPercent, bravery, selfLevel, enemyLevel, allyAdvantage, casterLowMp);
+	}
+}

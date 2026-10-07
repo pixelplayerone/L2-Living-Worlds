@@ -1,0 +1,54 @@
+name: Discord notify on main
+
+# Posts a message to a Discord channel whenever main changes (a push, including a merged PR).
+# Setup: create a Discord channel webhook (Channel -> Edit Channel -> Integrations -> Webhooks -> New
+# Webhook -> Copy Webhook URL), then add it to this repo as an Actions secret named DISCORD_WEBHOOK
+# (Settings -> Secrets and variables -> Actions -> New repository secret). No webhook, no message - the
+# job simply skips when the secret is missing.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post commit summary to Discord
+        env:
+          # Passed through env (never inlined into the script) so a commit message can't inject shell.
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          COMPARE_URL: ${{ github.event.compare }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "DISCORD_WEBHOOK secret is not set - skipping notification."
+            exit 0
+          fi
+
+          # First line of the commit message is the headline; keep the full body for the description.
+          SUMMARY=$(printf '%s' "$COMMIT_MESSAGE" | head -n 1)
+
+          # Build the JSON with jq so any quotes/newlines in the commit message are escaped safely.
+          payload=$(jq -n \
+            --arg repo "$REPO" \
+            --arg summary "$SUMMARY" \
+            --arg author "$COMMIT_AUTHOR" \
+            --arg compare "$COMPARE_URL" \
+            '{
+              username: "L2 Living Worlds",
+              embeds: [{
+                title: ("New change pushed to " + $repo + " (main)"),
+                url: $compare,
+                description: ($summary + "\n\n[View the changes](" + $compare + ")"),
+                color: 3447003,
+                fields: [
+                  { name: "Author", value: $author, inline: true }
+                ]
+              }]
+            }')
+
+          curl -sS --fail -H "Content-Type: application/json" -X POST -d "$payload" "$DISCORD_WEBHOOK"
