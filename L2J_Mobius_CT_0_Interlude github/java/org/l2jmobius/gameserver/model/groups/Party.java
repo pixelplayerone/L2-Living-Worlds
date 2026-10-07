@@ -394,10 +394,11 @@ public class Party extends AbstractPlayerGroup
 	
 	/**
 	 * Removes a party member instance.
+	 * Living World: serialize departures so concurrent bot goodbyes keep their packet recipients.
 	 * @param player the player to be removed from the party.
 	 * @param type the message type {@link PartyMessageType}.
 	 */
-	public void removePartyMember(Player player, PartyMessageType type)
+	public synchronized void removePartyMember(Player player, PartyMessageType type)
 	{
 		if (_members.contains(player))
 		{
@@ -500,6 +501,7 @@ public class Party extends AbstractPlayerGroup
 				final Player leader = getLeader();
 				if (leader != null)
 				{
+					leader.sendPacket(PartySmallWindowDeleteAll.STATIC_PACKET);
 					leader.setParty(null);
 					if (leader.isInDuel())
 					{
@@ -521,7 +523,7 @@ public class Party extends AbstractPlayerGroup
 	/**
 	 * Disperse a party and send a message to all its members.
 	 */
-	public void disbandParty()
+	public synchronized void disbandParty()
 	{
 		_disbanding = true;
 		broadcastPacket(new SystemMessage(SystemMessageId.THE_PARTY_HAS_DISPERSED));
