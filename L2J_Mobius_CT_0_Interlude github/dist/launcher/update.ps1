@@ -33,7 +33,7 @@ $VersionPath = Join-Path $LauncherDir 'version.txt'
 $StopScript  = Join-Path $LauncherDir 'stop.ps1'
 
 # Public repo the update check looks at. Keep in sync with the launcher (Updater.cs).
-$UpdateRepo  = 'Teravibes/L2-Living-Worlds'
+$UpdateRepo  = 'pixelplayerone/L2-Living-Worlds'
 
 function Info($t) { Write-Host "  [info] $t" -ForegroundColor Gray }
 function Ok($t)   { Write-Host "  [ OK ] $t" -ForegroundColor Green }

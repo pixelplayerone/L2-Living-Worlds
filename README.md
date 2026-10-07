@@ -191,7 +191,7 @@ without rebuilding anything. Examples are an NPC buffer, a class master, a GM sh
 calling phantoms into your party.
 
 Reviewed modules are published in the
-[**L2 Living Worlds Modules**](https://github.com/Teravibes/L2-Living-Worlds-Modules-) repository,
+[**L2 Living Worlds Modules**](https://github.com/pixelplayerone/Living_worlds_modules) repository,
 which lists each one with its author and a short description.
 
 To install a module:

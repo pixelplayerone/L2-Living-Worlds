@@ -36,7 +36,7 @@ A blocked target waits without spending reuse. Native final-effect validation st
 cast, and the target's summon confirmation remains effective. "No worries, summon me" is an affirmative request;
 "don't ever summon me" and "stop trying to summon me" cancel the pending order.
 
-The scoped feature is based on [public PR #45](https://github.com/Teravibes/L2-Living-Worlds/pull/45), including its
+The scoped feature is based on public PR #45 (on the old repository), including its
 party summoner dependency. The contributor's original commits are retained in the public PR.
 
 Validation uses standalone rule tests and `tests/run_phantom_preparation.py --core <GameServer.jar>` against the
