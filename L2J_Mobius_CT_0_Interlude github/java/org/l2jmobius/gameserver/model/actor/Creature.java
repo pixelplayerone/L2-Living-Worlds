@@ -3055,6 +3055,16 @@ public abstract class Creature extends WorldObject
 		return _isInvul || _isTeleporting || isAffected(EffectFlag.INVUL);
 	}
 	
+	/**
+	 * Living World: the invulnerability flag alone, without teleport or effect invulnerability, so a caller that sets it
+	 * temporarily can restore exactly what was there.
+	 * @return the value last given to {@link #setInvul(boolean)}
+	 */
+	public boolean isInvulRaw()
+	{
+		return _isInvul;
+	}
+	
 	public void setMortal(boolean value)
 	{
 		_isMortal = value;
@@ -6461,8 +6471,25 @@ public abstract class Creature extends WorldObject
 		reduceCurrentHp(amount, attacker, !skill.isToggle(), true, skill);
 	}
 	
+	/**
+	 * @param a one creature (a summon counts as its owner)
+	 * @param b another
+	 * @return {@code true} if both are event players on the same team, who must never hurt each other (a free-for-all has no teams)
+	 */
+	public static boolean areEventTeammates(Creature a, Creature b)
+	{
+		final Player pa = (a == null) ? null : (a.isPlayer() ? a.asPlayer() : (a.isSummon() ? a.asSummon().getOwner() : null));
+		final Player pb = (b == null) ? null : (b.isPlayer() ? b.asPlayer() : (b.isSummon() ? b.asSummon().getOwner() : null));
+		return (pa != null) && (pb != null) && (pa != pb) && pa.isOnEvent() && pb.isOnEvent() && !pa.isOnSoloEvent() && !pb.isOnSoloEvent() && (pa.getTeam() != Team.NONE) && (pa.getTeam() == pb.getTeam());
+	}
+	
 	public void reduceCurrentHp(double amount, Creature attacker, boolean awake, boolean isDOT, Skill skill)
 	{
+		if (areEventTeammates(attacker, this))
+		{
+			return; // event teammates cannot hurt each other, however the hit got through
+		}
+		
 		if (ChampionMonstersConfig.CHAMPION_ENABLE && isChampion() && (ChampionMonstersConfig.CHAMPION_HP != 0))
 		{
 			amount /= ChampionMonstersConfig.CHAMPION_HP;
