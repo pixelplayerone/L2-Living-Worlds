@@ -157,6 +157,8 @@ Two ways:
 - **In the cloud (no local JDK/Ant needed):** run the **"Build one-click pack"** GitHub
   Action from the repository's **Actions** tab ("Run workflow"). When it finishes,
   download the `L2J-Offline-OneClick` artifact and publish it on the Releases page.
+  The **build** choice picks what it makes: `both` (default), `full` (only the full pack)
+  or `patch` (only the patch zip, which is much faster).
 - **Locally on Windows:** from `L2J_Mobius_CT_0_Interlude github/dist/launcher/` run
   `build-pack.bat` (or `build-pack.ps1` with options). It builds the jars, bundles a full
   JDK 25 and a portable MariaDB, and produces `L2J-Offline-OneClick.zip`.

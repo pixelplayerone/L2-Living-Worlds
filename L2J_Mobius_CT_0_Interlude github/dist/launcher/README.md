@@ -102,6 +102,11 @@ datapack/config/html files that changed this time (one path per line, relative t
 jar is auto-included). The build **fails** if a listed file isn't in the pack, so a typo can't ship a
 broken patch. No manifest → the patch step is skipped and only the full pack is produced.
 
+To build only one of the two, pass `-Build full` or `-Build patch` (the default is `-Build both`).
+A patch-only build skips the JDK and MariaDB bundling and the big compress, so it is much faster;
+it fails if there is no `patch-manifest.txt`. The "Build one-click pack" Action has the same
+choice as its **build** input.
+
 ---
 
 ## What the launcher does, in order
