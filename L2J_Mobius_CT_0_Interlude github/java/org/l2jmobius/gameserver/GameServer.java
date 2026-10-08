@@ -142,6 +142,7 @@ import org.l2jmobius.gameserver.managers.RaidBossSpawnManager;
 import org.l2jmobius.gameserver.managers.ScriptManager;
 import org.l2jmobius.gameserver.managers.SellBuffsManager;
 import org.l2jmobius.gameserver.managers.ServerRestartManager;
+import org.l2jmobius.gameserver.managers.ShutdownRequestManager;
 import org.l2jmobius.gameserver.managers.SiegeManager;
 import org.l2jmobius.gameserver.managers.WalkingManager;
 import org.l2jmobius.gameserver.managers.ZoneManager;
@@ -428,6 +429,7 @@ public class GameServer
 		PunishmentManager.getInstance();
 		
 		Runtime.getRuntime().addShutdownHook(Shutdown.getInstance());
+		ShutdownRequestManager.getInstance(); // Living Worlds: lets the launcher's Stop button save before exit.
 		LOGGER.info("IdManager: Free ObjectID's remaining: " + IdManager.getInstance().getAvailableIdCount());
 		
 		if ((OfflineTradeConfig.OFFLINE_TRADE_ENABLE || OfflineTradeConfig.OFFLINE_CRAFT_ENABLE) && OfflineTradeConfig.RESTORE_OFFLINERS)

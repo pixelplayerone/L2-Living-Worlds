@@ -343,8 +343,6 @@ public class PhantomManager implements IXmlReader
 	private static final int PARTY_WEAPON_CANDIDATES = 6;
 	/** A caster weapon counts among the strongest of its grade at this share of the best reference price or more. */
 	private static final double CASTER_TOP_TIER = 0.9;
-	// Safety ceiling on total live phantom Player objects (each is far heavier than an NPC fake player).
-	private static final int MAX_PHANTOMS = 200;
 	// Proximity dormancy: a phantom only runs the (costly) auto-hunt while a real, client-connected player
 	// is near. Hysteresis (wake closer than sleep) stops it flapping at the boundary. Ideal for solo play:
 	// only the handful of phantoms around you actually compute.
@@ -2040,7 +2038,7 @@ public class PhantomManager implements IXmlReader
 	 */
 	private Player spawnFriendRegular(int charId, int ownerId)
 	{
-		if (_phantoms.containsKey(charId) || (_phantoms.size() >= MAX_PHANTOMS))
+		if (_phantoms.containsKey(charId) || (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT))
 		{
 			return null;
 		}
@@ -2113,9 +2111,9 @@ public class PhantomManager implements IXmlReader
 		{
 			return "The name '" + name + "' is already taken.";
 		}
-		if (_phantoms.size() >= MAX_PHANTOMS)
+		if (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT)
 		{
-			return "Phantom cap reached (" + MAX_PHANTOMS + ").";
+			return "Phantom cap reached (" + FakePlayersConfig.PHANTOM_MAX_COUNT + ").";
 		}
 
 		// Resolve the class: an archetype keyword, a buddy role, or a raw class id.
@@ -2231,7 +2229,7 @@ public class PhantomManager implements IXmlReader
 				{
 					continue;
 				}
-				if (_phantoms.size() >= MAX_PHANTOMS)
+				if (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT)
 				{
 					return; // transient (phantom cap): keep the order and retry on a later pass
 				}
@@ -2318,7 +2316,7 @@ public class PhantomManager implements IXmlReader
 	 */
 	private Player createAndSpawn(Location location, int level, Population population, int forcedClassId)
 	{
-		if (_phantoms.size() >= MAX_PHANTOMS)
+		if (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT)
 		{
 			return null; // safety ceiling reached
 		}
@@ -2590,9 +2588,9 @@ public class PhantomManager implements IXmlReader
 		{
 			return null;
 		}
-		if (_phantoms.size() >= MAX_PHANTOMS)
+		if (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT)
 		{
-			LOGGER.warning(getClass().getSimpleName() + ": Living Population phantom cap reached (" + MAX_PHANTOMS + "); bot " + livingBotId + " stays cold.");
+			LOGGER.warning(getClass().getSimpleName() + ": Living Population phantom cap reached (" + FakePlayersConfig.PHANTOM_MAX_COUNT + "); bot " + livingBotId + " stays cold.");
 			return null;
 		}
 		if ((existingCharId > 0) && _phantoms.containsKey(existingCharId))
@@ -5881,7 +5879,7 @@ public class PhantomManager implements IXmlReader
 	 */
 	public Player spawnPartyMember(Location location, int level, PartyRole role, int overrideClassId, Race requestedRace)
 	{
-		if (_phantoms.size() >= MAX_PHANTOMS)
+		if (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT)
 		{
 			return null;
 		}
@@ -6028,7 +6026,7 @@ public class PhantomManager implements IXmlReader
 	 */
 	public Player spawnPartyMemberAs(FakePlayerAppearance look, Location location, int heading)
 	{
-		if ((look == null) || (look.getName() == null) || (look.getPlayerClass() == null) || (_phantoms.size() >= MAX_PHANTOMS))
+		if ((look == null) || (look.getName() == null) || (look.getPlayerClass() == null) || (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT))
 		{
 			return null;
 		}
@@ -10516,7 +10514,7 @@ public class PhantomManager implements IXmlReader
 	 */
 	public Player createOlympiadNoble(int classId, int level, Location location)
 	{
-		if (_phantoms.size() >= MAX_PHANTOMS)
+		if (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT)
 		{
 			return null;
 		}
@@ -10564,7 +10562,7 @@ public class PhantomManager implements IXmlReader
 	 */
 	public Player spawnOlympiadNoble(int charId, Location location)
 	{
-		if (_phantoms.containsKey(charId) || (_phantoms.size() >= MAX_PHANTOMS))
+		if (_phantoms.containsKey(charId) || (_phantoms.size() >= FakePlayersConfig.PHANTOM_MAX_COUNT))
 		{
 			return null;
 		}

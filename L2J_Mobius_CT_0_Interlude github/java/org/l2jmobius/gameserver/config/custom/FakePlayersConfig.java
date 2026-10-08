@@ -63,6 +63,7 @@ public class FakePlayersConfig
 	public static boolean PHANTOM_HUNTER_PLAYSTYLES;
 	public static boolean PHANTOM_SKILL_FALLBACK;
 	public static boolean PHANTOM_COMBAT_CONTROLLER;
+	public static int PHANTOM_MAX_COUNT;
 	public static boolean PHANTOM_ARCHER_KITING;
 	public static boolean PHANTOM_HUNTER_RETALIATE;
 	public static boolean PHANTOM_PVP_ENABLED;
@@ -150,6 +151,7 @@ public class FakePlayersConfig
 		PHANTOM_HUNTER_PLAYSTYLES = config.getBoolean("PhantomHunterPlaystyles", true);
 		PHANTOM_SKILL_FALLBACK = config.getBoolean("PhantomSkillFallback", true);
 		PHANTOM_COMBAT_CONTROLLER = config.getBoolean("PhantomCombatController", true);
+		PHANTOM_MAX_COUNT = Math.max(1, config.getInt("PhantomMaxCount", 200));
 		PHANTOM_ARCHER_KITING = config.getBoolean("PhantomArcherKiting", true);
 		PHANTOM_HUNTER_RETALIATE = config.getBoolean("PhantomHunterRetaliate", true);
 		PHANTOM_PVP_ENABLED = config.getBoolean("PhantomPvpEnabled", true);
