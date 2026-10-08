@@ -18,6 +18,11 @@
     powershell -ExecutionPolicy Bypass -File build-pack.ps1 -Version v0.1.12
     powershell -ExecutionPolicy Bypass -File build-pack.ps1 -Version v0.1.12 -SkipBuild
     powershell -ExecutionPolicy Bypass -File build-pack.ps1 -MariaDbZip C:\dl\mariadb-11.4.5-winx64.zip
+    powershell -ExecutionPolicy Bypass -File build-pack.ps1 -Version v0.1.12 -Build patch
+
+  -Build picks what to produce: 'both' (default, full pack plus patch zip),
+  'full' (only the full pack) or 'patch' (only the patch zip, which skips the
+  JDK and MariaDB bundling and the big compress, so it is much faster).
 
   Pass -Version <tag> (the tag you publish, e.g. v0.1.12) so the pack records its
   version for the in-app update checker. The build still works without it, but the
@@ -32,7 +37,9 @@ param(
     [string]$OutDir     = '',                                 # where to write the final zip (default: repo root)
     [string]$Version    = '',                                 # release tag stamped into launcher\version.txt (e.g. v0.1.12)
     [switch]$SkipBuild,                                       # reuse an existing build\...zip instead of running ant
-    [switch]$SkipLauncherBuild                                # do not compile LivingWorld.exe (ships script-only)
+    [switch]$SkipLauncherBuild,                               # do not compile LivingWorld.exe (ships script-only)
+    [ValidateSet('both','full','patch')]
+    [string]$Build      = 'both'                              # what to produce: full pack, patch zip, or both
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,6 +66,16 @@ $ProjectRoot = Split-Path -Parent $DistDir                            # ...\L2J_
 $BuildXml    = Join-Path $ProjectRoot 'build.xml'
 if (-not (Test-Path $BuildXml)) { Die "build.xml not found at $BuildXml - run this from dist\launcher\ inside the project." }
 if ($OutDir -eq '') { $OutDir = $ProjectRoot }
+
+$wantFull  = $Build -ne 'patch'
+$wantPatch = $Build -ne 'full'
+$manifestPath = Join-Path $LauncherDir 'patch-manifest.txt'
+if ($Build -eq 'patch' -and -not (Test-Path $manifestPath)) { Die "-Build patch needs dist\launcher\patch-manifest.txt, which was not found." }
+# Drop an output from an earlier run that this run will not rebuild, so a stale
+# zip is never mistaken for (or uploaded as) a fresh one.
+if (-not $wantFull)  { Remove-Item -Path (Join-Path $OutDir 'L2J-Offline-OneClick.zip') -Force -ErrorAction SilentlyContinue }
+if (-not $wantPatch) { Remove-Item -Path (Join-Path $OutDir 'L2J-Offline-Patch.zip') -Force -ErrorAction SilentlyContinue }
+Info "building: $Build"
 
 $Staging  = Join-Path $env:TEMP ("l2pack_" + [DateTime]::Now.ToString('yyyyMMdd_HHmmss'))
 $Pack     = Join-Path $Staging 'pack'
@@ -106,32 +123,38 @@ if (-not (Test-Path (Join-Path $Pack 'libs\GameServer.jar'))) { Die "extracted p
 Ok "server staged"
 
 # ---- 4. bundle the full JDK ------------------------------------------------
-Info "copying JDK into pack\jre (this is the big one) ..."
-Copy-Tree $JdkHome (Join-Path $Pack 'jre')
-if (-not (Test-Path (Join-Path $Pack 'jre\bin\java.exe'))) { Die "JDK copy failed - pack\jre\bin\java.exe missing." }
-Ok "JDK bundled"
+# Steps 4, 5 and 7 only matter for the full pack: the patch never carries the
+# JDK or MariaDB, so a patch-only build skips them.
+if ($wantFull) {
+    Info "copying JDK into pack\jre (this is the big one) ..."
+    Copy-Tree $JdkHome (Join-Path $Pack 'jre')
+    if (-not (Test-Path (Join-Path $Pack 'jre\bin\java.exe'))) { Die "JDK copy failed - pack\jre\bin\java.exe missing." }
+    Ok "JDK bundled"
 
-# ---- 5. bundle portable MariaDB -------------------------------------------
-$mdDir = Join-Path $Pack 'mariadb'
-if ($MariaDbZip -eq '') {
-    if ($MariaDbUrl -eq '') {
-        $MariaDbUrl = "https://archive.mariadb.org/mariadb-$MariaDbVersion/winx64-packages/mariadb-$MariaDbVersion-winx64.zip"
+    # ---- 5. bundle portable MariaDB -------------------------------------------
+    $mdDir = Join-Path $Pack 'mariadb'
+    if ($MariaDbZip -eq '') {
+        if ($MariaDbUrl -eq '') {
+            $MariaDbUrl = "https://archive.mariadb.org/mariadb-$MariaDbVersion/winx64-packages/mariadb-$MariaDbVersion-winx64.zip"
+        }
+        $MariaDbZip = Join-Path $Staging 'mariadb.zip'
+        Info "downloading MariaDB $MariaDbVersion ..."
+        try { Invoke-WebRequest -Uri $MariaDbUrl -OutFile $MariaDbZip -UseBasicParsing }
+        catch { Die "MariaDB download failed from $MariaDbUrl. Download the winx64 zip manually and re-run with -MariaDbZip <path>." }
     }
-    $MariaDbZip = Join-Path $Staging 'mariadb.zip'
-    Info "downloading MariaDB $MariaDbVersion ..."
-    try { Invoke-WebRequest -Uri $MariaDbUrl -OutFile $MariaDbZip -UseBasicParsing }
-    catch { Die "MariaDB download failed from $MariaDbUrl. Download the winx64 zip manually and re-run with -MariaDbZip <path>." }
+    if (-not (Test-Path $MariaDbZip)) { Die "MariaDB zip not found at $MariaDbZip." }
+    Info "extracting MariaDB ..."
+    $mdTmp = Join-Path $Staging 'md'
+    Expand-Archive -Path $MariaDbZip -DestinationPath $mdTmp -Force
+    # the zip contains a single top folder like mariadb-11.4.5-winx64\ - flatten it into pack\mariadb
+    $inner = Get-ChildItem -Path $mdTmp -Directory | Select-Object -First 1
+    if (-not $inner) { Die "unexpected MariaDB zip layout (no inner folder)." }
+    Copy-Tree $inner.FullName $mdDir
+    if (-not (Test-Path (Join-Path $mdDir 'bin\mysqld.exe'))) { Die "MariaDB bundle missing bin\mysqld.exe." }
+    Ok "MariaDB bundled ($($inner.Name))"
+} else {
+    Info "patch only: skipping the JDK and MariaDB bundling."
 }
-if (-not (Test-Path $MariaDbZip)) { Die "MariaDB zip not found at $MariaDbZip." }
-Info "extracting MariaDB ..."
-$mdTmp = Join-Path $Staging 'md'
-Expand-Archive -Path $MariaDbZip -DestinationPath $mdTmp -Force
-# the zip contains a single top folder like mariadb-11.4.5-winx64\ - flatten it into pack\mariadb
-$inner = Get-ChildItem -Path $mdTmp -Directory | Select-Object -First 1
-if (-not $inner) { Die "unexpected MariaDB zip layout (no inner folder)." }
-Copy-Tree $inner.FullName $mdDir
-if (-not (Test-Path (Join-Path $mdDir 'bin\mysqld.exe'))) { Die "MariaDB bundle missing bin\mysqld.exe." }
-Ok "MariaDB bundled ($($inner.Name))"
 
 # ---- 6. configure the pack's launcher.ini + Database.ini -------------------
 Info "wiring the pack to use the bundled JDK + MariaDB ..."
@@ -291,15 +314,19 @@ Remove-Item -Path (Join-Path $Pack 'launcher-app') -Recurse -Force -ErrorAction 
 Remove-Item -Path (Join-Path $Pack 'build-launcher.bat') -Force -ErrorAction SilentlyContinue
 
 # ---- 7. zip it -------------------------------------------------------------
-$outZip = Join-Path $OutDir 'L2J-Offline-OneClick.zip'
-if (Test-Path $outZip) { Remove-Item $outZip -Force }
-Info "compressing final pack (large - please wait) ..."
-# .NET ZipFile handles the ~0.5 GB / tens-of-thousands-of-files JDK tree far better
-# than Compress-Archive. Contents land at the zip root (no extra parent folder).
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory($Pack, $outZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
-$sizeMb = [math]::Round((Get-Item $outZip).Length / 1MB, 1)
-Ok "DONE -> $outZip  ($sizeMb MB)"
+if ($wantFull) {
+    $outZip = Join-Path $OutDir 'L2J-Offline-OneClick.zip'
+    if (Test-Path $outZip) { Remove-Item $outZip -Force }
+    Info "compressing final pack (large - please wait) ..."
+    # .NET ZipFile handles the ~0.5 GB / tens-of-thousands-of-files JDK tree far better
+    # than Compress-Archive. Contents land at the zip root (no extra parent folder).
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($Pack, $outZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    $sizeMb = [math]::Round((Get-Item $outZip).Length / 1MB, 1)
+    Ok "DONE -> $outZip  ($sizeMb MB)"
+} else {
+    Info "patch only: skipping the full pack zip."
+}
 
 # ---- 8. build the incremental patch zip -----------------------------------
 # A tiny companion zip holding ONLY the files that changed this release, for
@@ -307,8 +334,9 @@ Ok "DONE -> $outZip  ($sizeMb MB)"
 # to update without touching their database. The file list lives in
 # patch-manifest.txt (paths relative to the pack root); libs\GameServer.jar is
 # always included, since any code change rebuilds it. No manifest => no patch.
-$manifestPath = Join-Path $LauncherDir 'patch-manifest.txt'
-if (Test-Path $manifestPath) {
+if (-not $wantPatch) {
+    Info "full only: skipping the incremental patch zip."
+} elseif (Test-Path $manifestPath) {
     Info "building incremental patch zip from patch-manifest.txt ..."
     $patchRoot = Join-Path $Staging 'patch'
     New-Item -ItemType Directory -Path $patchRoot -Force | Out-Null
@@ -370,7 +398,9 @@ alone - any new settings this release adds are called out in the release notes.
 }
 
 Write-Host ""
-if (Test-Path (Join-Path $Pack 'LivingWorld.exe')) {
+if (-not $wantFull) {
+    # patch only: no full pack this run
+} elseif (Test-Path (Join-Path $Pack 'LivingWorld.exe')) {
     Write-Host "Full pack : unzip anywhere and double-click LivingWorld.exe (new testers)." -ForegroundColor Green
     Write-Host "            Start-Server.bat remains as a script-only fallback." -ForegroundColor Green
 } else {

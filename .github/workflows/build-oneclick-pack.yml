@@ -8,6 +8,14 @@ on:
   # fresh pack. It no longer builds automatically on push/merge.
   workflow_dispatch:
     inputs:
+      build:
+        description: "What to build: both (full pack and patch), full (only the full pack) or patch (only the patch zip, much faster)"
+        type: choice
+        options:
+          - both
+          - full
+          - patch
+        default: both
       mariadb_version:
         description: "Portable MariaDB version to bundle"
         required: false
@@ -53,13 +61,17 @@ jobs:
           $mdv = "${{ github.event.inputs.mariadb_version }}"
           if ([string]::IsNullOrWhiteSpace($mdv)) { $mdv = "11.4.5" }
           $ver = "${{ github.event.inputs.version }}"
+          $what = "${{ inputs.build }}"
+          if ([string]::IsNullOrWhiteSpace($what)) { $what = "both" }
           powershell -ExecutionPolicy Bypass -File "dist/launcher/build-pack.ps1" `
             -JdkHome "$env:JAVA_HOME" `
             -MariaDbVersion "$mdv" `
             -Version "$ver" `
+            -Build "$what" `
             -OutDir "."
 
       - name: Upload the pack
+        if: inputs.build != 'patch'
         uses: actions/upload-artifact@v4
         with:
           name: L2J-Offline-OneClick
@@ -70,12 +82,14 @@ jobs:
       # The incremental patch zip (built from dist/launcher/patch-manifest.txt) for
       # existing testers to update without losing their database. Warn (don't fail)
       # if it is absent, so the full-pack build still succeeds when no manifest exists.
+      # A patch-only run fails instead, since the patch is the only thing it makes.
       - name: Upload the patch zip
+        if: inputs.build != 'full'
         uses: actions/upload-artifact@v4
         with:
           name: L2J-Offline-Patch
           path: "L2J_Mobius_CT_0_Interlude github/L2J-Offline-Patch.zip"
-          if-no-files-found: warn
+          if-no-files-found: ${{ inputs.build == 'patch' && 'error' || 'warn' }}
           retention-days: 30
 
       # The standalone one-click launcher exe. It also ships inside the pack, but
