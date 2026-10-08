@@ -64,6 +64,7 @@ game/data/crests
 game/data/scripts/handlers/chat/commands/admin/AdminPhantom.java
 game/data/scripts/handlers/MasterHandler.java
 game/data/scripts/handlers/skill/targets/Party.java
+game/data/scripts/handlers/skill/effects/CallPc.java
 game/data/skill icons
 images
 # Module framework: reference Hello World module. config/module.ini is intentionally

@@ -18,6 +18,7 @@ package handlers.skill.effects;
 
 import org.l2jmobius.gameserver.config.GeneralConfig;
 import org.l2jmobius.gameserver.managers.InstanceManager;
+import org.l2jmobius.gameserver.managers.PhantomManager;
 import org.l2jmobius.gameserver.model.StatSet;
 import org.l2jmobius.gameserver.model.WorldObject;
 import org.l2jmobius.gameserver.model.actor.Creature;
@@ -71,13 +72,16 @@ public class CallPc extends AbstractEffect
 		{
 			if (checkSummonTargetStatus(target, player))
 			{
-				if ((_itemId != 0) && (_itemCount != 0))
+				// Living World: a phantom is never given Summoning Crystals, so a phantom party member comes without one.
+				// An alt companion is a real character with its own inventory and pays as usual (FPC-275).
+				final boolean phantom = PhantomManager.getInstance().isPhantom(target);
+				if ((_itemId != 0) && (_itemCount != 0) && (!phantom || PhantomManager.getInstance().isCompanion(target)))
 				{
 					if (target.getInventory().getInventoryItemCount(_itemId, 0) < _itemCount)
 					{
 						final SystemMessage sm = new SystemMessage(SystemMessageId.S1_IS_REQUIRED_FOR_SUMMONING);
 						sm.addItemName(_itemId);
-						target.sendPacket(sm);
+						(phantom ? player : target).sendPacket(sm); // an alt companion has no screen to show it on
 						return;
 					}
 					
@@ -85,6 +89,13 @@ public class CallPc extends AbstractEffect
 					final SystemMessage sm = new SystemMessage(SystemMessageId.S1_HAS_DISAPPEARED);
 					sm.addItemName(_itemId);
 					target.sendPacket(sm);
+				}
+				
+				// Living World: a phantom has no client to answer the accept dialog, so it accepts at once (FPC-275).
+				if (phantom)
+				{
+					target.teleToLocation(player, true);
+					return;
 				}
 				
 				target.addScript(new SummonRequestHolder(player));
