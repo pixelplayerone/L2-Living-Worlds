@@ -37,6 +37,7 @@ scripts/Check-Updates.bat
 scripts/Configure-Brain.bat
 launcher/update.ps1
 tools/l2admin/index.html
+tools/l2admin/index_old.html
 tools/l2admin/native-bridge.js
 tools/l2admin/world-map.png
 # One-release exception to the "no customizable configs" rule. These configs changed
@@ -87,6 +88,15 @@ game/modules/alt-companion/MODULE.md
 game/modules/alt-companion/TESTING.md
 game/modules/alt-companion/config/module.ini
 game/modules/alt-companion/scripts/AltCompanionModule.java
+# Module framework: Living Population module (off by default). config/module.ini ships this
+# one time so patch-only testers get the settings; remove it from this list after the next patch.
+game/modules/living-population/module.json
+game/modules/living-population/MODULE.md
+game/modules/living-population/config/module.ini
+game/modules/living-population/data/zones.xml
+game/modules/living-population/scripts/LivingPopulationModule.java
+game/modules/living-population/sql/install.sql
+game/modules/living-population/sql/remove.sql
 Start-Server.bat
 Stop-Server.bat
 launcher/launcher.ps1

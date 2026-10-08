@@ -49,6 +49,26 @@ loads straight away, or (if the browser has dropped write permission) shows a si
 > click **Load config files**, edit, and it **downloads** the edited `.ini`s for you to copy
 > back into `game/config` yourself.
 
+## Finding your way
+
+The left sidebar groups every page: **Rates**, **Phantoms**, **World** and **Advanced**, with an
+**Overview** page on top that sums up the main settings. Press **Ctrl K** (or click the search box) to
+jump to any setting by its name, its ini key or a word from its help; keys that only exist in the Raw
+editor are found too.
+
+Each setting is one row with a short summary. The arrow on the right opens the full help, the ini key,
+the file and the default, with **Reset to default**. Turn on **Show ini key names** at the bottom of the
+sidebar to see every key under its label. A setting that depends on another one is indented and greyed
+out while that one is off, and Phantom PvP, Phantom Olympiad and Living Population have one main switch at
+the top of their page.
+
+The save bar appears only after you change something. It names the files involved and says when a restart
+is needed; **Review** lists every change with an **Undo** next to each one.
+
+**Old editor.** The previous layout ships next to this one as `index_old.html`, with the same files and
+settings. Open it with **Open the old editor** at the bottom of the sidebar; its **New editor** button
+comes back here.
+
 ## What it edits
 
 - **Curated panels** - the settings that matter for the Living World, grouped and explained:
@@ -63,8 +83,10 @@ loads straight away, or (if the browser has dropped write permission) shows a si
   Phantoms tab) and the auto play settings (`Custom/AutoPlay.ini`) are only here, since they rarely
   need changing.
 - **Phantom Playstyles** - a visual editor for `game/data/PhantomPlaystyles.xml` (see below).
-- **Population** - the visual map editor for town bot and phantom populations, routes, spawn zones,
+- **Population map** - the visual map editor for town bot and phantom populations, routes, spawn zones,
   and map overlays (see below).
+- **Living Population** - the read-only monitor of the bot simulation, with a **Monitor / Settings** switch
+  for the module's own settings (`modules/living-population/config/module.ini`, restart to apply).
 
 ## Phantom Playstyles
 

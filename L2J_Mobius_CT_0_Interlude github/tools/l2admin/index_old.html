@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Living World - Server Control Panel</title>
+<title>Living World - Server Control Panel (old)</title>
 <script>
   // Set theme before first paint to avoid a flash. Default: dark.
   (function(){ try{ document.documentElement.setAttribute("data-theme", localStorage.getItem("l2admin-theme") || "dark"); }
@@ -11,28 +11,26 @@
 </script>
 <style>
   :root{
-    --bg:#121110; --bg-2:#171513; --panel:#1a1816; --panel-2:#211f1c; --panel-3:#28251f;
-    --ink:#ebe5da; --ink-soft:#b9b1a3; --stone:#8a8174; --stone-dim:#6b6459;
-    --gold:#d0a956; --gold-bright:#e2bf70; --ember:#d9785a; --good:#7fb27f; --warn:#d9a845;
-    --line:#2d2a26; --line-solid:#3a3631;
-    --accent-soft:#d0a95624; --shadow:0 14px 44px #000a; --top-h:57px;
+    --bg:#0e0b08; --bg-2:#141009; --panel:#191308; --panel-2:#1f180d; --panel-3:#221a0c;
+    --ink:#e8dcc4; --ink-soft:#c3b492; --stone:#8a7c66; --stone-dim:#6b5f4c;
+    --gold:#c9a24b; --gold-bright:#e7c877; --ember:#b5623a; --good:#6faf6f; --warn:#d1a24a;
+    --line:#33291699; --line-solid:#3a2f18;
     --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
     --sans:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
-    --page:var(--bg);
-    --top-bg:#121110f2;
-    --bar-bg:var(--panel);
+    --page:radial-gradient(120% 80% at 50% -10%,#1a130a,var(--bg) 60%);
+    --top-bg:linear-gradient(180deg,#0e0b08f5,#0e0b08d0);
+    --bar-bg:linear-gradient(0deg,#0e0b08fb,#0e0b08e0);
   }
   /* light theme */
   :root[data-theme="light"]{
-    --bg:#f4f1ea; --bg-2:#ece7dc; --panel:#fbfaf6; --panel-2:#efebe2; --panel-3:#e7e1d5;
-    --ink:#24201a; --ink-soft:#564e42; --stone:#7d7364; --stone-dim:#a0968a;
-    --gold:#9b7424; --gold-bright:#8a6516; --ember:#b4502f; --good:#4c8a4c; --warn:#a07114;
-    --line:#e6e0d4; --line-solid:#d6cebe;
-    --accent-soft:#9b74241c; --shadow:0 14px 44px #3a2e1a26;
-    --page:var(--bg);
-    --top-bg:#f4f1eaf2;
-    --bar-bg:var(--panel);
+    --bg:#efe7d4; --bg-2:#e7ddc6; --panel:#faf6ea; --panel-2:#f2ead7; --panel-3:#ece2ca;
+    --ink:#2c2313; --ink-soft:#574733; --stone:#7c6c4f; --stone-dim:#a08f6f;
+    --gold:#9a7526; --gold-bright:#b07f22; --ember:#a2482a; --good:#4f8a4f; --warn:#9a6a1a;
+    --line:#7a5f2826; --line-solid:#d9cba6;
+    --page:radial-gradient(120% 80% at 50% -10%,#fffdf6,var(--bg) 62%);
+    --top-bg:linear-gradient(180deg,#faf6eaf6,#faf6ead4);
+    --bar-bg:linear-gradient(0deg,#faf6eafc,#faf6eae6);
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
@@ -46,32 +44,33 @@
   /* header */
   header.top{position:sticky;top:0;z-index:40;background:var(--top-bg);
     backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-  .top-inner{display:flex;align-items:center;gap:14px;height:56px;padding:0 18px}
-  .brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);
-    font-size:15px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
-  .brand .crest{width:22px;height:22px;color:var(--gold);flex:none}
-  .brand small{display:block;font-family:var(--sans);font-size:9.5px;letter-spacing:.2em;
-    color:var(--stone);text-transform:uppercase;margin-top:1px}
-  .top-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .top-inner{display:flex;align-items:center;gap:16px;height:66px}
+  .brand{display:flex;align-items:center;gap:11px;font-family:var(--serif);
+    font-size:18px;letter-spacing:.12em;text-transform:uppercase}
+  .brand .crest{width:26px;height:26px;color:var(--gold);flex:none}
+  .brand small{display:block;font-family:var(--sans);font-size:10.5px;letter-spacing:.22em;
+    color:var(--stone);text-transform:uppercase;margin-top:2px}
+  .top-actions{margin-left:auto;display:flex;align-items:center;gap:12px}
   .folder-pill{font-size:12px;color:var(--stone);font-family:var(--mono);
     max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .folder-pill b{color:var(--ink-soft)}
 
   button{font-family:var(--sans);cursor:pointer;border:none}
-  .btn{padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;letter-spacing:.02em;
+  .btn{padding:9px 16px;border-radius:4px;font-size:13px;font-weight:600;letter-spacing:.04em;
     transition:transform .12s,box-shadow .2s,background .2s;white-space:nowrap}
-  .btn-primary{color:#1b1408;border:1px solid var(--gold);background:var(--gold)}
-  :root[data-theme="light"] .btn-primary{color:#fffaf0}
+  .btn-primary{color:#160f04;border:1px solid #d8b862;
+    background:linear-gradient(180deg,var(--gold-bright),var(--gold));
+    box-shadow:0 4px 16px #c9a24b2e,0 1px 0 #ffffff55 inset}
   .btn-primary:hover{transform:translateY(-1px)}
   .btn-primary:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
-  .btn-ghost{color:var(--ink);border:1px solid var(--line-solid);background:none}
-  .btn-ghost:hover{border-color:var(--stone-dim);background:var(--panel-2)}
+  .btn-ghost{color:var(--ink);border:1px solid var(--line-solid);background:#ffffff06}
+  .btn-ghost:hover{border-color:var(--gold);color:var(--gold-bright)}
   .btn-ghost:disabled{opacity:.4;cursor:not-allowed}
-  .icon-btn{width:34px;height:34px;flex:none;display:inline-flex;align-items:center;justify-content:center;
-    border-radius:8px;border:1px solid var(--line-solid);background:none;color:var(--ink-soft);
+  .icon-btn{width:38px;height:38px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+    border-radius:4px;border:1px solid var(--line-solid);background:#ffffff06;color:var(--ink-soft);
     transition:color .15s,border-color .15s}
   .icon-btn:hover{color:var(--gold-bright);border-color:var(--gold)}
-  .icon-btn svg{width:16px;height:16px}
+  .icon-btn svg{width:18px;height:18px}
   .icon-btn .i-sun{display:none}
   :root[data-theme="light"] .icon-btn .i-moon{display:none}
   :root[data-theme="light"] .icon-btn .i-sun{display:block}
@@ -92,6 +91,16 @@
     background:var(--panel);font-size:13px;color:var(--ink-soft)}
   .banner svg{width:18px;height:18px;color:var(--gold);flex:none;margin-top:1px}
   .banner code{font-family:var(--mono);background:#00000038;padding:1px 6px;border-radius:3px;color:var(--gold-bright)}
+
+  /* tabs */
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;margin:26px 0 18px;border-bottom:1px solid var(--line);padding-bottom:0}
+  .tab{padding:9px 15px;font-size:13px;font-weight:600;letter-spacing:.03em;color:var(--stone);
+    background:none;border-bottom:2px solid transparent;border-radius:5px 5px 0 0;transition:color .15s}
+  .tab:hover{color:var(--ink-soft)}
+  .tab.active{color:var(--gold-bright);border-bottom-color:var(--gold)}
+  .tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ember);
+    margin-left:7px;vertical-align:middle;visibility:hidden}
+  .tab.dirty .dot{visibility:visible}
 
   /* bot clans tab */
   .bc-sec{margin:8px 0 30px}
@@ -156,31 +165,43 @@
   /* panels */
   .panel{display:none;padding-bottom:80px}
   .panel.active{display:block}
+  .panel-head{margin:6px 0 20px}
+  .panel-head h2{font-size:1.5rem}
+  .panel-head p{color:var(--stone);margin:5px 0 0;font-size:13.5px}
 
+  .field{display:grid;grid-template-columns:1fr auto;gap:14px 20px;align-items:center;
+    padding:15px 2px;border-bottom:1px solid var(--line)}
+  .field:last-child{border-bottom:none}
+  .fgroup{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);margin:26px 0 4px}
+  .field .meta{min-width:0}
+  .field .flabel{font-weight:600;font-size:14.5px;color:var(--ink);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .field .fkey{font-family:var(--mono);font-size:11px;color:var(--stone-dim)}
+  .field .fhelp{color:var(--stone);font-size:12.5px;margin-top:3px;max-width:640px}
+  .tagnew{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;
+    color:#160f04;background:linear-gradient(180deg,var(--gold-bright),var(--gold));
+    padding:2px 7px;border-radius:20px}
   .tagmiss{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;
     color:var(--warn);border:1px solid var(--warn);padding:1px 6px;border-radius:20px}
-  .control{flex:none;display:flex;align-items:center}
+  .control{justify-self:end}
 
   /* inputs */
   input[type=text],input[type=number],select{font-family:var(--mono);font-size:14px;color:var(--ink);
-    background:var(--bg);border:1px solid var(--line-solid);border-radius:8px;padding:7px 10px;
+    background:var(--panel-3);border:1px solid var(--line-solid);border-radius:5px;padding:8px 11px;
     width:130px;text-align:right;transition:border .15s,box-shadow .15s}
   select{text-align:left;width:150px;font-family:var(--sans)}
   input:focus,select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px #c9a24b22}
+  input.changed,select.changed{border-color:var(--ember)}
 
   /* toggle */
-  .toggle{position:relative;display:inline-block;width:40px;height:23px;flex:none;vertical-align:middle;cursor:pointer}
+  .toggle{position:relative;display:inline-block;width:50px;height:27px;flex:none;vertical-align:middle}
   .toggle input{opacity:0;width:0;height:0;position:absolute}
-  .toggle .track{position:absolute;inset:0;background:var(--line-solid);border-radius:20px;transition:background .15s}
-  .toggle .thumb{position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;
-    background:var(--panel);box-shadow:0 1px 2px #0006;transition:transform .15s,background .15s}
-  .toggle input:checked ~ .track{background:var(--gold)}
-  .toggle input:checked ~ .thumb{transform:translateX(17px);background:#1b1408}
-  :root[data-theme="light"] .toggle input:checked ~ .thumb{background:#fffaf0}
-  .toggle.sm{width:34px;height:20px}
-  .toggle.sm .thumb{width:14px;height:14px}
-  .toggle.sm input:checked ~ .thumb{transform:translateX(14px)}
-  .toggle input:focus-visible ~ .track{box-shadow:0 0 0 2px var(--gold)}
+  .toggle .track{position:absolute;inset:0;background:var(--panel-3);border:1px solid var(--line-solid);
+    border-radius:20px;transition:background .18s,border .18s}
+  .toggle .thumb{position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;
+    background:var(--stone);transition:transform .18s,background .18s}
+  .toggle input:checked ~ .track{background:linear-gradient(180deg,#5a7d4a,#3f5c35);border-color:#6faf6f66}
+  .toggle input:checked ~ .thumb{transform:translateX(23px);background:var(--gold-bright)}
+  .toggle input:focus-visible ~ .track{box-shadow:0 0 0 3px #c9a24b33}
 
   /* raw editor */
   .raw-bar{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
@@ -193,16 +214,15 @@
     padding-bottom:6px;border-bottom:1px solid var(--line-solid)}
 
   /* save bar */
-  .savebar{position:fixed;left:50%;bottom:18px;z-index:45;width:min(680px,calc(100% - 32px));
-    transform:translate(-50%,160%);transition:transform .22s;background:var(--panel);
-    border:1px solid var(--line-solid);border-radius:12px;box-shadow:var(--shadow)}
-  .savebar.show{transform:translate(-50%,0)}
-  .savebar-inner{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px}
-  .savebar .msg{flex:1;min-width:0;font-size:13px;color:var(--ink-soft)}
-  .savebar .msg b{color:var(--ink);font-weight:600;display:block}
-  .savebar .msg span{display:block;color:var(--stone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .savebar{position:fixed;left:0;right:0;bottom:0;z-index:45;background:var(--bar-bg);
+    border-top:1px solid var(--line);backdrop-filter:blur(8px);transform:translateY(120%);transition:transform .22s}
+  .savebar.show{transform:translateY(0)}
+  .savebar-inner{display:flex;align-items:center;gap:16px;height:64px}
+  .savebar .msg{font-size:13.5px;color:var(--ink-soft)}
+  .savebar .msg b{color:var(--gold-bright)}
+  .savebar .spacer{margin-left:auto}
 
-  .toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%) translateY(20px);z-index:60;
+  .toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(20px);z-index:60;
     background:var(--panel-2);border:1px solid var(--line-solid);border-left:3px solid var(--good);
     padding:12px 20px;border-radius:6px;font-size:13.5px;color:var(--ink);opacity:0;pointer-events:none;
     transition:opacity .2s,transform .2s;box-shadow:0 10px 40px #000000aa}
@@ -235,7 +255,7 @@
   @media (max-width:860px){ .ps-layout{grid-template-columns:1fr} }
 
   .ps-side{border:1px solid var(--line-solid);border-radius:7px;background:var(--panel);
-    max-height:70vh;overflow:auto;position:sticky;top:calc(var(--top-h) + 16px)}
+    max-height:70vh;overflow:auto;position:sticky;top:82px}
   .ps-item{padding:10px 13px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
   .ps-item:last-child{border-bottom:none}
   .ps-item:hover{background:#ffffff06}
@@ -415,16 +435,17 @@
 #fpcRoot #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ---- population editor (ported fpc map tool), scoped to #fpcRoot ---- */
-#fpcRoot { position: relative; width: 100%; height: calc(100vh - var(--top-h)); min-height: 520px; color-scheme: dark; }
+#fpcRoot { position: relative; width: 100vw; margin-left: calc(50% - 50vw); height: calc(100vh - 210px); min-height: 520px; color-scheme: dark; border-top: 1px solid var(--line-solid); }
 :root[data-theme="light"] #fpcRoot { color-scheme: light; }
 #fpcRoot #app { height: 100%; }
 .panel[data-panel="__fpc"] { padding-bottom: 0; }
 body.fpc-active { overflow-x: hidden; }
 /* ---- Living Population observer (full-bleed, like the Population tab) ---- */
 body.lp-active { overflow-x: hidden; }
+body.lp-active #editor .banner { display: none; }
 .panel[data-panel="__lp"] { padding-bottom: 0; }
-#lpRoot { position: relative; width: 100%; height: calc(100vh - var(--top-h)); min-height: 560px;
-  display: flex; flex-direction: column; background: var(--bg-2); }
+#lpRoot { position: relative; width: 100vw; margin-left: calc(50% - 50vw); height: calc(100vh - 170px); min-height: 560px;
+  display: flex; flex-direction: column; border-top: 1px solid var(--line-solid); background: var(--bg-2); }
 #lpRoot .lp-bar { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 10px 18px; border-bottom: 1px solid var(--line-solid); background: var(--panel); }
 #lpRoot .lp-title { display: flex; flex-direction: column; min-width: 170px; }
 #lpRoot .lp-title strong { font-family: var(--serif); font-size: 19px; letter-spacing: .02em; color: var(--gold-bright); }
@@ -539,192 +560,17 @@ body.lp-active { overflow-x: hidden; }
   #lpRoot .lp-side { width: auto; border-left: 0; border-top: 1px solid var(--line-solid); }
 }
 
-
-/* ============================================================
-   App shell: slim top bar, grouped sidebar, one calm column of settings
-   ============================================================ */
-.menu-btn{display:none}
-.search{flex:1;max-width:440px;margin:0 auto;display:flex;align-items:center;gap:9px;height:34px;padding:0 10px;
-  border:1px solid var(--line-solid);border-radius:8px;background:var(--panel);color:var(--stone);font-size:13px;text-align:left}
-.search:hover{border-color:var(--stone-dim);color:var(--ink-soft)}
-.search svg{width:15px;height:15px;flex:none}
-.search span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-kbd{font:500 11px var(--mono);padding:1px 6px;border:1px solid var(--line-solid);border-radius:4px;color:var(--stone)}
-
-.shell{display:grid;grid-template-columns:232px minmax(0,1fr);align-items:start}
-.side{position:sticky;top:var(--top-h);height:calc(100vh - var(--top-h));overflow:auto;border-right:1px solid var(--line);
-  padding:14px 10px 16px;display:flex;flex-direction:column;gap:14px;background:var(--bg)}
-.nav-group h4{margin:0 0 3px;padding:0 10px;font:700 10.5px/1.6 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--stone)}
-.side .tab{width:100%;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;border:none;
-  color:var(--ink-soft);font-size:13.5px;font-weight:500;letter-spacing:0;text-align:left;background:none}
-.side .tab svg{width:16px;height:16px;flex:none;opacity:.8}
-.side .tab:hover{background:var(--panel-2);color:var(--ink)}
-.side .tab.active{background:var(--accent-soft);color:var(--ink)}
-.side .tab.active svg{color:var(--gold);opacity:1}
-.side .tab .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.side .tab .dot{width:7px;height:7px;flex:none;border-radius:50%;background:var(--gold);visibility:hidden}
-.side .tab.dirty .dot{visibility:visible}
-.side-foot{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--line);display:grid;gap:10px;color:var(--stone);font-size:12px}
-.side-foot p{margin:0}
-.keys-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--ink-soft);font-size:13px;cursor:pointer}
-.old-link{color:var(--stone);text-decoration:underline;text-underline-offset:2px}
-.old-link:hover{color:var(--gold-bright)}
-
-.content{min-width:0;padding:28px 32px 120px}
-.panel.curated,.panel[data-panel="__ov"]{max-width:800px;margin:0 auto}
-.panel[data-panel="__ps"],.panel[data-panel="__bc"],.panel[data-panel="__raw"]{max-width:1180px;margin:0 auto}
-body.fpc-active .content,body.lp-active .content{padding:0}
-
-.panel-head{margin:0 0 22px}
-.panel-head .eyebrow{margin:0 0 6px;font:700 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--stone)}
-.panel-head h2{font-size:1.75rem;line-height:1.15;text-wrap:balance}
-.panel-head p{color:var(--ink-soft);margin:8px 0 0;font-size:14px;max-width:64ch}
-.file-chip{display:inline-flex;margin-top:12px;padding:2px 9px;border:1px solid var(--line-solid);border-radius:999px;font:500 11.5px var(--mono);color:var(--stone)}
-.panel .note{padding:10px 13px;border:1px solid var(--line-solid);border-radius:10px;background:var(--panel);color:var(--ink-soft);font-size:13px;margin:0 0 18px}
-.panel-head + .seg,.seg + .panel-head{margin-top:0}
-.panel.curated > .seg{margin-bottom:16px}
-
-/* master switch */
-.master{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line-solid);border-radius:12px;background:var(--panel);margin:0 0 22px}
-.master .t{flex:1;min-width:0}
-.master .t b{display:flex;align-items:center;gap:8px;font-weight:600}
-.master .t>span{color:var(--stone);font-size:13px}
-.state-pill{font:700 10.5px var(--sans);letter-spacing:.06em;text-transform:uppercase;padding:1px 8px;border-radius:999px;border:1px solid var(--line-solid);color:var(--stone)}
-.state-pill.on{color:var(--good);border-color:var(--good)}
-.groups.off{opacity:.45;pointer-events:none}
-.off-msg{margin:-12px 0 18px;color:var(--stone);font-size:13px}
-
-/* setting groups and rows */
-.group{margin-bottom:22px}
-.group-h{display:flex;align-items:baseline;gap:8px;margin:0 0 8px;padding:0 2px;min-height:18px}
-.group-h h3{margin:0;font:700 12px var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
-.group-h .cnt{color:var(--stone);font-size:12px}
-.group-tg{margin-left:auto;display:flex;align-items:center;gap:4px;background:none;color:var(--stone);font-size:12.5px}
-.group-tg:hover{color:var(--ink)}
-.group-tg svg{width:14px;height:14px;transition:transform .15s}
-.group.collapsed .group-tg svg{transform:rotate(-90deg)}
-.group.collapsed .list{display:none}
-.list{border:1px solid var(--line-solid);border-radius:12px;background:var(--panel);overflow:hidden}
-.row{border-top:1px solid var(--line)}
-.row:first-child{border-top:0}
-.master.row{border-top:1px solid var(--line-solid)}
-.row-main{display:flex;align-items:center;gap:14px;padding:10px 12px 10px 16px;min-height:58px}
-.row.child .row-main{padding-left:38px}
-.row.child .row-main::before{content:"";width:10px;height:10px;border-left:1px solid var(--line-solid);border-bottom:1px solid var(--line-solid);margin:-12px 0 0 -20px;flex:none}
-.row.disabled .row-main{opacity:.45}
-.row.disabled .control{pointer-events:none}
-.row-text{flex:1;min-width:0}
-.row-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:500;font-size:14px;color:var(--ink)}
-.row-short{color:var(--stone);font-size:13px;margin-top:1px}
-.row-key{display:none;font:400 11.5px var(--mono);color:var(--stone-dim);margin-top:2px;word-break:break-all}
-body.show-keys .row-key{display:block}
-.mod-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);display:none}
-.row.modified .mod-dot{display:inline-block}
-.more{width:30px;height:30px;flex:none;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:none;color:var(--stone)}
-.more:hover{background:var(--panel-2);color:var(--ink)}
-.more svg{width:15px;height:15px;transition:transform .15s}
-.row.open .more svg{transform:rotate(180deg)}
-.row-detail{display:none;padding:0 16px 14px;color:var(--ink-soft);font-size:13px}
-.row.child .row-detail{padding-left:38px}
-.row.open .row-detail{display:block}
-.row-detail p{margin:0 0 10px;max-width:66ch}
-.row-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;color:var(--stone);font-size:12px}
-.row-meta code{font:500 11.5px var(--mono);color:var(--ink-soft)}
-.row-meta .reset{background:none;color:var(--gold-bright);font-size:12px;padding:0}
-.row-meta .reset:hover{text-decoration:underline}
-.tag-restart{font:700 9.5px var(--sans);letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border-radius:4px;border:1px solid var(--warn);color:var(--warn)}
-.flash{animation:rowflash 1.6s ease}
-@keyframes rowflash{0%,40%{background:var(--accent-soft)}100%{background:transparent}}
-
-/* number fields with a unit */
-.num{display:inline-flex;align-items:center;height:34px;border:1px solid var(--line-solid);border-radius:8px;background:var(--bg);overflow:hidden}
-.num:focus-within{border-color:var(--gold)}
-.num input[type=number]{width:96px;height:100%;border:0;border-radius:0;background:none;padding:0 6px 0 10px;box-shadow:none;font-size:13.5px;font-variant-numeric:tabular-nums}
-.num input[type=number]:focus{box-shadow:none}
-.num .unit{padding:0 10px 0 2px;color:var(--stone);font-size:12px;white-space:nowrap}
-
-/* living population view switch */
-.seg{display:inline-flex;padding:3px;border:1px solid var(--line-solid);border-radius:9px;background:var(--bg);gap:2px}
-.seg button{padding:4px 12px;border-radius:6px;background:none;color:var(--stone);font-weight:600;font-size:12.5px}
-.seg button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink)}
-
-/* overview */
-.ov-t{font:700 12px var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin:24px 0 10px}
-.ov-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.ov-card{display:block;text-align:left;padding:14px 16px;border:1px solid var(--line-solid);border-radius:12px;background:var(--panel);color:var(--ink);min-width:0}
-.ov-card:hover{border-color:var(--stone-dim)}
-.ov-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.ov-h svg{width:16px;height:16px;color:var(--gold)}
-.ov-h b{font-weight:600;font-size:14.5px}
-.ov-fact{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:1px 0}
-.ov-fact span{color:var(--stone)}
-.ov-fact strong{font-weight:500;font-variant-numeric:tabular-nums;text-align:right}
-.ov-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.ov-tool{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border:1px solid var(--line-solid);border-radius:12px;background:none;color:var(--ink);text-align:left;min-width:0}
-.ov-tool:hover{background:var(--panel)}
-.ov-tool svg{width:18px;height:18px;color:var(--gold)}
-.ov-tool b{font-weight:600}
-.ov-tool span{color:var(--stone);font-size:12.5px}
-
-/* search palette and review dialog */
-.scrim{position:fixed;inset:0;z-index:70;background:#0008;display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px 16px}
-.dialog{width:min(580px,100%);background:var(--panel);border:1px solid var(--line-solid);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
-.pal-in{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
-.pal-in svg{width:16px;height:16px;color:var(--stone);flex:none}
-.pal-in input[type=text]{flex:1;width:auto;border:0;background:none;box-shadow:none;padding:0;text-align:left;font:15px var(--sans)}
-.pal-list{max-height:52vh;overflow:auto;padding:6px}
-.pal-res{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:none;color:var(--ink);text-align:left}
-.pal-res[aria-selected="true"],.pal-res:hover{background:var(--panel-2)}
-.pal-l{flex:1;min-width:0}
-.pal-l b{display:block;font-weight:500;font-size:14px}
-.pal-l span{display:block;color:var(--stone);font:12px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pal-w{color:var(--stone);font-size:12px;white-space:nowrap}
-.pal-empty{padding:22px;text-align:center;color:var(--stone)}
-.dlg-h{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}
-.dlg-h b{font:600 17px var(--serif)}
-.rv-list{max-height:55vh;overflow:auto}
-.rv-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--line);font-size:13px}
-.rv-row:first-child{border-top:0}
-.rv-l{flex:1;min-width:0}
-.rv-l b{font-weight:500;display:flex;align-items:center;gap:8px}
-.rv-l span{display:block;color:var(--stone);font:11.5px var(--mono);word-break:break-all}
-.rv-v{font:500 12.5px var(--mono);white-space:nowrap}
-.rv-v s,.rv-v i{color:var(--stone)}
-.dlg-f{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);background:var(--bg-2)}
-.btn-sm{padding:5px 10px;font-size:12px}
-
-/* narrow windows: the sidebar becomes a drawer */
-@media (max-width:900px){
-  .menu-btn{display:inline-flex}
-  .shell{grid-template-columns:minmax(0,1fr)}
-  .side{position:fixed;z-index:65;top:0;left:0;bottom:0;height:auto;width:260px;transform:translateX(-102%);transition:transform .2s;box-shadow:var(--shadow);padding-top:18px}
-  body.nav-open .side{transform:none}
-  .brand small,.folder-pill,.search kbd,.search span{display:none}
-  .search{flex:none;margin:0 0 0 auto;width:34px;padding:0;justify-content:center}
-  .top-actions{margin-left:0}
-  .content{padding:20px 16px 120px}
-  .ov-cards{grid-template-columns:minmax(0,1fr)}
-  .ov-tools{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media (max-width:560px){ .brand>div{display:none} }
-@media (prefers-reduced-motion: reduce){ .side,.more svg,.group-tg svg,.flash{transition:none;animation:none} }
 </style>
 </head>
 <body>
 <header class="top">
-  <div class="top-inner">
-    <button id="menuBtn" class="icon-btn menu-btn hidden" type="button" aria-label="Show the sections">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-    </button>
+  <div class="wrap top-inner">
     <div class="brand">
       <svg class="crest" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l7 4v6c0 4.4-3 7.6-7 10-4-2.4-7-5.6-7-10V6l7-4z"/></svg>
       <div>Living World<small>Server Control Panel</small></div>
     </div>
-    <button id="searchBtn" class="search hidden" type="button" aria-label="Search settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <span>Search settings</span><kbd>Ctrl K</kbd>
-    </button>
     <div class="top-actions">
+      <a class="btn btn-ghost" href="index.html" title="Switch back to the new config editor">New editor</a>
       <span id="folderPill" class="folder-pill hidden"></span>
       <button id="reopenBtn" class="btn btn-ghost hidden" onclick="pickFolder()">Change folder</button>
       <button id="themeBtn" class="icon-btn" onclick="toggleTheme()" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
@@ -735,9 +581,9 @@ body.show-keys .row-key{display:block}
   </div>
 </header>
 
-<main>
+<main class="wrap">
   <!-- EMPTY STATE -->
-  <section id="empty" class="hero wrap">
+  <section id="empty" class="hero">
     <svg class="crest-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 2l7 4v6c0 4.4-3 7.6-7 10-4-2.4-7-5.6-7-10V6l7-4z"/><path d="M9 12l2 2 4-4"/></svg>
     <h1>Server Control Panel</h1>
     <p>Edit your rates, phantoms, the Olympiad and more - no server, no login, no editing raw text files. Open your server's <code class="inl">game</code> folder to begin, and the config and data tabs both load from it.</p>
@@ -751,40 +597,24 @@ body.show-keys .row-key{display:block}
   </section>
 
   <!-- EDITOR -->
-  <section id="editor" class="shell hidden">
-    <nav id="tabs" class="side" aria-label="Sections"></nav>
-    <div id="panels" class="content"></div>
+  <section id="editor" class="hidden">
+    <div class="banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+      <div>Changes save to your <code>.ini</code> files. To apply them in-game, run <code>//reload config</code> - a few settings only take effect after a full server restart. (Editing here is the same as editing the <code>.ini</code> by hand)</div>
+    </div>
+
+    <div id="tabs" class="tabs"></div>
+    <div id="panels"></div>
   </section>
 </main>
 
 <!-- SAVE BAR -->
-<div id="savebar" class="savebar" role="region" aria-label="Unsaved changes">
-  <div class="savebar-inner">
+<div id="savebar" class="savebar">
+  <div class="wrap savebar-inner">
     <div class="msg" id="saveMsg">No changes</div>
-    <button class="btn btn-ghost" id="reviewBtn" type="button">Review</button>
-    <button class="btn btn-ghost" type="button" onclick="discardAll()">Discard</button>
-    <button class="btn btn-primary" id="saveBtn" type="button" onclick="saveAll()">Save</button>
-  </div>
-</div>
-
-<!-- SEARCH -->
-<div id="palette" class="scrim hidden">
-  <div class="dialog" role="dialog" aria-label="Search settings">
-    <div class="pal-in">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input id="palInput" type="text" placeholder="Type a setting, a page or an ini key" autocomplete="off" aria-label="Search settings"><kbd>Esc</kbd>
-    </div>
-    <div id="palResults" class="pal-list"></div>
-  </div>
-</div>
-
-<!-- REVIEW CHANGES -->
-<div id="review" class="scrim hidden">
-  <div class="dialog" role="dialog" aria-label="Review changes">
-    <div class="dlg-h"><b>Review changes</b><button id="reviewClose" class="icon-btn" type="button" aria-label="Close">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <div id="reviewList" class="rv-list"></div>
-    <div class="dlg-f"><button class="btn btn-ghost" type="button" onclick="reviewClose()">Keep editing</button><button id="reviewSave" class="btn btn-primary" type="button">Save</button></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" onclick="discardAll()">Discard</button>
+    <button class="btn btn-primary" id="saveBtn" onclick="saveAll()">Save changes</button>
   </div>
 </div>
 
@@ -798,178 +628,161 @@ body.show-keys .row-key{display:block}
  * type: bool | int | float | text | enum(options)
  * ============================================================ */
 const PANELS = [
-  { id:"xp", title:"Experience & SP", group:"Rates", icon:"xp", file:"Rates.ini",
-    blurb:"How fast characters gain experience and skill points. Retail is 1.",
+  { id:"xp", title:"Experience & SP", file:"Rates.ini",
+    blurb:"How fast characters gain experience and skill points. Retail-like = 1.",
     fields:[
-      {heading:"Hunting"},
-      {key:"RateXp",       label:"XP rate",        type:"float", unit:"x", short:"Experience from hunting.", help:"Global experience multiplier for hunting."},
-      {key:"RateSp",       label:"SP rate",        type:"float", unit:"x", short:"Skill points from hunting.", help:"Global skill-point multiplier."},
-      {heading:"In a party"},
-      {key:"RatePartyXp",  label:"Party XP rate",  type:"float", unit:"x", short:"Experience while in a party.", help:"Experience multiplier while in a party."},
-      {key:"RatePartySp",  label:"Party SP rate",  type:"float", unit:"x", short:"Skill points while in a party.", help:"Skill-point multiplier while in a party."},
+      {key:"RateXp",       label:"XP rate",        type:"float", help:"Global experience multiplier for hunting."},
+      {key:"RateSp",       label:"SP rate",        type:"float", help:"Global skill-point multiplier."},
+      {key:"RatePartyXp",  label:"Party XP rate",  type:"float", help:"Experience multiplier while in a party."},
+      {key:"RatePartySp",  label:"Party SP rate",  type:"float", help:"Skill-point multiplier while in a party."},
     ]},
-  { id:"drops", title:"Drops & Spoil", group:"Rates", icon:"drop", file:"Rates.ini",
-    blurb:"Loot from monsters, spoil, herbs and raid bosses. Retail is 1.",
+  { id:"drops", title:"Drops & Spoil", file:"Rates.ini",
+    blurb:"Loot amounts and chances from monsters, spoil, herbs and raid bosses.",
     fields:[
-      {heading:"Monsters"},
-      {key:"DeathDropAmountMultiplier", label:"Drop amount", type:"float", unit:"x", short:"How much drops per kill.", help:"How much drops per kill."},
-      {key:"DeathDropChanceMultiplier", label:"Drop chance", type:"float", unit:"x", short:"How often something drops.", help:"How often something drops."},
-      {heading:"Spoil and herbs"},
-      {key:"SpoilDropAmountMultiplier", label:"Spoil amount",        type:"float", unit:"x", short:"Sweep yield from spoiled monsters.", help:"Sweep yield from spoiled mobs."},
-      {key:"SpoilDropChanceMultiplier", label:"Spoil chance",        type:"float", unit:"x", short:"Chance a sweep yields items.", help:"Chance a sweep yields items."},
-      {key:"HerbDropAmountMultiplier",  label:"Herb amount",         type:"float", unit:"x", short:"Herb drop quantity.", help:"Herb drop quantity."},
-      {heading:"Raid bosses"},
-      {key:"RaidDropAmountMultiplier",  label:"Raid drop amount",    type:"float", unit:"x", short:"Raid boss drop quantity.", help:"Raid-boss drop quantity."},
-      {key:"RaidDropChanceMultiplier",  label:"Raid drop chance",    type:"float", unit:"x", short:"Raid boss drop chance.", help:"Raid-boss drop chance."},
+      {key:"DeathDropAmountMultiplier", label:"Monster drop amount", type:"float", help:"How much drops per kill."},
+      {key:"DeathDropChanceMultiplier", label:"Monster drop chance", type:"float", help:"How often something drops."},
+      {key:"SpoilDropAmountMultiplier", label:"Spoil amount",        type:"float", help:"Sweep yield from spoiled mobs."},
+      {key:"SpoilDropChanceMultiplier", label:"Spoil chance",        type:"float", help:"Chance a sweep yields items."},
+      {key:"HerbDropAmountMultiplier",  label:"Herb amount",         type:"float", help:"Herb drop quantity."},
+      {key:"RaidDropAmountMultiplier",  label:"Raid drop amount",    type:"float", help:"Raid-boss drop quantity."},
+      {key:"RaidDropChanceMultiplier",  label:"Raid drop chance",    type:"float", help:"Raid-boss drop chance."},
     ]},
-  { id:"quest", title:"Quests & Economy", group:"Rates", icon:"quest", file:"Rates.ini",
-    blurb:"Quest rewards, and the prices in stores run by town bots.",
+  { id:"quest", title:"Quests & Economy", file:"Rates.ini",
+    blurb:"Quest rewards and the AI private-store price scale.",
     fields:[
-      {heading:"Quest rewards"},
-      {key:"RateQuestRewardXP",    label:"Quest XP",    type:"float", unit:"x", short:"Experience from quest rewards.", help:"Experience from quest rewards."},
-      {key:"RateQuestRewardSP",    label:"Quest SP",    type:"float", unit:"x", short:"Skill points from quest rewards.", help:"Skill points from quest rewards."},
-      {key:"RateQuestRewardAdena", label:"Quest adena", type:"float", unit:"x", short:"Adena from quest rewards.", help:"Adena from quest rewards."},
-      {heading:"Town bot stores"},
-      {key:"FakePlayerStorePriceMultiplier", label:"Town bot store prices", type:"float", unit:"x", short:"Raise it to match a higher adena rate.",
+      {key:"RateQuestRewardXP",    label:"Quest XP",    type:"float", help:"Experience from quest rewards."},
+      {key:"RateQuestRewardSP",    label:"Quest SP",    type:"float", help:"Skill points from quest rewards."},
+      {key:"RateQuestRewardAdena", label:"Quest adena", type:"float", help:"Adena from quest rewards."},
+      {key:"FakePlayerStorePriceMultiplier", label:"Town bot store prices", type:"float",
        help:"Multiplier on the prices of private stores and crafters run by town bots. Raise it to match an inflated adena rate."},
     ]},
-  { id:"phantoms", title:"Phantoms", group:"Phantoms", icon:"phantom", file:"FakePlayers.ini",
-    blurb:"Bots that are real characters: field hunters, party recruits, support buddies, friends and Olympiad nobles. Town bots are not affected; their settings are in the Raw editor.",
+  { id:"raids", title:"Raid Bosses", file:"NPC.ini",
+    blurb:"Scale every raid boss at once. Values are percent, 100 = retail; these tune attack, defense and regen, not the boss HP pool. Read only at startup, so restart the server to apply.",
+    fields:[
+      {key:"RaidPAttackMultiplier",  label:"Physical attack",  type:"int", default:"100", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
+      {key:"RaidMAttackMultiplier",  label:"Magic attack",     type:"int", default:"100", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
+      {key:"RaidPDefenceMultiplier", label:"Physical defense", type:"int", default:"100", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
+      {key:"RaidMDefenceMultiplier", label:"Magic defense",    type:"int", default:"100", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
+      {key:"RaidHpRegenMultiplier",  label:"HP regen",         type:"int", default:"100", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
+      {key:"RaidMpRegenMultiplier",  label:"MP regen",         type:"int", default:"100", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
+    ]},
+  { id:"phantoms", title:"Phantoms", file:"FakePlayers.ini",
+    blurb:"Phantoms are the bots that are real characters: field hunters, your recruited party members, support buddies, friends and Olympiad nobles. The town crowd (town bots) is not affected by these; its settings are in the Raw Editor.",
     fields:[
       {heading:"Your party"},
-      {key:"FakePlayerPartyQuestCredit", label:"Phantom kills count for your quests", type:"bool", default:"True", short:"No need to last hit every quest monster.",
+      {key:"FakePlayerPartyQuestCredit", label:"Phantom kills count for your quests", type:"bool", default:"True",
        help:"When a recruited party member or support buddy lands the killing blow, the quest kill counts for you, so you don't have to last-hit every mob."},
-      {key:"FakePlayerPartyQuestCreditRange", parent:"FakePlayerPartyQuestCredit", label:"Quest kill range", type:"int", default:"1500", unit:"units", short:"How close you must be. 0 means any distance.",
+      {key:"FakePlayerPartyQuestCreditRange", label:"Quest kill range", type:"int", default:"1500",
        help:"How close (game units) you must be to the kill for that credit. 0 = no distance check."},
-      {key:"FakePlayerPartyExpShare", label:"Phantoms share party XP and SP", type:"bool", default:"False", short:"Off: you keep all of the party XP.",
+      {key:"FakePlayerPartyExpShare", label:"Phantoms share party XP/SP", type:"bool", default:"False",
        help:"OFF (default): you keep 100% of party XP even though phantoms fight alongside you. ON: phantoms count toward the level-based split, for a more realistic grouped feel (you keep less)."},
-      {key:"FakePlayerPartyLootShare", label:"Phantoms share loot and adena", type:"bool", default:"False", short:"Off: drops and adena stay with you.",
+      {key:"FakePlayerPartyLootShare", label:"Phantoms share loot & adena", type:"bool", default:"False",
        help:"OFF (default): drops and adena stay with you (phantoms never roll, and can't quietly eat an adena cut). ON: phantoms roll for loot like a real member."},
-      {key:"FakePlayerPartyPickup", label:"Phantoms pick up party drops", type:"bool", default:"True", short:"After a fight, when nothing is attacking the party.",
+      {key:"FakePlayerPartyPickup", label:"Phantoms pick up party drops", type:"bool", default:"True",
        help:"ON (default): after a fight, when nothing is attacking the party, recruited party members pick up nearby drops. The party loot mode decides who gets them: Finders keepers leaves items with the phantom until you say \"return loot\", Random and By turn hand them out (to you while loot share is OFF). Herbs are left for you. OFF: phantoms never pick anything up."},
       {heading:"Raids"},
-      {key:"FakePlayerRaidTankHate", label:"Phantom tank holds raid aggro", type:"bool", default:"True", short:"Damage dealers, you included, don't pull the boss off it.",
+      {key:"FakePlayerRaidTankHate", label:"Phantom tank holds raid aggro", type:"bool", default:"True",
        help:"ON (default): a recruited phantom tank fighting a raid boss keeps its hate above everyone else's by the margin below, so damage dealers (you included) do not pull the boss off it between taunts. OFF: hate comes from damage and taunts only."},
-      {key:"FakePlayerRaidTankHateMargin", parent:"FakePlayerRaidTankHate", label:"Tank hate margin", type:"float", default:"1.5", unit:"x", short:"1.5 means 50% above the next attacker.",
+      {key:"FakePlayerRaidTankHateMargin", label:"Tank hate margin", type:"float", default:"1.5",
        help:"How far above the second highest attacker the phantom tank's hate is kept. 1.5 = 50% more. 1.0 adds nothing."},
-      {key:"FakePlayerRaidHumanTankGraceSeconds", label:"Pause when you lose raid aggro", type:"int", default:"5", unit:"sec", short:"Time for you to taunt the boss back. 0: never pause.",
+      {key:"FakePlayerRaidHumanTankGraceSeconds", label:"Pause when you lose raid aggro (s)", type:"int", default:"5",
        help:"When you tank a raid boss and lose its aggro, damage dealers stop attacking it for this many seconds so you can taunt it back, then resume. A member the boss turned on eases off for the same time. 0: they never stop."},
       {heading:"Gear"},
-      {key:"FakePlayerRecruitEnchantChance", label:"Enchanted gear chance", type:"int", default:"100", unit:"%", short:"Recruits, field hunters, friends and nobles. Not buddies.",
+      {key:"FakePlayerRecruitEnchantChance", label:"Enchanted gear chance %", type:"int", default:"100",
        help:"Percent chance a phantom arrives with enchanted weapon and armor. Covers party recruits, field hunters, friends and Olympiad nobles, not support buddies. 0 = never, 100 = always."},
-      {key:"FakePlayerRecruitEnchantMin", label:"Lowest enchant", type:"int", default:"0", unit:"+", short:"Lowest enchant an enchanted phantom rolls.",
+      {key:"FakePlayerRecruitEnchantMin", label:"Enchant min (+)", type:"int", default:"0",
        help:"Lowest enchant an enchanted phantom rolls."},
-      {key:"FakePlayerRecruitEnchantMax", label:"Highest enchant", type:"int", default:"3", unit:"+", short:"Highest enchant an enchanted phantom rolls.",
+      {key:"FakePlayerRecruitEnchantMax", label:"Enchant max (+)", type:"int", default:"3",
        help:"Highest enchant an enchanted phantom rolls."},
       {heading:"Hunting"},
-      {key:"PhantomAutoHuntingZones", label:"Auto generated hunting zones", type:"bool", default:"True", short:"Adds the generated zones on top of your own.",
+      {key:"PhantomAutoHuntingZones", label:"Auto-generated hunting zones", type:"bool", default:"True",
        help:"Also load the field hunter zones in data/PhantomPopulations.generated.xml, on top of your own PhantomPopulations.xml. A zone stays asleep until a real player comes near."},
-      {key:"PhantomHunterPlaystyles", label:"Field hunters use playstyles", type:"bool", default:"True", short:"Class tactics from the Playstyles page.",
+      {key:"PhantomHunterPlaystyles", label:"Field hunters use playstyles", type:"bool", default:"True",
        help:"Field hunters and Olympiad nobles use class tactics from the Phantom Playstyles tab. With the combat controller enabled, learned attacks also provide a baseline for classes without a playstyle. OFF: field offensive casting returns to native auto-cast."},
-      {key:"PhantomCombatController", label:"Role aware combat controller", type:"bool", default:"True", short:"Smarter pacing, positioning and casting.",
+      {key:"PhantomCombatController", label:"Role-aware combat controller", type:"bool", default:"True",
        help:"Use shared cast tracking, per-skill tactical pacing, sustainable weapon attacks and spell-range positioning in solo and party combat. OFF: use the previous playstyle selector and fallback for comparison. Restart for a clean comparison."},
-      {key:"PhantomSkillFallback", label:"Use unlisted attack skills", type:"bool", default:"True", short:"Learned attacks fill gaps in class tactics.",
+      {key:"PhantomSkillFallback", label:"Use unlisted attack skills", type:"bool", default:"True",
        help:"Let learned, unlisted direct attacks complement class tactics. The controller considers damage, cast time, MP and weapon attacks; archers favor normal shots on ordinary mobs. Listed skills keep their conditions and level limits. With the controller OFF, this enables the older attack/debuff fallback. Area attacks are considered only in Olympiad matches."},
-      {key:"PhantomHunterRetaliate", label:"Turn on monsters that attack them", type:"bool", default:"True", short:"Off: hunters stay on their first target.",
+      {key:"PhantomHunterRetaliate", label:"Turn on monsters that attack them", type:"bool", default:"True",
        help:"A field hunter that gets jumped by a monster it was ignoring turns to fight it. OFF: hunters stay on their first target."},
     ]},
-  { id:"pvp", title:"Phantom PvP", nav:"PvP", group:"Phantoms", icon:"pvp", file:"FakePlayers.ini",
+  { id:"pvp", title:"Phantom PvP", file:"FakePlayers.ini",
     blurb:"PvP between you and phantoms, and between phantoms. Town bots are never involved, and towns and other peace zones are always safe.",
     fields:[
-      {key:"PhantomPvpEnabled", master:true, label:"Phantom PvP", type:"bool", default:"True", short:"Turns every setting on this page on or off.",
+      {key:"PhantomPvpEnabled", label:"Enable phantom PvP", type:"bool", default:"True",
        help:"Master switch. OFF turns every setting on this tab off."},
       {heading:"Behaviour"},
-      {key:"PhantomPvpSelfDefense", label:"Fight back when attacked", type:"bool", default:"True", short:"Or flee when outmatched.",
+      {key:"PhantomPvpSelfDefense", label:"Fight back when attacked", type:"bool", default:"True",
        help:"A phantom fights back, or flees when outmatched, when a player or another phantom attacks it."},
-      {key:"PhantomPvpReactToFlagged", label:"Attack flagged and PK players", type:"bool", default:"True", short:"Purple and red players can be engaged.",
+      {key:"PhantomPvpReactToFlagged", label:"Attack flagged and PK players", type:"bool", default:"True",
        help:"A phantom may engage a player or phantom that is already flagged (purple) or a red PK."},
-      {key:"PhantomPvpDuels", label:"Duels", type:"bool", default:"True", short:"Never cost karma or items.",
+      {key:"PhantomPvpDuels", label:"Duels", type:"bool", default:"True",
        help:"Phantoms answer duel challenges and now and then challenge you or each other. Duels never cost karma or items."},
-      {key:"PhantomPvpPartyDefense", label:"Party members defend you", type:"bool", default:"True", short:"Recruits, buddies and friends.",
+      {key:"PhantomPvpPartyDefense", label:"Party members defend you", type:"bool", default:"True",
        help:"Recruited party members, buddies and friends turn on anyone who attacks you or the party."},
-      {key:"PhantomPvpClanDefense", label:"Clan and alliance defense", type:"bool", default:"True", short:"Within the defend radius.",
+      {key:"PhantomPvpClanDefense", label:"Clan and alliance defense", type:"bool", default:"True",
        help:"A phantom also helps a clan or alliance member under attack, within the defend radius below."},
-      {key:"PhantomPvpBetweenPhantoms", label:"Phantoms fight each other", type:"bool", default:"True", short:"Not only you.",
+      {key:"PhantomPvpBetweenPhantoms", label:"Phantoms fight each other", type:"bool", default:"True",
        help:"Phantoms may also fight other phantoms, not only you."},
-      {key:"PhantomArcherKiting", label:"Archers keep their distance", type:"bool", default:"True", short:"In PvP, duels and Olympiad. Never in town.",
+      {key:"PhantomArcherKiting", label:"Archers keep their distance", type:"bool", default:"True",
        help:"An archer phantom steps back to shooting range when a melee player closes in during PvP, a duel or an Olympiad match. Never in town."},
-      {heading:"Fine tuning", collapsed:true},
-      {key:"PhantomPvpDefendRadius", label:"Defend radius", type:"int", default:"1200", unit:"units", short:"How close an ally must be.",
+      {heading:"Tuning"},
+      {key:"PhantomPvpDefendRadius", label:"Defend radius", type:"int", default:"1200",
        help:"How close (game units) an ally must be for a phantom to rush to its defense."},
-      {key:"PhantomPvpMaxLevelGapAbovePlayer", label:"Max level gap", type:"int", default:"6", unit:"levels", short:"Won't start PvP on much lower targets.",
+      {key:"PhantomPvpMaxLevelGapAbovePlayer", label:"Max level gap", type:"int", default:"6",
        help:"A phantom this many levels above its target will not start PvP against it. Self-defense is not affected."},
-      {key:"PhantomPvpAggressorPercent", label:"Aggressive phantoms", type:"int", default:"15", unit:"%", short:"The rest only defend.",
+      {key:"PhantomPvpAggressorPercent", label:"Aggressive phantoms %", type:"int", default:"15",
        help:"Share of phantoms rolled with an aggressive personality. The rest only defend themselves or their party."},
-      {key:"PhantomPvpReactChancePercent", label:"Attack flagged chance", type:"int", default:"25", unit:"%", short:"For aggressive phantoms only.",
+      {key:"PhantomPvpReactChancePercent", label:"Attack flagged chance %", type:"int", default:"25",
        help:"Chance an aggressive phantom actually engages a flagged or PK target it notices. 0 = never, 100 = always."},
-      {key:"PhantomPvpEngageCooldownSeconds", label:"Engage cooldown", type:"int", default:"300", unit:"sec", short:"So one bot never hounds you.",
+      {key:"PhantomPvpEngageCooldownSeconds", label:"Engage cooldown (sec)", type:"int", default:"300",
        help:"Seconds before the same phantom starts PvP on the same target again, so you are never hounded by one bot."},
-      {key:"PhantomPvpDuelChancePercent", label:"Duel challenge chance", type:"int", default:"10", unit:"%", short:"When an idle phantom can duel.",
+      {key:"PhantomPvpDuelChancePercent", label:"Duel challenge chance %", type:"int", default:"10",
        help:"Chance an idle phantom issues a duel when the situation allows one."},
-      {key:"PhantomPvpFleeHpPercent", label:"Flee at HP", type:"int", default:"30", unit:"%", short:"Each phantom's bravery shifts it.",
+      {key:"PhantomPvpFleeHpPercent", label:"Flee at HP %", type:"int", default:"30",
        help:"HP percent at which a phantom breaks off and flees. Each phantom's bravery shifts this up or down."},
     ]},
-  { id:"olympiad", title:"Phantom Olympiad", nav:"Olympiad", group:"Phantoms", icon:"olymp", file:"PhantomOlympiad.ini",
+  { id:"olympiad", title:"Phantom Olympiad", file:"PhantomOlympiad.ini",
     blurb:"Phantom nobles that take part in the Olympiad. Needs OlympiadEnabled = True in Olympiad.ini as well.",
     fields:[
-      {key:"PhantomOlympiadEnabled", master:true, label:"Phantom nobles", type:"bool", default:"True", short:"They log in when the competition opens.",
+      {key:"PhantomOlympiadEnabled", label:"Enable phantom nobles", type:"bool", default:"True",
        help:"Master switch. Phantom nobles log in when the competition opens, wait near the Olympiad Managers and log out when it closes."},
-      {heading:"Roster"},
-      {key:"PhantomOlympiadRosterSize", label:"Roster size", type:"int", default:"40", unit:"nobles", short:"Spread over the 31 third classes.",
+      {key:"PhantomOlympiadRosterSize", label:"Roster size", type:"int", default:"40",
        help:"How many phantom nobles the base roster has, spread over the 31 third classes. Raising it adds nobles next time the competition opens. Lowering it does not remove existing ones."},
-      {key:"PhantomOlympiadMinLevel", label:"Lowest level", type:"int", default:"76", unit:"lv", short:"For newly created nobles.",
+      {key:"PhantomOlympiadMinLevel", label:"Noble min level", type:"int", default:"76",
        help:"Lowest level for newly created nobles. An existing noble keeps its level."},
-      {key:"PhantomOlympiadMaxLevel", label:"Highest level", type:"int", default:"80", unit:"lv", short:"For newly created nobles.",
+      {key:"PhantomOlympiadMaxLevel", label:"Noble max level", type:"int", default:"80",
        help:"Highest level for newly created nobles."},
-      {heading:"Matches"},
-      {key:"PhantomOlympiadRivalsPerClass", label:"Rivals for your class", type:"int", default:"6", short:"So classed matches can start. 0: off.",
+      {key:"PhantomOlympiadRivalsPerClass", label:"Rivals for your class", type:"int", default:"6",
        help:"When you sign up, at least this many nobles of your class are made available so classed matches can start. 0 = off."},
-      {key:"PhantomOlympiadSignUpChancePercent", label:"Sign up chance", type:"int", default:"10", unit:"%", short:"Keeps phantom only matches running to watch.",
+      {key:"PhantomOlympiadSignUpChancePercent", label:"Sign up chance %", type:"int", default:"10",
        help:"While no real player is signed up, each idle noble's chance per check (every 30 seconds) to sign up, so phantom only matches keep running to watch. 0 = nobles only sign up when you do."},
-      {key:"PhantomOlympiadRestSeconds", label:"Rest between matches", type:"int", default:"180", unit:"sec", short:"Before a noble may sign up again.",
+      {key:"PhantomOlympiadRestSeconds", label:"Rest between matches (sec)", type:"int", default:"180",
        help:"How long a noble waits after a match before it may sign up again."},
-      {key:"PhantomOlympiadRejoinParty", label:"Party rejoins after your match", type:"bool", default:"True", short:"Your recruits wait for you.",
+      {key:"PhantomOlympiadRejoinParty", label:"Party rejoins after your match", type:"bool", default:"True",
        help:"Your recruited party members and buddies wait during your match and rejoin your party when you come back."},
     ]},
-  { id:"raids", title:"Raid Bosses", group:"World", icon:"raid", file:"NPC.ini", restart:true,
-    blurb:"Scale every raid boss at once. 100% is retail. This tunes attack, defense and regen, not the boss HP pool.",
+  { id:"livingpop", title:"Living Population Settings", file:"living-population/module.ini",
+    blurb:"The simulated population of player-like bots that level, shop and travel on their own. Read at server start, so restart the server to apply (the bot count can also be lowered live from the monitor).",
     fields:[
-      {heading:"Attack"},
-      {key:"RaidPAttackMultiplier",  label:"Physical attack",  type:"int", default:"100", unit:"%", short:"Lower is weaker.", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
-      {key:"RaidMAttackMultiplier",  label:"Magic attack",     type:"int", default:"100", unit:"%", short:"Lower is weaker.", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
-      {heading:"Defense"},
-      {key:"RaidPDefenceMultiplier", label:"Physical defense", type:"int", default:"100", unit:"%", short:"Lower is weaker.", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
-      {key:"RaidMDefenceMultiplier", label:"Magic defense",    type:"int", default:"100", unit:"%", short:"Lower is weaker.", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
-      {heading:"Regeneration"},
-      {key:"RaidHpRegenMultiplier",  label:"HP regen",         type:"int", default:"100", unit:"%", short:"Lower is weaker.", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
-      {key:"RaidMpRegenMultiplier",  label:"MP regen",         type:"int", default:"100", unit:"%", short:"Lower is weaker.", help:"Percent of retail. 100 = default, lower = weaker. Restart required."},
-    ]},
-  { id:"livingpop", title:"Living Population", nav:"Living Population settings", group:"World", icon:"live", hidden:true, file:"living-population/module.ini", restart:true,
-    blurb:"Player like bots that level, shop and travel on their own. Read at server start (the bot count can also be lowered live from the monitor).",
-    fields:[
-      {key:"Enabled", master:true, label:"Run the simulation", type:"bool", default:"False", short:"Master switch for the whole Living Population.", help:"Master switch for the whole Living Population. Restart required."},
-      {heading:"Population"},
-      {key:"PopulationSize", label:"Number of bots", type:"int", default:"100", unit:"bots", short:"Raising it adds bots in waves.", help:"How many bots the world holds. Raising it adds bots in waves (below). Lowering it here removes none: use Reduce in the monitor's Overview to remove bots."},
-      {key:"BirthBatch", parent:"PopulationSize", label:"New bots per wave", type:"int", default:"10", unit:"bots", short:"Born at level 1. 0: all at once.", help:"While the population is below the number of bots, this many are born at a time, at level 1 in their starting village. 0 = all at once."},
-      {key:"BirthIntervalMinutes", parent:"PopulationSize", label:"Time between waves", type:"int", default:"20", unit:"min", short:"Spreads levels out, like new players joining.", help:"Time between waves of new bots. Waves spread the levels out, like new players joining over time."},
-      {heading:"Leveling"},
-      {key:"DirectorEnabled", label:"Level director", type:"bool", default:"True", short:"Bots below the goal level faster, above it slower.", help:"Steer bot leveling toward a target level: bots below it level faster, bots above it slower."},
-      {key:"DirectorLevelGoal", parent:"DirectorEnabled", label:"Level goal", type:"int", default:"0", unit:"lv", short:"0 follows the online players' level.", help:"The level the director steers toward. 0 = follow the online players' level; any other number is a fixed goal."},
-      {key:"MaxLevel", label:"Max level", type:"int", default:"80", unit:"lv", short:"Bots never level past this.", help:"Bots never level past this."},
-      {key:"ColdKillsPerMinute", label:"Kills per minute", type:"float", default:"12", unit:"/min", short:"How fast an unseen bot hunts.", help:"How fast an unseen bot hunts. Higher = the whole population levels faster."},
-      {key:"ColdDeathsPerHour", label:"Deaths per hour", type:"float", default:"0.3", unit:"/hour", short:"How often an unseen bot dies while hunting.", help:"How often an unseen bot dies while hunting (it loses experience and recovers in town)."},
-      {heading:"Near you"},
-      {key:"HandoffMaxHotBots", label:"Max live bots", type:"int", default:"40", unit:"bots", short:"Shares the server's 200 phantom limit.", help:"How many bots may be real characters in the world at once (the ones near you). They share the server's 200 phantom limit."},
-      {key:"HandoffActivationRadius", label:"Live distance", type:"int", default:"3000", unit:"units", short:"How close a bot must be to become visible.", help:"How close (game units) you must be for a bot to become a real character you can see."},
-      {heading:"Daily life"},
-      {key:"TravelEnabled", label:"Travel and towns", type:"bool", default:"True", short:"Hunting grounds by level, shopping in town.", help:"Bots pick hunting grounds for their level, go to town to shop and sell, and walk or teleport between them."},
-      {key:"AfkChancePercent", label:"AFK chance in town", type:"int", default:"15", unit:"%", short:"A break after town errands.", help:"Chance a bot takes a break after its town errands."},
-      {key:"ClassChanges", label:"Class changes", type:"bool", default:"True", short:"Quests at 20, 40 and 76.", help:"Bots do their class change quests at 20, 40 and 76."},
-      {key:"SkillTraining", label:"Skill training", type:"bool", default:"True", short:"Learn from trainers with SP and adena.", help:"Bots learn skills from their trainer with SP and adena instead of knowing every skill of their level."},
-      {key:"GearSlots", label:"Gear per slot", type:"bool", default:"True", short:"Buy and wear gear piece by piece.", help:"Bots buy and wear gear piece by piece and wear better drops."},
-      {key:"GearTrade", label:"Buy gear shops do not sell", type:"bool", default:"True", short:"At reference price, as if from a player.", help:"Gear no town shop sells is bought at its reference price as if from another player."},
-      {heading:"Monitor"},
-      {key:"SnapshotIntervalSeconds", label:"Monitor update", type:"int", default:"5", unit:"sec", short:"Lower is fresher.", help:"How often the server writes what the Living Population monitor shows. Lower is fresher."},
+      {key:"Enabled", label:"Run the simulation", type:"bool", default:"False", help:"Master switch for the whole Living Population. Restart required."},
+      {key:"PopulationSize", label:"Number of bots", type:"int", default:"100", help:"How many bots the world holds. Raising it adds bots in waves (below). Lowering it here removes none: use Reduce in the monitor's Overview to remove bots."},
+      {key:"BirthBatch", label:"New bots per wave", type:"int", default:"10", isNew:true, help:"While the population is below the number of bots, this many are born at a time, at level 1 in their starting village. 0 = all at once."},
+      {key:"BirthIntervalMinutes", label:"Minutes between waves", type:"int", default:"20", isNew:true, help:"Time between waves of new bots. Waves spread the levels out, like new players joining over time."},
+      {key:"DirectorEnabled", label:"Level director", type:"bool", default:"True", help:"Steer bot leveling toward a target level: bots below it level faster, bots above it slower."},
+      {key:"DirectorLevelGoal", label:"Level goal", type:"int", default:"0", isNew:true, help:"The level the director steers toward. 0 = follow the online players' level; any other number is a fixed goal."},
+      {key:"MaxLevel", label:"Max level", type:"int", default:"80", help:"Bots never level past this."},
+      {key:"ColdKillsPerMinute", label:"Kills per minute", type:"float", default:"12", help:"How fast an unseen bot hunts. Higher = the whole population levels faster."},
+      {key:"HandoffMaxHotBots", label:"Max live bots", type:"int", default:"40", help:"How many bots may be real characters in the world at once (the ones near you). They share the server's 200 phantom limit."},
+      {key:"HandoffActivationRadius", label:"Live distance", type:"int", default:"3000", help:"How close (game units) you must be for a bot to become a real character you can see."},
+      {key:"TravelEnabled", label:"Travel and towns", type:"bool", default:"True", help:"Bots pick hunting grounds for their level, go to town to shop and sell, and walk or teleport between them."},
+      {key:"AfkChancePercent", label:"AFK chance in town (%)", type:"int", default:"15", help:"Chance a bot takes a break after its town errands."},
+      {key:"ClassChanges", label:"Class changes", type:"bool", default:"True", help:"Bots do their class change quests at 20, 40 and 76."},
+      {key:"SkillTraining", label:"Skill training", type:"bool", default:"True", help:"Bots learn skills from their trainer with SP and adena instead of knowing every skill of their level."},
+      {key:"GearSlots", label:"Gear per slot", type:"bool", default:"True", help:"Bots buy and wear gear piece by piece and wear better drops."},
+      {key:"GearTrade", label:"Buy gear shops do not sell", type:"bool", default:"True", help:"Gear no town shop sells is bought at its reference price as if from another player."},
+      {key:"ColdDeathsPerHour", label:"Deaths per hour", type:"float", default:"0.3", help:"How often an unseen bot dies while hunting (it loses experience and recovers in town)."},
+      {key:"SnapshotIntervalSeconds", label:"Monitor update (seconds)", type:"int", default:"5", isNew:true, help:"How often the server writes what the Living Population monitor shows. Lower is fresher."},
     ]},
 
 ];
@@ -1257,9 +1070,6 @@ function afterLoad(name){
   pill.classList.remove("hidden");
   pill.innerHTML = "Editing: <b>" + escapeHtml(name) + "</b>";
   document.getElementById("reopenBtn").classList.remove("hidden");
-  document.getElementById("searchBtn").classList.remove("hidden");
-  document.getElementById("menuBtn").classList.remove("hidden");
-  wireShell();
   buildTabs();
   refreshDirtyUI();
 }
@@ -1272,40 +1082,66 @@ function buildTabs(){
   const panels = document.getElementById("panels");
   tabs.innerHTML = ""; panels.innerHTML = "";
 
-  // Sidebar: one group per area. Settings pages only appear when their file was found.
-  navItems().forEach(g => {
-    const box = document.createElement("div");
-    box.className = "nav-group";
-    if (g.group) box.innerHTML = "<h4>" + escapeHtml(g.group) + "</h4>";
-    g.items.forEach(it => {
-      const t = document.createElement("button");
-      t.type = "button"; t.className = "tab"; t.dataset.tab = it.id;
-      t.innerHTML = navIcon(it.icon) + '<span class="lbl">' + escapeHtml(it.nav) + '</span><span class="dot" title="Unsaved changes"></span>';
-      t.onclick = () => openTab(it.id);
-      box.appendChild(t);
-    });
-    tabs.appendChild(box);
+  // Only show curated panels whose file was actually loaded.
+  const available = PANELS.filter(p => state.files[p.file]);
+  available.forEach((p, i) => {
+    const t = document.createElement("button");
+    t.className = "tab" + (i === 0 ? " active" : "");
+    t.dataset.tab = p.id;
+    t.innerHTML = escapeHtml(p.title) + '<span class="dot"></span>';
+    t.onclick = () => switchTab(p.id);
+    tabs.appendChild(t);
+    panels.appendChild(buildCuratedPanel(p, i === 0));
   });
-  tabs.appendChild(navFooter());
 
-  panels.appendChild(ovBuildPanel());
-  PANELS.filter(p => state.files[p.file]).forEach(p => panels.appendChild(buildCuratedPanel(p)));
-  if (!state.files[LP_MODULE_FILE]) panels.appendChild(lpMissingPanel());
-
-  // The data tabs read game/data, not the config folder, so they are offered even when no .ini panel
-  // applies. Each one loads lazily the first time it is opened.
+  // Phantom playstyles tab (always) - it reads game/data, not the config folder, so it is offered
+  // even when no .ini panel applies. The data folder is picked lazily, on first open.
+  const pt = document.createElement("button");
+  pt.className = "tab"; pt.dataset.tab = "__ps";
+  pt.innerHTML = 'Phantom Playstyles<span class="dot"></span>';
+  pt.onclick = () => { switchTab("__ps"); psRender(); };
+  tabs.appendChild(pt);
   panels.appendChild(psBuildPanel());
+
+  // Bot Clans tab (always) - reads game/data (BotClans.xml + the crests/ folder), like the playstyle tab.
+  const bt = document.createElement("button");
+  bt.className = "tab"; bt.dataset.tab = "__bc";
+  bt.innerHTML = 'Bot Clans<span class="dot"></span>';
+  bt.onclick = () => { switchTab("__bc"); bcRender(); };
+  tabs.appendChild(bt);
   panels.appendChild(bcBuildPanel());
+
+  // Population tab (always) - the ported map/population editor. Reads game/data like the tabs above,
+  // and mounts lazily on first open (fpcOpenTab).
+  const gt = document.createElement("button");
+  gt.className = "tab"; gt.dataset.tab = "__fpc";
+  gt.innerHTML = 'Population<span class="dot"></span>';
+  gt.onclick = () => { switchTab("__fpc"); fpcOpenTab(); };
+  tabs.appendChild(gt);
   const gp = document.createElement("section");
   gp.className = "panel"; gp.dataset.panel = "__fpc";
   gp.innerHTML = '<div id="fpcRoot"></div>';
   panels.appendChild(gp);
-  // Living Population monitor: a read-only view of the bot-simulation snapshot the living-population
-  // module writes (log/LivingPopulation.json under the game folder).
+
+  // Living Population tab (always) - a read-only monitor of the bot-simulation snapshot the
+  // living-population module writes (log/LivingPopulation.json under the game folder).
+  const lt = document.createElement("button");
+  lt.className = "tab"; lt.dataset.tab = "__lp";
+  lt.innerHTML = 'Living Population<span class="dot"></span>';
+  lt.onclick = () => { switchTab("__lp"); lpRender(); };
+  tabs.appendChild(lt);
   panels.appendChild(lpBuildPanel());
+
+  // Raw editor tab (always).
+  const rt = document.createElement("button");
+  rt.className = "tab"; rt.dataset.tab = "__raw";
+  rt.textContent = "Raw editor";
+  rt.onclick = () => switchTab("__raw");
+  tabs.appendChild(rt);
   panels.appendChild(buildRawPanel());
 
-  openTab(state.activeTab || "__ov");
+  state.activeTab = available.length ? available[0].id : "__raw";
+  if (!available.length) switchTab("__raw");
   psRender();
 }
 
@@ -1356,7 +1192,6 @@ function lpBuildPanel(){
     '<div id="lpRoot">' +
       '<div class="lp-bar">' +
         '<div class="lp-title"><strong>Living Population</strong><span id="lpStatus" class="lp-status"></span></div>' +
-        lpSwitchHtml("__lp") +
         '<div id="lpStats" class="lp-stats"></div>' +
         '<div class="lp-actions">' +
           '<label class="lp-live" title="Reload the snapshot every 5 seconds"><input type="checkbox" id="lpAuto" checked><span>Live</span></label>' +
@@ -1774,7 +1609,7 @@ function lpConfirmReduce(){
   const all = lpBots().filter(b => !lpState.removing.has(String(b.id)));
   const n = parseInt((document.getElementById("lpReduceTo") || {}).value, 10);
   if (!Number.isFinite(n) || n < 0){ toast("Enter how many bots to keep.", true); return; }
-  if (n >= all.length){ toast("There are " + all.length + " bots. To have more, raise Number of bots in the Living Population settings.", true); return; }
+  if (n >= all.length){ toast("There are " + all.length + " bots. To have more, raise Number of bots in Living Population Settings.", true); return; }
   const pick = () => {
     const pool = all.slice();
     for (let i = pool.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
@@ -2056,39 +1891,48 @@ function lpMapTip(x, y){
   tip.style.top = (y + 14) + "px";
 }
 
-function buildCuratedPanel(p){
+function buildCuratedPanel(p, active){
   const sec = document.createElement("section");
-  sec.className = "panel curated";
+  sec.className = "panel" + (active ? " active" : "");
   sec.dataset.panel = p.id;
-  const f = state.files[p.file];
-  sec.innerHTML = (p.id === "livingpop" ? lpSwitchHtml("livingpop") : "") +
-    '<div class="panel-head">' + (p.group ? '<p class="eyebrow">' + escapeHtml(p.group) + '</p>' : '') +
-    '<h2>' + escapeHtml(p.title) + '</h2><p>' + escapeHtml(p.blurb) + '</p>' +
-    '<span class="file-chip">' + escapeHtml(f ? f.relPath : p.file) + '</span></div>' +
-    (p.restart ? '<div class="note">Read only when the server starts. Save here, then restart the server to apply.</div>' : '');
+  sec.innerHTML = '<div class="panel-head"><h2>' + escapeHtml(p.title) +
+    '</h2><p>' + escapeHtml(p.blurb) + ' <span class="muted">&middot; ' + escapeHtml(p.file) + '</span></p></div>';
 
-  const master = p.fields.find(fd => fd.master);
-  if (master){
-    sec.appendChild(buildMaster(p, master));
-    const off = document.createElement("p");
-    off.className = "off-msg hidden";
-    off.textContent = "Turned off. The settings below are kept but do nothing until you turn it back on.";
-    sec.appendChild(off);
-  }
-  const groups = document.createElement("div");
-  groups.className = "groups";
-  let group = null;
   p.fields.forEach(fd => {
-    if (fd.master) return;
-    if (fd.heading){ group = buildGroup(p, fd); groups.appendChild(group.el); return; }
-    if (!group){ group = buildGroup(p, {}); groups.appendChild(group.el); }
-    group.list.appendChild(buildRow(p, fd));
+    if (fd.heading){
+      const h = document.createElement("h3");
+      h.className = "fgroup";
+      h.textContent = fd.heading;
+      sec.appendChild(h);
+      return;
+    }
+    const cur = getVal(p.file, fd.key);
+    const missing = cur === null;
+    const row = document.createElement("div");
+    row.className = "field";
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    let labelHtml = '<div class="flabel">' + escapeHtml(fd.label);
+    if (fd.isNew) labelHtml += ' <span class="tagnew">new</span>';
+    if (missing) labelHtml += ' <span class="tagmiss" title="Not in your file yet - added on save">will add</span>';
+    labelHtml += ' <span class="fkey">' + escapeHtml(fd.key) + '</span></div>';
+    labelHtml += '<div class="fhelp">' + escapeHtml(fd.help || "") + '</div>';
+    meta.innerHTML = labelHtml;
+
+    const control = document.createElement("div");
+    control.className = "control";
+    control.appendChild(makeControl(p.file, fd, cur));
+
+    row.appendChild(meta);
+    row.appendChild(control);
+    sec.appendChild(row);
   });
-  sec.appendChild(groups);
   return sec;
 }
 
 function makeControl(file, fd, cur){
+  const orig = cur;
   if (fd.type === "bool"){
     const on = /^true$/i.test((cur ?? (fd.default || "false")));
     const wrap = document.createElement("label");
@@ -2096,7 +1940,6 @@ function makeControl(file, fd, cur){
     wrap.innerHTML = '<input type="checkbox"><span class="track"></span><span class="thumb"></span>';
     const cb = wrap.querySelector("input");
     cb.checked = on;
-    cb.setAttribute("aria-label", fd.label);
     cb.onchange = () => setVal(file, fd.key, cb.checked ? "True" : "False");
     return wrap;
   }
@@ -2108,448 +1951,23 @@ function makeControl(file, fd, cur){
       if ((cur ?? fd.default) === o) opt.selected = true;
       sel.appendChild(opt);
     });
-    sel.setAttribute("aria-label", fd.label);
-    sel.onchange = () => setVal(file, fd.key, sel.value);
+    sel.onchange = () => { setVal(file, fd.key, sel.value); flagChanged(sel, sel.value, orig); };
     return sel;
   }
-  // numeric / text, with the unit beside the number
+  // numeric / text
   const inp = document.createElement("input");
   inp.type = (fd.type === "int" || fd.type === "float") ? "number" : "text";
   if (fd.type === "int") inp.step = "1";
   if (fd.type === "float") inp.step = "any";
   inp.value = (cur ?? (fd.default != null ? fd.default : ""));
   inp.placeholder = fd.default != null ? String(fd.default) : "";
-  inp.setAttribute("aria-label", fd.label);
-  inp.oninput = () => setVal(file, fd.key, inp.value);
-  const box = document.createElement("div");
-  box.className = "num";
-  box.appendChild(inp);
-  if (fd.unit){
-    const u = document.createElement("span");
-    u.className = "unit"; u.textContent = fd.unit;
-    box.appendChild(u);
-  }
-  return box;
+  inp.oninput = () => { setVal(file, fd.key, inp.value); flagChanged(inp, inp.value, orig); };
+  return inp;
 }
 
-/* ============================================================
- * Navigation: grouped sidebar, overview, search, review
- * ------------------------------------------------------------
- * The sidebar replaces the old row of tabs. Every entry is still a ".tab" button with a data-tab id and every
- * page a ".panel" section, so switchTab and the data tabs (playstyles, clans, population map, monitor) work
- * exactly as before; only the chrome around them changed.
- * ============================================================ */
-const NAV_ICONS = {
-  home:'<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>',
-  xp:'<path d="M4 18l5-6 4 3 7-9"/><path d="M15 6h5v5"/>',
-  drop:'<path d="M12 3l3 6 6 1-4.5 4 1 6.5L12 17l-5.5 3.5 1-6.5L3 10l6-1z"/>',
-  quest:'<path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/>',
-  raid:'<path d="M4 20l6-6M14 4l6 6-8 8-6-6z"/>',
-  phantom:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
-  pvp:'<path d="M5 19L19 5M15 5h4v4M5 5l5 5M14 14l5 5M19 15v4h-4"/>',
-  olymp:'<circle cx="12" cy="9" r="5"/><path d="M9 13.5L7 21l5-3 5 3-2-7.5"/>',
-  style:'<path d="M4 6h10M4 12h16M4 18h7"/><circle cx="17" cy="6" r="2"/><circle cx="14" cy="18" r="2"/>',
-  clan:'<path d="M6 3h12v8c0 5-6 10-6 10S6 16 6 11z"/>',
-  map:'<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
-  live:'<circle cx="12" cy="12" r="3"/><path d="M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/>',
-  raw:'<path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/>',
-  chev:'<path d="M6 9l6 6 6-6"/>'
-};
-function navIcon(n){
-  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (NAV_ICONS[n] || "") + '</svg>';
-}
-const navUi = { open: new Set(), shown: new Set() };   // expanded rows, collapsed groups the user opened
-
-// Sidebar entries, in order. A settings page only appears when its file was found in the picked folder.
-function navItems(){
-  const cfg = id => { const p = PANELS.find(q => q.id === id); return p && state.files[p.file] ? { id, nav:p.nav || p.title, icon:p.icon } : null; };
-  return [
-    { group:null, items:[{ id:"__ov", nav:"Overview", icon:"home", open:() => ovRender() }] },
-    { group:"Rates", items:[cfg("xp"), cfg("drops"), cfg("quest")] },
-    { group:"Phantoms", items:[cfg("phantoms"), cfg("pvp"), cfg("olympiad"),
-      { id:"__ps", nav:"Playstyles", icon:"style", open:() => psRender() },
-      { id:"__bc", nav:"Bot Clans", icon:"clan", open:() => bcRender() }] },
-    { group:"World", items:[cfg("raids"),
-      { id:"__fpc", nav:"Population map", icon:"map", open:() => fpcOpenTab() },
-      { id:"__lp", nav:"Living Population", icon:"live", open:() => lpRender() }] },
-    { group:"Advanced", items:[{ id:"__raw", nav:"Raw editor", icon:"raw", open:() => rawRefresh() }] },
-  ].map(g => ({ group:g.group, items:g.items.filter(Boolean) })).filter(g => g.items.length);
-}
-function navFind(id){
-  for (const g of navItems()) for (const it of g.items) if (it.id === id) return it;
-  return null;
-}
-function openTab(id){
-  if (!document.querySelector('.panel[data-panel="' + id + '"]')) id = "__ov";
-  switchTab(id);
-  const it = navFind(id);
-  if (it && it.open) it.open();
-}
-function navFooter(){
-  const f = document.createElement("div");
-  f.className = "side-foot";
-  f.innerHTML =
-    '<label class="keys-toggle">Show ini key names <span class="toggle sm"><input type="checkbox" id="keysToggle"><span class="track"></span><span class="thumb"></span></span></label>' +
-    '<p>Changes apply in game with <code class="inl">//reload config</code>. Settings on pages marked restart need a server restart.</p>' +
-    '<a class="old-link" href="index_old.html" title="The previous layout, with the same files and settings">Open the old editor</a>';
-  const cb = f.querySelector("input");
-  cb.checked = document.body.classList.contains("show-keys");
-  cb.onchange = () => {
-    document.body.classList.toggle("show-keys", cb.checked);
-    try{ localStorage.setItem("l2admin-keys", cb.checked ? "1" : ""); }catch(_){}
-  };
-  return f;
-}
-// Settings page shown when the picked folder has no Living Population module, so the switch still leads somewhere.
-function lpMissingPanel(){
-  const sec = document.createElement("section");
-  sec.className = "panel curated";
-  sec.dataset.panel = "livingpop";
-  sec.innerHTML = lpSwitchHtml("livingpop") +
-    '<div class="panel-head"><p class="eyebrow">World</p><h2>Living Population</h2>' +
-    '<p>Living Population module not installed.</p>' +
-    '<span class="file-chip">game/modules/living-population/config/module.ini</span></div>' +
-    '<div class="note">This server folder has no Living Population module, so there are no settings to show. ' +
-    'Copy the living-population folder into game/modules, then pick the folder again.</div>';
-  return sec;
-}
-// Monitor / Settings switch shown on both Living Population pages.
-function lpSwitchHtml(active){
-  const b = (id, label) => '<button type="button" data-seg="' + id + '" aria-pressed="' + (active === id) + '">' + label + '</button>';
-  return '<div class="seg" role="group" aria-label="Living Population view">' + b("__lp", "Monitor") + b("livingpop", "Settings") + '</div>';
-}
-
-/* ---------- settings rows ---------- */
-// The value the file had when it was loaded or last saved, so a row can show it was changed.
-function savedVal(file, key){
-  const f = state.files[file];
-  if (!f) return null;
-  if (!f._orig || f._origText !== f.original){ f._orig = parseIni(f.original); f._origText = f.original; }
-  const i = f._orig.keyIndex[key];
-  return i == null ? null : f._orig.lines[i].value.trim();
-}
-function isModified(file, key){
-  const now = getVal(file, key);
-  return now !== null && now !== savedVal(file, key);
-}
-function panelDirty(p){ return p.fields.some(fd => fd.key && isModified(p.file, fd.key)); }
-function fieldDefault(key){
-  for (const p of PANELS) for (const fd of p.fields) if (fd.key === key) return fd.default;
-  return null;
-}
-
-function buildGroup(p, fd){
-  const id = p.id + ":" + (fd.heading || "");
-  const el = document.createElement("section");
-  el.className = "group" + (fd.collapsed && !navUi.shown.has(id) ? " collapsed" : "");
-  el.innerHTML = '<div class="group-h">' + (fd.heading ? '<h3>' + escapeHtml(fd.heading) + '</h3>' : '') +
-    '<span class="cnt"></span>' +
-    (fd.heading ? '<button type="button" class="group-tg">' + navIcon("chev") + '<span></span></button>' : '') + '</div><div class="list"></div>';
-  const tg = el.querySelector(".group-tg");
-  const label = () => {
-    const c = el.classList.contains("collapsed");
-    if (tg){ tg.querySelector("span").textContent = c ? "Show" : "Hide"; tg.setAttribute("aria-expanded", String(!c)); }
-    el.querySelector(".cnt").textContent = c ? el.querySelectorAll(".row").length + " settings" : "";
-  };
-  if (tg) tg.onclick = () => {
-    el.classList.toggle("collapsed");
-    if (el.classList.contains("collapsed")) navUi.shown.delete(id); else navUi.shown.add(id);
-    label();
-  };
-  el._label = label;
-  return { el, list: el.querySelector(".list") };
-}
-
-function buildRow(p, fd){
-  const cur = getVal(p.file, fd.key);
-  const f = state.files[p.file];
-  const row = document.createElement("div");
-  row.className = "row" + (fd.parent ? " child" : "") + (navUi.open.has(fd.key) ? " open" : "");
-  row.dataset.key = fd.key; row.dataset.file = p.file;
-  const hasDef = fd.default != null;
-  row.innerHTML =
-    '<div class="row-main"><div class="row-text">' +
-      '<div class="row-label">' + escapeHtml(fd.label) +
-        (cur === null ? ' <span class="tagmiss" title="Not in your file yet. It is added when you save.">will add</span>' : '') +
-        '<span class="mod-dot" title="Changed, not saved yet"></span></div>' +
-      (fd.short ? '<div class="row-short">' + escapeHtml(fd.short) + '</div>' : '') +
-      '<div class="row-key">' + escapeHtml(fd.key) + '</div>' +
-    '</div><div class="control"></div>' +
-    '<button type="button" class="more" aria-expanded="' + navUi.open.has(fd.key) + '" aria-label="More about ' + escapeHtml(fd.label) + '">' + navIcon("chev") + '</button></div>' +
-    '<div class="row-detail"><p>' + escapeHtml(fd.help || "") + '</p><div class="row-meta">' +
-      '<span>Key <code>' + escapeHtml(fd.key) + '</code></span>' +
-      '<span>File <code>' + escapeHtml(f ? f.relPath : p.file) + '</code></span>' +
-      (hasDef ? '<span>Default <code>' + escapeHtml(fd.default) + '</code></span><button type="button" class="reset">Reset to default</button>' : '') +
-    '</div></div>';
-  row.querySelector(".control").appendChild(makeControl(p.file, fd, cur));
-  const more = row.querySelector(".more");
-  more.onclick = () => {
-    const open = row.classList.toggle("open");
-    more.setAttribute("aria-expanded", String(open));
-    if (open) navUi.open.add(fd.key); else navUi.open.delete(fd.key);
-  };
-  const reset = row.querySelector(".reset");
-  if (reset) reset.onclick = () => { setVal(p.file, fd.key, fd.default); syncControls(); };
-  return row;
-}
-
-function buildMaster(p, fd){
-  const box = document.createElement("div");
-  box.className = "master row";
-  box.dataset.key = fd.key; box.dataset.file = p.file; box.dataset.master = "1";
-  box.innerHTML = '<div class="t"><b>' + escapeHtml(fd.label) + ' <span class="state-pill"></span><span class="mod-dot" title="Changed, not saved yet"></span></b>' +
-    '<span>' + escapeHtml(fd.short || "") + '</span><div class="row-key">' + escapeHtml(fd.key) + '</div></div><div class="control"></div>';
-  box.querySelector(".control").appendChild(makeControl(p.file, fd, getVal(p.file, fd.key)));
-  return box;
-}
-
-// Dependent rows grey out while their parent switch is off; a page master switch dims the whole page.
-function refreshCuratedState(){
-  document.querySelectorAll(".panel.curated").forEach(sec => {
-    const p = PANELS.find(q => q.id === sec.dataset.panel);
-    if (!p) return;
-    const on = key => /^true$/i.test(getVal(p.file, key) ?? fieldDefault(key) ?? "false");
-    sec.querySelectorAll(".row[data-key]").forEach(row => {
-      const fd = p.fields.find(x => x.key === row.dataset.key);
-      if (!fd) return;
-      row.classList.toggle("modified", isModified(p.file, fd.key));
-      const parent = fd.parent && p.fields.find(x => x.key === fd.parent);
-      row.classList.toggle("disabled", !!(parent && parent.type === "bool" && !on(parent.key)));
-      if (fd.master){
-        const pill = row.querySelector(".state-pill");
-        const isOn = on(fd.key);
-        pill.textContent = isOn ? "On" : "Off";
-        pill.classList.toggle("on", isOn);
-        const groups = sec.querySelector(".groups");
-        if (groups) groups.classList.toggle("off", !isOn);
-        const msg = sec.querySelector(".off-msg");
-        if (msg) msg.classList.toggle("hidden", isOn);
-      }
-    });
-    sec.querySelectorAll(".group").forEach(g => g._label && g._label());
-  });
-}
-
-// Put the current values back into the controls after a reset or an undo.
-function syncControls(){
-  document.querySelectorAll(".panel.curated .row[data-key]").forEach(row => {
-    const v = getVal(row.dataset.file, row.dataset.key);
-    const inp = row.querySelector(".control input, .control select");
-    if (!inp || v === null || inp === document.activeElement) return;
-    if (inp.type === "checkbox") inp.checked = /^true$/i.test(v); else inp.value = v;
-  });
-  refreshCuratedState();
-}
-
-/* ---------- overview ---------- */
-function ovBuildPanel(){
-  const sec = document.createElement("section");
-  sec.className = "panel"; sec.dataset.panel = "__ov";
-  sec.innerHTML = '<div class="panel-head"><h2>Overview</h2><p>Your server at a glance. Pick a card to change it, or press Ctrl K to find any setting by name.</p></div><div id="ovBody"></div>';
-  return sec;
-}
-function ovRender(){
-  const body = document.getElementById("ovBody");
-  if (!body) return;
-  const v = (file, key) => { const x = getVal(file, key); return x == null ? (fieldDefault(key) ?? "-") : x; };
-  const onOff = (file, key) => /^true$/i.test(v(file, key)) ? "On" : "Off";
-  const cards = [];
-  const card = (id, icon, title, facts) => cards.push('<button type="button" class="ov-card" data-go="' + id + '"><div class="ov-h">' + navIcon(icon) + '<b>' + escapeHtml(title) + '</b></div>' +
-    facts.map(f => '<div class="ov-fact"><span>' + escapeHtml(f[0]) + '</span><strong>' + escapeHtml(f[1]) + '</strong></div>').join("") + '</button>');
-  const R = "Rates.ini", F = "FakePlayers.ini", O = "PhantomOlympiad.ini", N = "NPC.ini";
-  if (state.files[R]) card("xp", "xp", "Rates", [["XP and SP", v(R,"RateXp") + "x / " + v(R,"RateSp") + "x"],
-    ["Drops", v(R,"DeathDropAmountMultiplier") + "x amount, " + v(R,"DeathDropChanceMultiplier") + "x chance"],
-    ["Quest rewards", v(R,"RateQuestRewardXP") + "x XP, " + v(R,"RateQuestRewardAdena") + "x adena"]]);
-  if (state.files[F]){
-    card("phantoms", "phantom", "Phantoms", [["Share party XP", onOff(F,"FakePlayerPartyExpShare")], ["Share loot", onOff(F,"FakePlayerPartyLootShare")],
-      ["Enchanted gear", v(F,"FakePlayerRecruitEnchantChance") + "%, +" + v(F,"FakePlayerRecruitEnchantMin") + " to +" + v(F,"FakePlayerRecruitEnchantMax")]]);
-    card("pvp", "pvp", "Phantom PvP", [["Status", onOff(F,"PhantomPvpEnabled")], ["Aggressive phantoms", v(F,"PhantomPvpAggressorPercent") + "%"], ["Duels", onOff(F,"PhantomPvpDuels")]]);
-  }
-  if (state.files[O]) card("olympiad", "olymp", "Phantom Olympiad", [["Status", onOff(O,"PhantomOlympiadEnabled")], ["Roster", v(O,"PhantomOlympiadRosterSize") + " nobles"],
-    ["Levels", v(O,"PhantomOlympiadMinLevel") + " to " + v(O,"PhantomOlympiadMaxLevel")]]);
-  if (state.files[LP_MODULE_FILE]) card("livingpop", "live", "Living Population", [["Status", onOff(LP_MODULE_FILE,"Enabled")], ["Bots", v(LP_MODULE_FILE,"PopulationSize")],
-    ["Max live near you", v(LP_MODULE_FILE,"HandoffMaxHotBots")]]);
-  if (state.files[N]) card("raids", "raid", "Raid Bosses", [["Attack", v(N,"RaidPAttackMultiplier") + "% / " + v(N,"RaidMAttackMultiplier") + "%"],
-    ["Defense", v(N,"RaidPDefenceMultiplier") + "% / " + v(N,"RaidMDefenceMultiplier") + "%"], ["Regen", v(N,"RaidHpRegenMultiplier") + "% / " + v(N,"RaidMpRegenMultiplier") + "%"]]);
-  const tools = [["__ps","style","Playstyles","How each class fights"],["__bc","clan","Bot Clans","Clans, alliances, crests"],
-    ["__fpc","map","Population map","Where bots spawn and walk"],["__raw","raw","Raw editor","Every key in every file"]];
-  body.innerHTML = (cards.length ? '<h3 class="ov-t">Settings</h3><div class="ov-cards">' + cards.join("") + '</div>' : '') +
-    '<h3 class="ov-t">Tools</h3><div class="ov-tools">' + tools.map(t => '<button type="button" class="ov-tool" data-go="' + t[0] + '">' + navIcon(t[1]) +
-    '<b>' + t[2] + '</b><span>' + t[3] + '</span></button>').join("") + '</div>';
-}
-
-/* ---------- raw editor: show current values when it is opened ---------- */
-function rawRefresh(){
-  const sel = document.querySelector('.panel[data-panel="__raw"] select');
-  if (sel && sel.onchange) sel.onchange();
-}
-function goRaw(file, key){
-  openTab("__raw");
-  const sel = document.querySelector('.panel[data-panel="__raw"] select');
-  if (sel && state.files[file]){ sel.value = file; sel.onchange(); }
-  if (!key) return;
-  const row = [...document.querySelectorAll('.panel[data-panel="__raw"] .rk')].find(r => { const k = r.querySelector(".rkey"); return k && k.textContent === key; });
-  if (row){ row.scrollIntoView({ block:"center" }); flash(row); }
-}
-function flash(el){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
-
-// Open a settings page at one row: expand its group if it was folded away and highlight it.
-function goSetting(panelId, key){
-  openTab(panelId);
-  const row = document.querySelector('.panel[data-panel="' + panelId + '"] .row[data-key="' + key + '"]');
-  if (!row) return;
-  const g = row.closest(".group");
-  if (g && g.classList.contains("collapsed")) g.querySelector(".group-tg").click();
-  row.scrollIntoView({ block:"center" });
-  flash(row);
-}
-
-/* ---------- search (Ctrl K) ---------- */
-const pal = { sel: 0, items: [] };
-function palIndex(){
-  const out = [];
-  navItems().forEach(g => g.items.forEach(it => out.push({ go:it.id, label:it.nav, sub:g.group || "", where:"Page", hay:it.nav.toLowerCase(), rank:1 })));
-  if (state.files[LP_MODULE_FILE]) out.push({ go:"livingpop", label:"Living Population settings", sub:"World", where:"Page", hay:"living population settings", rank:1 });
-  const known = new Set();
-  PANELS.forEach(p => {
-    if (!state.files[p.file]) return;
-    p.fields.forEach(fd => {
-      if (!fd.key) return;
-      known.add(p.file + ":" + fd.key);
-      out.push({ go:p.id, key:fd.key, label:fd.label, sub:fd.key, where:p.nav || p.title,
-        hay:fd.label.toLowerCase(), hay2:(fd.key + " " + (fd.short || "") + " " + (fd.help || "")).toLowerCase(), rank:0 });
-    });
-  });
-  Object.keys(state.files).forEach(name => {
-    const f = state.files[name];
-    f.lines.forEach(l => {
-      if (l.t !== "kv" || known.has(name + ":" + l.key)) return;
-      out.push({ raw:name, key:l.key, label:l.key, sub:f.relPath, where:"Raw editor", hay:l.key.toLowerCase(), rank:2 });
-    });
-  });
-  return out;
-}
-function palRender(){
-  const q = document.getElementById("palInput").value.trim().toLowerCase();
-  const all = palIndex();
-  let items;
-  if (!q) items = all.filter(r => r.rank === 1);
-  else {
-    const score = r => r.hay.startsWith(q) ? 0 : r.hay.includes(q) ? 1 : (r.hay2 && r.hay2.includes(q)) ? 2 : 9;
-    items = all.map(r => ({ r, s:score(r) + (r.rank === 2 ? 0.5 : 0) })).filter(x => x.s < 9).sort((a, b) => a.s - b.s).map(x => x.r);
-  }
-  pal.items = items.slice(0, 40);
-  if (pal.sel >= pal.items.length) pal.sel = 0;
-  const box = document.getElementById("palResults");
-  box.innerHTML = pal.items.length ? pal.items.map((r, i) => '<button type="button" class="pal-res" data-i="' + i + '" aria-selected="' + (i === pal.sel) + '"><div class="pal-l"><b>' +
-    escapeHtml(r.label) + '</b><span>' + escapeHtml(r.sub) + '</span></div><span class="pal-w">' + escapeHtml(r.where) + '</span></button>').join("")
-    : '<div class="pal-empty">Nothing matches. Try the ini key name.</div>';
-  const cur = box.querySelector('[aria-selected="true"]');
-  if (cur) cur.scrollIntoView({ block:"nearest" });
-}
-function palOpen(){
-  if (document.getElementById("editor").classList.contains("hidden")) return;
-  document.getElementById("palette").classList.remove("hidden");
-  const inp = document.getElementById("palInput");
-  inp.value = ""; pal.sel = 0; palRender(); inp.focus();
-}
-function palClose(){ document.getElementById("palette").classList.add("hidden"); }
-function palPick(i){
-  const r = pal.items[i];
-  if (!r) return;
-  palClose();
-  if (r.raw) goRaw(r.raw, r.key);
-  else if (r.key) goSetting(r.go, r.key);
-  else openTab(r.go);
-}
-
-/* ---------- review unsaved changes ---------- */
-function changedKeys(){
-  const out = [];
-  Object.keys(state.files).forEach(name => {
-    const f = state.files[name];
-    if (!f.dirty) return;
-    f.lines.forEach(l => {
-      if (l.t !== "kv") return;
-      const was = savedVal(name, l.key), now = l.value.trim();
-      if (was !== now) out.push({ file:name, key:l.key, was, now });
-    });
-  });
-  return out;
-}
-function changeLabel(c){
-  for (const p of PANELS) if (p.file === c.file) for (const fd of p.fields) if (fd.key === c.key) return { label:fd.label, restart:!!p.restart };
-  return { label:c.key, restart:false };
-}
-function undoKey(file, key){
-  const f = state.files[file];
-  const was = savedVal(file, key);
-  if (was === null){
-    // The key was appended by this session: drop the line again.
-    f.lines = f.lines.filter(l => !(l.t === "kv" && l.key === key));
-    f.keyIndex = {};
-    f.lines.forEach((l, i) => { if (l.t === "kv") f.keyIndex[l.key] = i; });
-    recomputeDirty(file);
-  } else {
-    setVal(file, key, was);
-  }
-  syncControls();
-  ovRender();
-}
-function reviewOpen(){
-  const list = document.getElementById("reviewList");
-  const rows = changedKeys().map(c => {
-    const m = changeLabel(c);
-    return '<div class="rv-row"><div class="rv-l"><b>' + escapeHtml(m.label) + (m.restart ? ' <span class="tag-restart">Restart</span>' : '') + '</b>' +
-      '<span>' + escapeHtml(state.files[c.file].relPath + " · " + c.key) + '</span></div>' +
-      '<div class="rv-v">' + (c.was === null ? '<i>new</i>' : '<s>' + escapeHtml(c.was) + '</s>') + ' &rarr; ' + escapeHtml(c.now) + '</div>' +
-      '<button type="button" class="btn btn-ghost btn-sm" data-undo-file="' + escapeHtml(c.file) + '" data-undo-key="' + escapeHtml(c.key) + '">Undo</button></div>';
-  });
-  if (psDirty()) rows.push('<div class="rv-row"><div class="rv-l"><b>Playstyle edits</b><span>' + escapeHtml(PS_FILE) + '</span></div></div>');
-  if (bcDirty()) rows.push('<div class="rv-row"><div class="rv-l"><b>Bot Clans edits</b><span>' + escapeHtml(BC_FILE) + ' · restart to apply</span></div></div>');
-  if (!rows.length){ reviewClose(); return; }
-  list.innerHTML = rows.join("");
-  document.getElementById("review").classList.remove("hidden");
-}
-function reviewClose(){ document.getElementById("review").classList.add("hidden"); }
-
-// One time wiring of the header, palette and review dialog. Called from afterLoad, never at script load,
-// so the test harnesses that evaluate this script with a stub document are unaffected.
-function wireShell(){
-  if (wireShell.done) return;
-  wireShell.done = true;
-  try{ if (localStorage.getItem("l2admin-keys")) document.body.classList.add("show-keys"); }catch(_){}
-  document.getElementById("searchBtn").onclick = palOpen;
-  document.getElementById("menuBtn").onclick = () => document.body.classList.toggle("nav-open");
-  const inp = document.getElementById("palInput");
-  inp.oninput = () => { pal.sel = 0; palRender(); };
-  inp.onkeydown = e => {
-    if (e.key === "ArrowDown"){ pal.sel = Math.min(pal.sel + 1, pal.items.length - 1); palRender(); e.preventDefault(); }
-    else if (e.key === "ArrowUp"){ pal.sel = Math.max(pal.sel - 1, 0); palRender(); e.preventDefault(); }
-    else if (e.key === "Enter"){ palPick(pal.sel); e.preventDefault(); }
-  };
-  document.getElementById("palResults").onclick = e => { const b = e.target.closest(".pal-res"); if (b) palPick(Number(b.dataset.i)); };
-  document.getElementById("palette").onclick = e => { if (e.target.id === "palette") palClose(); };
-  document.getElementById("reviewBtn").onclick = reviewOpen;
-  document.getElementById("reviewClose").onclick = reviewClose;
-  document.getElementById("reviewSave").onclick = () => { reviewClose(); saveAll(); };
-  document.getElementById("review").onclick = e => {
-    if (e.target.id === "review"){ reviewClose(); return; }
-    const b = e.target.closest("[data-undo-key]");
-    if (b){ undoKey(b.dataset.undoFile, b.dataset.undoKey); reviewOpen(); }
-  };
-  // Overview cards, tool tiles and the Living Population Monitor/Settings switch.
-  document.getElementById("panels").addEventListener("click", e => {
-    const b = e.target.closest("[data-go],[data-seg]");
-    if (b) openTab(b.dataset.go || b.dataset.seg);
-  });
-  window.addEventListener("keydown", e => {
-    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")){ e.preventDefault(); palOpen(); }
-    else if (e.key === "Escape"){ palClose(); reviewClose(); document.body.classList.remove("nav-open"); }
-  });
-  document.addEventListener("click", e => {
-    if (document.body.classList.contains("nav-open") && !e.target.closest("#tabs,#menuBtn")) document.body.classList.remove("nav-open");
-  }, true);
+function flagChanged(el, val, orig){
+  const changed = (orig == null) ? (val !== "") : (String(val).trim() !== String(orig).trim());
+  el.classList.toggle("changed", changed);
 }
 
 /* ---------- raw editor ---------- */
@@ -2613,13 +2031,11 @@ function renderRawFile(basename, body){
 
 function switchTab(id){
   state.activeTab = id;
-  const navId = id === "livingpop" ? "__lp" : id;   // the settings page lives under the monitor's entry
-  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === navId));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === id));
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.dataset.panel === id));
   document.body.classList.toggle("fpc-active", id === "__fpc");   // full-bleed map tab: suppress the 100vw h-scrollbar
   document.body.classList.toggle("lp-active", id === "__lp");     // full-bleed Living Population observer, same reason
-  document.body.classList.remove("nav-open");
-  window.scrollTo({ top:0 });
+  window.scrollTo({ top:0, behavior:"smooth" });
 }
 
 /* ============================================================
@@ -2631,30 +2047,25 @@ function refreshDirtyUI(){
   const dirty = dirtyFiles();
   const psd = psDirty();
   const bcd = bcDirty();
-  // sidebar dots: a settings page is marked when one of its own rows changed
+  // tab dots
   document.querySelectorAll(".tab").forEach(t => {
     const id = t.dataset.tab;
     if (id === "__ps"){ t.classList.toggle("dirty", psd); return; }
     if (id === "__bc"){ t.classList.toggle("dirty", bcd); return; }
     if (id === "__raw"){ t.classList.toggle("dirty", dirty.length > 0); return; }
-    if (id === "__lp"){ const lp = PANELS.find(p => p.id === "livingpop"); t.classList.toggle("dirty", !!(state.files[LP_MODULE_FILE] && panelDirty(lp))); return; }
     const panel = PANELS.find(p => p.id === id);
-    t.classList.toggle("dirty", !!(panel && state.files[panel.file] && panelDirty(panel)));
+    t.classList.toggle("dirty", panel && state.files[panel.file] && state.files[panel.file].dirty);
   });
-  refreshCuratedState();
   // save bar
   const bar = document.getElementById("savebar");
   const msg = document.getElementById("saveMsg");
-  const keys = changedKeys();
-  const names = [...new Set(keys.map(c => state.files[c.file].relPath))];
-  let count = keys.length;
-  if (psd){ names.push(PS_FILE); count++; }
-  if (bcd){ names.push(BC_FILE); count++; }
-  if (count){
-    const restart = bcd || keys.some(c => changeLabel(c).restart);
+  const names = dirty.map(n => state.files[n].relPath);
+  if (psd) names.push(PS_FILE);
+  if (bcd) names.push(BC_FILE);
+  if (names.length){
     bar.classList.add("show");
-    msg.innerHTML = "<b>" + count + (count === 1 ? " unsaved change" : " unsaved changes") + "</b><span>" +
-      names.map(escapeHtml).join(", ") + (restart ? " &middot; needs a restart" : "") + "</span>";
+    msg.innerHTML = "<b>" + names.length + "</b> file" + (names.length>1?"s":"") + " with unsaved changes: " +
+      names.map(escapeHtml).join(", ");
   } else {
     bar.classList.remove("show");
   }
@@ -2701,7 +2112,6 @@ async function saveAll(){
     toast((state.mode === "fs" ? "Saved " : "Downloaded ") + parts.join(" and ") +
       (state.mode === "fs" ? "." : " - copy them back over your server files."));
     refreshDirtyUI();
-    ovRender();
   }catch(err){
     console.error(err);
     toast("Save failed: " + (err && err.message || err), true);
