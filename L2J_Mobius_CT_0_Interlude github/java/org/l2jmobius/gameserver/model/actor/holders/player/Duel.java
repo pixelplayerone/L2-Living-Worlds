@@ -35,6 +35,7 @@ import org.l2jmobius.gameserver.model.Location;
 import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.model.actor.enums.creature.Team;
 import org.l2jmobius.gameserver.model.actor.enums.player.DuelResult;
+import org.l2jmobius.gameserver.modules.ModuleDuels;
 import org.l2jmobius.gameserver.model.actor.instance.Door;
 import org.l2jmobius.gameserver.model.skill.Skill;
 import org.l2jmobius.gameserver.model.skill.enums.SkillFinishType;
@@ -864,6 +865,11 @@ public class Duel
 		broadcastToTeam1(duelEnd);
 		broadcastToTeam2(duelEnd);
 		
+		if (!_partyDuel)
+		{
+			ModuleDuels.duelEnded(_playerA, _playerB, result);
+		}
+		
 		// clean up
 		_playerConditions.clear();
 		DuelManager.getInstance().removeDuel(this);
@@ -926,8 +932,8 @@ public class Duel
 				return DuelResult.CANCELED;
 			}
 			
-			// is one of the players in a Siege, Peace or PvP zone?
-			if (_playerA.isInsideZone(ZoneId.PEACE) || _playerB.isInsideZone(ZoneId.PEACE) || _playerA.isInsideZone(ZoneId.NO_PVP) || _playerB.isInsideZone(ZoneId.NO_PVP) || _playerA.isInsideZone(ZoneId.SIEGE) || _playerB.isInsideZone(ZoneId.SIEGE) || _playerA.isInsideZone(ZoneId.PVP) || _playerB.isInsideZone(ZoneId.PVP))
+			// is one of the players in a Siege, Peace or PvP zone? (a PvP zone a module opened with ModuleDuels.openArena is allowed)
+			if (_playerA.isInsideZone(ZoneId.PEACE) || _playerB.isInsideZone(ZoneId.PEACE) || _playerA.isInsideZone(ZoneId.NO_PVP) || _playerB.isInsideZone(ZoneId.NO_PVP) || _playerA.isInsideZone(ZoneId.SIEGE) || _playerB.isInsideZone(ZoneId.SIEGE) || (_playerA.isInsideZone(ZoneId.PVP) && !ModuleDuels.isDuelArena(_playerA)) || (_playerB.isInsideZone(ZoneId.PVP) && !ModuleDuels.isDuelArena(_playerB)))
 			{
 				return DuelResult.CANCELED;
 			}
