@@ -1288,6 +1288,10 @@ public class PhantomPlaystyleEngine
 	/** Range gate: melee skills need contact reach, ranged ones their cast range (with slack for drift while both move). */
 	public static boolean inReach(Player npc, Creature focus, Skill skill)
 	{
+		if (unlimitedReach(skill))
+		{
+			return true;
+		}
 		final int reach = (skill.getCastRange() > 0) ? (skill.getCastRange() + RANGE_SLACK) : ((skill.getAffectRange() > 0) ? skill.getAffectRange() : MELEE_REACH + RANGE_SLACK);
 		// Collision-aware, so this matches the range the rest of the core actually fights at: CreatureAI.maybeMoveToPawn
 		// parks the attacker at reach + BOTH collision radii, and LocationUtil.checkIfInRange adds the same. A raw
@@ -1295,6 +1299,16 @@ public class PhantomPlaystyleEngine
 		// physically beside it auto-attacking, wrongly suppressing melee/short-range playstyle skills on exactly the
 		// targets they matter most on.
 		return LocationUtil.checkIfInRange(reach, npc, focus, false);
+	}
+
+	/**
+	 * A targeted skill with a negative cast range (Summon Friend, Word of Invitation) reaches its target anywhere in
+	 * the world, as stock Player.checkUseMagicConditions treats it: no walking up to the target and no line of sight
+	 * check (FPC-274).
+	 */
+	public static boolean unlimitedReach(Skill skill)
+	{
+		return (skill.getCastRange() < 0) && (skill.getAffectRange() <= 0) && (skill.getTargetType() == TargetType.ONE);
 	}
 
 	/**

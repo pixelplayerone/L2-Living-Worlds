@@ -106,7 +106,7 @@ public final class PhantomCombatActions
 			@Override
 			public boolean inReach()
 			{
-				return (action.target == npc) || (PhantomPlaystyleEngine.inReach(npc, action.target, action.skill) && GeoEngine.getInstance().canSeeTarget(npc, action.target));
+				return (action.target == npc) || PhantomPlaystyleEngine.unlimitedReach(action.skill) || (PhantomPlaystyleEngine.inReach(npc, action.target, action.skill) && GeoEngine.getInstance().canSeeTarget(npc, action.target));
 			}
 
 			@Override
@@ -231,7 +231,7 @@ public final class PhantomCombatActions
 			&& (skill.isStatic() || !(skill.isMagic() ? npc.isMuted() : npc.isPhysicalMuted()))
 			&& !(skill.hasNegativeEffect() && target.isAlikeDead()) && (!skill.isPvPOnly() || target.isPlayer())
 			&& PhantomBuffs.canAffordReagent(npc, skill) && PhantomSkillFeasibility.possible(npc, target, skill, charges);
-		final boolean positioned = feasible && ((target == npc) || (PhantomPlaystyleEngine.inReach(npc, target, skill) && GeoEngine.getInstance().canSeeTarget(npc, target)));
+		final boolean positioned = feasible && ((target == npc) || PhantomPlaystyleEngine.unlimitedReach(skill) || (PhantomPlaystyleEngine.inReach(npc, target, skill) && GeoEngine.getInstance().canSeeTarget(npc, target)));
 		return PhantomCombatPolicy.availability(feasible, positioned, !npc.isMovementDisabled());
 	}
 
