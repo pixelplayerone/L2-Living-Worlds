@@ -72,6 +72,7 @@ import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.model.actor.Summon;
 import org.l2jmobius.gameserver.model.actor.appearance.PlayerAppearance;
 import org.l2jmobius.gameserver.model.actor.enums.creature.Race;
+import org.l2jmobius.gameserver.model.actor.enums.creature.Team;
 import org.l2jmobius.gameserver.model.actor.enums.player.PlayerClass;
 import org.l2jmobius.gameserver.model.actor.holders.player.AutoPlaySettingsHolder;
 import org.l2jmobius.gameserver.model.clan.Clan;
@@ -108,6 +109,7 @@ import org.l2jmobius.gameserver.model.skill.AbnormalType;
 import org.l2jmobius.gameserver.model.skill.Skill;
 import org.l2jmobius.gameserver.model.skill.targets.TargetType;
 import org.l2jmobius.gameserver.model.zone.ZoneId;
+import org.l2jmobius.gameserver.modules.ModuleTeams;
 import org.l2jmobius.gameserver.network.Disconnection;
 import org.l2jmobius.gameserver.network.GameClient;
 import org.l2jmobius.gameserver.network.SystemMessageId;
@@ -892,7 +894,7 @@ public class PhantomManager implements IXmlReader
 	// The valid race x archetype matrix is derived from the game's own class table (below), so it can't drift from it.
 	// ---------------------------------------------------------------------------------------------------------------
 
-	/** 2nd-class (depth-2), non-summoner representative(s) of each archetype, per race - the anchor a generic role walks from. */
+	/** 2nd-class (depth-2) representative(s) of each archetype, per race, summoners included - the anchor a generic role walks from. */
 	private static final Map<Race, Map<PartyRole, List<PlayerClass>>> RACE_ROLE_ANCHORS = buildRaceRoleAnchors();
 
 	private static Map<Race, Map<PartyRole, List<PlayerClass>>> buildRaceRoleAnchors()
@@ -900,9 +902,8 @@ public class PhantomManager implements IXmlReader
 		final Map<Race, Map<PartyRole, List<PlayerClass>>> map = new EnumMap<>(Race.class);
 		for (PlayerClass pc : PlayerClass.values())
 		{
-			// A 2nd class is the shallowest point where every archetype is distinct; summoners are excluded so a
-			// generic "mage" never rolls a (currently unsupported) summoner - they stay requestable by exact name.
-			if ((classDepth(pc) != 2) || pc.isSummoner())
+			// A 2nd class is the shallowest point where every archetype is distinct.
+			if (classDepth(pc) != 2)
 			{
 				continue;
 			}
@@ -1222,12 +1223,16 @@ public class PhantomManager implements IXmlReader
 		// Encounter actor (see ModuleEncounters): exists only to fight one player once, then leaves.
 		volatile boolean encounterActor;
 		volatile boolean arenaDuelist; // stands where it was put, takes duels from anyone and challenges on a module's say-so (ModuleDuels)
+		volatile boolean teamFighter; // fights the other team of a module's team event until a module says stop (ModuleTeams)
+		volatile boolean teamHold; // buffs but does not fight or move until released
+		volatile Location teamRally; // where it heads when no enemy is in sight
+		long teamRetargetAt; // when it may pick a different enemy
 		int encounterEscapeChance; // percent chance to read a Blessed Scroll of Escape at low HP (0 = carries none)
 		boolean encounterCpPotions; // carries and drinks CP potions (the strong encounters); the others use only HP and MP potions
 		long encounterPrepUntil; // until then it may cast its self-buffs and summon its servitor before the fight
 		boolean encounterPreparing; // approach time starts only after the initial preparation finishes
 		final Set<Integer> encounterPrepDone = new HashSet<>(); // skills already tried in the preparation (a refused cast is not retried)
-		int encounterPetBuffedOid; // object id of the servitor that already got the spawn kit (a re-summoned one gets it again)
+		int encounterPetBuffedOid; // object id of the servitor that already got the spawn kit (a re-summoned one gets it again; also used by summoner hunters)
 		long encounterPetSkillAt;
 		boolean encounterEscapeOnRout; // a lost fight (3/4 of the group down, outnumbered) is a reason to read it too
 		boolean encounterEscapeRolled;
@@ -2779,14 +2784,14 @@ public class PhantomManager implements IXmlReader
 
 	/**
 	 * A random class transfer from the given class within the wanted archetype: melee fighters, or DD
-	 * mages (mystic but not priest/summoner). Returns {@code null} if there are none.
+	 * mages (mystic, summoners included, but not priests). Returns {@code null} if there are none.
 	 */
 	private static PlayerClass randomChild(PlayerClass parent, boolean mage)
 	{
 		final List<PlayerClass> options = new ArrayList<>();
 		for (PlayerClass child : parent.getNextClasses())
 		{
-			final boolean wanted = mage ? (child.isOfType(ClassType.MYSTIC) && !child.isSummoner()) : !child.isMage();
+			final boolean wanted = mage ? child.isOfType(ClassType.MYSTIC) : !child.isMage();
 			if (wanted)
 			{
 				options.add(child);
@@ -5019,6 +5024,10 @@ public class PhantomManager implements IXmlReader
 					enableAutoHunt(mage, true, data);
 				}
 				final WorldObject target = mage.getTarget();
+				if (tendHunterServitor(mage, data, (target instanceof Monster) ? (Monster) target : null))
+				{
+					continue; // a summoner busy calling, buffing or healing its servitor
+				}
 				if (!(target instanceof Monster) || ((Monster) target).isDead())
 				{
 					continue; // AutoPlay will pick a target; nothing to position around yet
@@ -5038,6 +5047,91 @@ public class PhantomManager implements IXmlReader
 				LOGGER.warning(getClass().getSimpleName() + ": Mage combat error for " + mage.getName() + ": " + e.getMessage());
 			}
 		}
+	}
+
+	/**
+	 * A summoner hunter's pet upkeep: calls the strongest servitor it can, gives each new one the spawn buff kit,
+	 * heals and recharges it, keeps its shields up, and sends it at the owner's target.
+	 * @return {@code true} if the summoner is busy with a cast this tick
+	 */
+	private boolean tendHunterServitor(Player phantom, PhantomData data, Creature focus)
+	{
+		if (!phantom.getPlayerClass().isSummoner() || phantom.isDead())
+		{
+			return false;
+		}
+		final Summon pet = phantom.getSummon();
+		if (phantom.isInsideZone(ZoneId.PEACE))
+		{
+			PhantomPartyManager.stopServitorCombat(phantom); // never send the servitor at anything inside a town
+			focus = null;
+		}
+		if (phantom.isCastingNow())
+		{
+			return false;
+		}
+		final boolean busy = phantom.isAttackingNow() || underAttack(phantom);
+		if (pet == null)
+		{
+			if (busy)
+			{
+				return false;
+			}
+			PhantomPartyManager.stockServitorCrystals(phantom);
+			final int summonId = PhantomServitorRules.pickSummon(id -> PhantomPartyManager.canCastSupportSkill(phantom, phantom.getKnownSkill(id), phantom));
+			if (summonId == 0)
+			{
+				return false; // none learned yet, on reuse, or short of MP: retried next tick
+			}
+			if (!PhantomPartyManager.readyToCast(phantom))
+			{
+				return true;
+			}
+			phantom.setTarget(phantom);
+			phantom.doCast(phantom.getKnownSkill(summonId));
+			return true;
+		}
+		if (!pet.isServitor() || pet.isDead())
+		{
+			return false;
+		}
+		if (data.encounterPetBuffedOid != pet.getObjectId())
+		{
+			data.encounterPetBuffedOid = pet.getObjectId();
+			PhantomBuffs.applyFullBuffsToServitor(pet); // the same kit a spawned phantom gets
+		}
+		final Skill heal = phantom.getKnownSkill(PhantomServitorRules.SERVITOR_HEAL);
+		if (PhantomServitorRules.servitorNeedsHeal(pet.getCurrentHpPercent()) && PhantomPartyManager.canCastSupportSkill(phantom, heal, pet) && PhantomPartyManager.readyToCast(phantom))
+		{
+			phantom.setTarget(pet);
+			phantom.doCast(heal);
+			return true;
+		}
+		if (!busy)
+		{
+			final Skill recharge = phantom.getKnownSkill(PhantomServitorRules.SERVITOR_RECHARGE);
+			if (PhantomServitorRules.servitorNeedsRecharge(pet.getCurrentMpPercent()) && PhantomPartyManager.canCastSupportSkill(phantom, recharge, pet) && PhantomPartyManager.readyToCast(phantom))
+			{
+				phantom.setTarget(pet);
+				phantom.doCast(recharge);
+				return true;
+			}
+			for (int buffId : PhantomServitorRules.SERVITOR_BUFFS)
+			{
+				final Skill buff = phantom.getKnownSkill(buffId);
+				if ((buff != null) && !pet.isAffectedBySkill(buffId) && PhantomPartyManager.canCastSupportSkill(phantom, buff, pet) && PhantomPartyManager.readyToCast(phantom))
+				{
+					phantom.setTarget(pet);
+					phantom.doCast(buff);
+					return true;
+				}
+			}
+		}
+		if ((focus != null) && !focus.isDead() && !focus.isInsideZone(ZoneId.PEACE))
+		{
+			commandPetAttack(phantom, data, focus, false);
+		}
+		return false;
 	}
 
 	/**
@@ -5151,6 +5245,7 @@ public class PhantomManager implements IXmlReader
 		if (!PhantomPvpManager.pvpEnabled())
 		{
 			removeDisabledEncounters();
+			removeDisabledTeamFighters(); // FPC-245: nothing drives them while PvP is off
 			removeDisabledDuelists(); // FPC-254: nor arena duelists
 			// FPC-115: switched off (a config reload). Release every open engagement once, or the hunt and party ticks
 			// would keep deferring to phantoms nothing drives any more. Idle after that, as before.
@@ -5192,6 +5287,12 @@ public class PhantomManager implements IXmlReader
 				if (data.encounterActor)
 				{
 					serviceEncounter(phantom, data, now);
+					continue;
+				}
+				// A team fighter runs its own loop: buff, then hunt the nearest enemy of the other team (ModuleTeams).
+				if (data.teamFighter)
+				{
+					serviceTeamFighter(phantom, data, now);
 					continue;
 				}
 				// An arena duelist does nothing on its own: it only plays out the duel it was sent to or asked into.
@@ -6340,6 +6441,16 @@ public class PhantomManager implements IXmlReader
 			}
 			return;
 		}
+		commandPetAttack(phantom, data, target, true);
+	}
+
+	/**
+	 * Sends a summoner's servitor at an already authorized target (an encounter's player or a field hunter's mob), and
+	 * now and then has it use a utility or damage skill.
+	 */
+	private static void commandPetAttack(Player phantom, PhantomData data, Creature target, boolean forceUse)
+	{
+		final Summon pet = phantom.getSummon();
 		if ((pet == null) || !pet.isServitor() || pet.isDead() || pet.isCastingNow())
 		{
 			return;
@@ -6353,7 +6464,7 @@ public class PhantomManager implements IXmlReader
 		{
 			return;
 		}
-		if (PhantomPartyManager.tryServitorUtility(pet, target, true))
+		if (PhantomPartyManager.tryServitorUtility(pet, target, forceUse))
 		{
 			data.encounterPetSkillAt = now;
 			return;
@@ -6363,7 +6474,7 @@ public class PhantomManager implements IXmlReader
 			if (!skill.isPassive() && skill.isDamage() && !pet.isSkillDisabled(skill) && (pet.getCurrentMp() >= skill.getMpConsume()))
 			{
 				pet.setTarget(target);
-				if (pet.useMagic(skill, true, false))
+				if (pet.useMagic(skill, forceUse, false))
 				{
 					data.encounterPetSkillAt = now;
 					return;
@@ -6408,6 +6519,183 @@ public class PhantomManager implements IXmlReader
 	}
 
 	// ---------------------------------------------------------------------
+	// Team fighters (ModuleTeams): geared phantoms that fight the other team of a module's event.
+	// ---------------------------------------------------------------------
+
+	private static final int TEAM_SIGHT_RANGE = 2500;
+	private static final int TEAM_LOSE_RANGE = 3000;
+	private static final long TEAM_RETARGET_MS = 2_000L;
+	private static final int TEAM_RALLY_RADIUS = 350;
+
+	/**
+	 * Makes a geared phantom on a team of a module's event. It buffs, then hunts the nearest living enemy of the other
+	 * team using the same class combat as every phantom, and walks to {@code rally} when none is in sight. It never
+	 * flees, and the server's own event rules make it and its enemies strikeable by each other and not by its team.
+	 * @param team the side it fights for
+	 * @param where where it appears
+	 * @param rally where it heads when no enemy is in sight, or {@code null} to stay put
+	 * @param enchant the +level on its weapon and armor
+	 * @param fixedName its name, or {@code null} for a random one
+	 * @param classId a class to pin it to, or 0 or less for any class of the role
+	 * @return the fighter, or {@code null} if it could not be spawned
+	 */
+	public Player spawnTeamFighter(Team team, Location where, Location rally, int level, PartyRole role, int enchant, String fixedName, int classId)
+	{
+		return spawnTeamFighter(team, false, where, rally, level, role, enchant, fixedName, classId);
+	}
+
+	/**
+	 * Like {@link #spawnTeamFighter(Team, Location, Location, int, PartyRole, int, String, int)}, but with {@code solo}
+	 * the fighter is on no team and fights every other solo event player (a free-for-all).
+	 */
+	public synchronized Player spawnTeamFighter(Team team, boolean solo, Location where, Location rally, int level, PartyRole role, int enchant, String fixedName, int classId)
+	{
+		if (!FakePlayersConfig.FAKE_PLAYERS_ENABLED || !PhantomPvpManager.pvpEnabled() || (team == null) || (!solo && (team == Team.NONE)) || (where == null) || (role == null)) // FPC-258
+		{
+			return null;
+		}
+		final Player fighter;
+		ENCOUNTER_ENCHANT.set(enchant);
+		ENCOUNTER_NAME.set(fixedName);
+		try
+		{
+			fighter = spawnPartyMember(where, level, role, Math.max(0, classId), null);
+		}
+		finally
+		{
+			ENCOUNTER_ENCHANT.remove();
+			ENCOUNTER_NAME.remove();
+		}
+		if (fighter == null)
+		{
+			return null;
+		}
+		final PhantomData data = _phantoms.get(fighter.getObjectId());
+		if (data == null)
+		{
+			return fighter;
+		}
+		data.teamRally = rally;
+		data.teamHold = true; // a module releases it when its event starts
+		data.encounterCpPotions = true;
+		data.encounterPrepUntil = System.currentTimeMillis() + ENC_PREP_MS;
+		stockEncounterPotions(fighter, true);
+		fighter.setTeam(solo ? Team.NONE : team);
+		fighter.setOnEvent(true);
+		fighter.setOnSoloEvent(solo);
+		fighter.setInvul(true);
+		fighter.setImmobilized(true);
+		data.teamFighter = true; // last: the pvp tick treats it as a team fighter from here on
+		return fighter;
+	}
+
+	/** @return {@code true} if this phantom was made by {@link #spawnTeamFighter} */
+	public boolean isTeamFighter(Player player)
+	{
+		final PhantomData data = (player == null) ? null : _phantoms.get(player.getObjectId());
+		return (data != null) && data.teamFighter;
+	}
+
+	/**
+	 * Holds or releases a team fighter. A held fighter still buffs and drinks, but does not move, fight or take damage
+	 * (it stands there invulnerable). A fresh fighter starts held.
+	 */
+	public void holdTeamFighter(Player fighter, boolean hold)
+	{
+		final PhantomData data = (fighter == null) ? null : _phantoms.get(fighter.getObjectId());
+		if ((data == null) || !data.teamFighter)
+		{
+			return;
+		}
+		data.teamHold = hold;
+		fighter.setInvul(hold);
+		fighter.setImmobilized(hold);
+		if (hold)
+		{
+			data.pvpTargetOid = 0;
+		}
+	}
+
+	/** Changes where a team fighter heads when no enemy is in sight. */
+	public void setTeamRally(Player fighter, Location rally)
+	{
+		final PhantomData data = (fighter == null) ? null : _phantoms.get(fighter.getObjectId());
+		if ((data != null) && data.teamFighter)
+		{
+			data.teamRally = rally;
+		}
+	}
+
+	/** Brings a dead team fighter back at full strength at a spot, keeping its team. */
+	public void reviveTeamFighter(Player fighter, Location where)
+	{
+		final PhantomData data = (fighter == null) ? null : _phantoms.get(fighter.getObjectId());
+		if ((data == null) || !data.teamFighter)
+		{
+			return;
+		}
+		if (fighter.isDead())
+		{
+			fighter.doRevive();
+		}
+		fighter.setCurrentHp(fighter.getMaxHp());
+		fighter.setCurrentMp(fighter.getMaxMp());
+		fighter.setCurrentCp(fighter.getMaxCp());
+		if (where != null)
+		{
+			fighter.teleToLocation(where);
+			fighter.onTeleported(); // a clientless player stays invisible and mid-teleport (and cannot be revived again) until this runs
+			fighter.broadcastUserInfo();
+		}
+		fighter.setRunning();
+		data.pvpTargetOid = 0;
+		PhantomBuffs.applyFullBuffs(fighter, roleForClass(fighter.getPlayerClass()) == PartyRole.TANK); // death wiped the buffs
+		data.encounterPrepDone.clear();
+		data.encounterPrepUntil = System.currentTimeMillis() + ENC_PREP_MS;
+	}
+
+	/** Takes a team fighter off its team and removes it. */
+	public void discardTeamFighter(Player fighter)
+	{
+		final PhantomData data = (fighter == null) ? null : _phantoms.get(fighter.getObjectId());
+		if (data != null)
+		{
+			data.teamFighter = false;
+		}
+		if (fighter != null)
+		{
+			fighter.setInvul(false);
+			fighter.setImmobilized(false);
+			fighter.setOnEvent(false);
+			fighter.setOnSoloEvent(false);
+			fighter.setTeam(Team.NONE);
+			despawnRecruit(fighter);
+		}
+	}
+
+	/**
+	 * FPC-245: with Phantom PvP switched off (a config reload) the PvP tick no longer drives team fighters, so they are
+	 * taken off their teams and removed instead of standing frozen. Shares the spawn lock like the encounter cleanup.
+	 */
+	private synchronized void removeDisabledTeamFighters()
+	{
+		for (PhantomData data : _phantoms.values())
+		{
+			if (!data.teamFighter)
+			{
+				continue;
+			}
+			try
+			{
+				discardTeamFighter(data.player);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Failed to remove team fighter " + data.player.getObjectId() + ": " + e.getMessage());
+			}
+		}
+	}
+
 	/** FPC-254: arena duelists are removed while duels are off; one still in a duel goes once that duel is over. */
 	private synchronized void removeDisabledDuelists()
 	{
@@ -6428,6 +6716,301 @@ public class PhantomManager implements IXmlReader
 		}
 	}
 
+	/** @return {@code true} if {@code other} is a living member of a team that is not {@code phantom}'s */
+	private static boolean isTeamEnemy(Player phantom, Player other)
+	{
+		if ((other == phantom) || other.isDead() || !other.isOnEvent() || !ModuleTeams.isParticipant(other) || other.isInvul()) // a held fighter waiting its turn is not a target; FPC-272: nor a stock event player
+		{
+			return false;
+		}
+		if (phantom.isOnSoloEvent())
+		{
+			return other.isOnSoloEvent();
+		}
+		return (other.getTeam() != Team.NONE) && (other.getTeam() != phantom.getTeam());
+	}
+
+	/** Brings a creature (a player, with its servitor) to full HP, MP and CP. */
+	public void fullHeal(Player player)
+	{
+		if ((player == null) || player.isDead())
+		{
+			return;
+		}
+		player.setCurrentHp(player.getMaxHp());
+		player.setCurrentMp(player.getMaxMp());
+		player.setCurrentCp(player.getMaxCp());
+		final Summon pet = player.getSummon();
+		if ((pet != null) && !pet.isDead())
+		{
+			pet.setCurrentHp(pet.getMaxHp());
+			pet.setCurrentMp(pet.getMaxMp());
+		}
+	}
+
+	/**
+	 * Gives a player the buffs a spawned phantom arrives with: every buff the player has is removed first, then the full
+	 * buff set for its archetype plus the class's own self-buffs it knows is applied. Used so a real player in an event is as buffed as the bots.
+	 */
+	public void buffLikeFighter(Player player)
+	{
+		if ((player == null) || player.isDead())
+		{
+			return;
+		}
+		player.stopAllEffects(); // nobody comes in pre-buffed: everyone gets the same kit
+		PhantomBuffs.applyFullBuffs(player, roleForClass(player.getPlayerClass()) == PartyRole.TANK);
+		for (int id : PhantomEncounterBuffs.forClass(player.getPlayerClass().getId()))
+		{
+			final Skill skill = player.getKnownSkill(id);
+			if (skill != null)
+			{
+				skill.applyEffects(player, player);
+			}
+		}
+	}
+
+	/** @return the nearest living enemy of the other team in sight, or {@code null} */
+	private static Player nearestTeamEnemy(Player phantom)
+	{
+		Player best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Player p : World.getInstance().getVisibleObjectsInRange(phantom, Player.class, TEAM_SIGHT_RANGE))
+		{
+			if (!isTeamEnemy(phantom, p))
+			{
+				continue;
+			}
+			final double distance = phantom.calculateDistance2D(p);
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				best = p;
+			}
+		}
+		return best;
+	}
+
+	private void serviceTeamFighter(Player phantom, PhantomData data, long now)
+	{
+		if (phantom.isDead())
+		{
+			data.pvpTargetOid = 0; // a module revives it when its event says so
+			return;
+		}
+		if (prepareEncounterActor(phantom, data, now))
+		{
+			return; // casting its buffs or summoning
+		}
+		drinkEncounterPotions(phantom, data);
+		// FPC-251: a summoner keeps its servitor up for the whole event, not only in the preparation window.
+		if (tendHunterServitor(phantom, data, null))
+		{
+			return; // calling, healing, recharging or buffing its servitor
+		}
+		if (data.teamHold)
+		{
+			phantom.setAutoPlaying(false); // held: no auto skills either
+			PhantomPartyManager.stopServitorCombat(phantom);
+			return;
+		}
+		// FPC-250: a healer looks after its team whether or not an enemy is in sight.
+		if (teamHeal(phantom))
+		{
+			phantom.setAutoPlaying(false);
+			return;
+		}
+		Player target = resolvePvpTarget(data);
+		if ((target == null) || !isTeamEnemy(phantom, target) || (phantom.calculateDistance2D(target) > TEAM_LOSE_RANGE) || (now >= data.teamRetargetAt))
+		{
+			target = nearestTeamEnemy(phantom);
+			data.pvpTargetOid = (target == null) ? 0 : target.getObjectId();
+			data.teamRetargetAt = now + TEAM_RETARGET_MS;
+		}
+		// The native auto-skill task fires area skills (a taunt, a shout) whenever the phantom is "auto-playing", target
+		// or not. Only let it run while an enemy is within reach, so nothing is cast into empty air on the way in.
+		final double reach = data.mage ? (MAGE_CAST_RANGE + MAGE_RANGE_TOLERANCE) : (phantom.getPhysicalAttackRange() + 80);
+		phantom.setAutoPlaying((target != null) && !isTeamHealer(phantom) && (phantom.calculateDistance2D(target) <= reach));
+		if (target == null)
+		{
+			PhantomPartyManager.stopServitorCombat(phantom); // FPC-252: no enemy, so the servitor stands down too
+			final Location rally = data.teamRally;
+			if ((rally != null) && !phantom.isMoving() && !phantom.isCastingNow() && (phantom.calculateDistance2D(rally) > TEAM_RALLY_RADIUS))
+			{
+				phantom.setRunning();
+				phantom.getAI().setIntention(Intention.MOVE_TO, rally);
+			}
+			return;
+		}
+		if (isTeamHealer(phantom))
+		{
+			holdBehindTeam(phantom, target); // nothing to heal: it stays back behind its team
+			return;
+		}
+		pvpStandCombat(phantom, data, target);
+	}
+
+	private static final int[] TEAM_HEAL_SKILLS =
+	{
+		1218, // Greater Battle Heal
+		1015, // Battle Heal
+		1217, // Greater Heal
+		1011 // Heal
+	};
+
+	/** @return {@code true} if the phantom is a healer class that knows a single-target heal (a summoner that happens to know Heal is not one) */
+	private static boolean isTeamHealer(Player phantom)
+	{
+		if (roleForClass(phantom.getPlayerClass()) != PartyRole.HEALER)
+		{
+			return false;
+		}
+		for (int id : TEAM_HEAL_SKILLS)
+		{
+			if (phantom.getKnownSkill(id) != null)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static final int TEAM_HEAL_BELOW_PERCENT = 90;
+
+	/** A healer on a team heals the most hurt teammate in range (itself included) below 90% HP, because PvP is fast. @return {@code true} if it cast or is casting */
+	private boolean teamHeal(Player healer)
+	{
+		if (!isTeamHealer(healer))
+		{
+			return false;
+		}
+		if (healer.isCastingNow())
+		{
+			return true;
+		}
+		// FPC-248/249: the healer itself is a candidate (the visible-object scan never returns it), and only
+		// teammates within the heals' native cast range count; doCast does not enforce that range itself.
+		int scanRange = 0;
+		for (int id : TEAM_HEAL_SKILLS)
+		{
+			final Skill skill = healer.getKnownSkill(id);
+			if (skill != null)
+			{
+				scanRange = Math.max(scanRange, skill.getCastRange());
+			}
+		}
+		final List<Player> candidates = new ArrayList<>();
+		candidates.add(healer);
+		if (scanRange > 0)
+		{
+			candidates.addAll(World.getInstance().getVisibleObjectsInRange(healer, Player.class, scanRange));
+		}
+		Player worst = null;
+		double worstPercent = 100;
+		for (Player p : candidates)
+		{
+			if (!sameTeam(healer, p) || p.isDead())
+			{
+				continue;
+			}
+			final double percent = (p.getCurrentHp() * 100.0) / p.getMaxHp();
+			if ((percent < worstPercent) && (percent < TEAM_HEAL_BELOW_PERCENT))
+			{
+				worst = p;
+				worstPercent = percent;
+			}
+		}
+		if (worst == null)
+		{
+			return false;
+		}
+		for (int id : TEAM_HEAL_SKILLS)
+		{
+			if ((id == 1217) && (worstPercent > 50))
+			{
+				continue; // the slow heal only when it is bad
+			}
+			final Skill skill = healer.getKnownSkill(id);
+			if ((skill == null) || ((worst != healer) && (healer.calculateDistance3D(worst) > (skill.getCastRange() + healer.getTemplate().getCollisionRadius()))))
+			{
+				continue;
+			}
+			if (PhantomPartyManager.canCastSupportSkill(healer, skill, worst)) // FPC-244: native conditions too
+			{
+				healer.setTarget(worst);
+				healer.doCast(skill);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static final int HEALER_BACK_DISTANCE = 300;
+	private static final int HEALER_RANGE_TO_TEAM = 1500;
+
+	/**
+	 * A healer with nobody to heal stands behind its team: at the middle of its living teammates, pushed away from the
+	 * nearest enemy. With no teammates (a free-for-all) or an enemy right on top of it, it fights back.
+	 */
+	private void holdBehindTeam(Player healer, Player enemy)
+	{
+		long x = 0;
+		long y = 0;
+		int allies = 0;
+		for (Player p : World.getInstance().getVisibleObjectsInRange(healer, Player.class, HEALER_RANGE_TO_TEAM))
+		{
+			if ((p != healer) && !p.isDead() && sameTeam(healer, p) && !isTeamHealer(p))
+			{
+				x += p.getX();
+				y += p.getY();
+				allies++;
+			}
+		}
+		if ((allies == 0) || (healer.calculateDistance2D(enemy) < 250))
+		{
+			engageTarget(healer, enemy);
+			return;
+		}
+		healer.setTarget(null);
+		// the team's middle, then back away from the enemy
+		final double awayX = ((x / (double) allies) - enemy.getX());
+		final double awayY = ((y / (double) allies) - enemy.getY());
+		final double awayLength = Math.max(1, Math.hypot(awayX, awayY));
+		final int destX = (int) ((x / (double) allies) + ((awayX / awayLength) * HEALER_BACK_DISTANCE));
+		final int destY = (int) ((y / (double) allies) + ((awayY / awayLength) * HEALER_BACK_DISTANCE));
+		final Location destination = GeoEngine.getInstance().getValidLocation(healer, new Location(destX, destY, healer.getZ()));
+		if (!healer.isMoving() && !healer.isCastingNow() && (healer.calculateDistance2D(destination) > 120))
+		{
+			healer.setRunning();
+			healer.getAI().setIntention(Intention.MOVE_TO, destination);
+		}
+	}
+
+	/**
+	 * A team summoner's servitor fights only a current enemy of a released fighter. The encounter gate in
+	 * {@link #commandEncounterPet} does not apply here: event players are never encounter targets.
+	 */
+	private static void commandTeamPet(Player phantom, PhantomData data, Player target)
+	{
+		if (data.teamHold || (target == null) || !isTeamEnemy(phantom, target))
+		{
+			PhantomPartyManager.stopServitorCombat(phantom);
+			return;
+		}
+		commandPetAttack(phantom, data, target, true);
+	}
+
+	/** @return {@code true} if {@code other} is on the same event team as {@code phantom} (or is itself); a free-for-all has no teammates */
+	private static boolean sameTeam(Player phantom, Player other)
+	{
+		if (other == phantom)
+		{
+			return true;
+		}
+		return !phantom.isOnSoloEvent() && other.isOnEvent() && ModuleTeams.isParticipant(other) && (phantom.getTeam() != Team.NONE) && (other.getTeam() == phantom.getTeam());
+	}
+
+	// ---------------------------------------------------------------------
 	// Arena duelists (ModuleDuels): geared phantoms that stand where a module puts them.
 	// ---------------------------------------------------------------------
 
@@ -6854,6 +7437,10 @@ public class PhantomManager implements IXmlReader
 		{
 			commandEncounterPet(phantom, data, target); // a summoner's servitor fights beside it
 		}
+		else if (data.teamFighter && phantom.getPlayerClass().isSummoner())
+		{
+			commandTeamPet(phantom, data, target);
+		}
 		if (data.mage)
 		{
 			if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER)
@@ -6879,6 +7466,13 @@ public class PhantomManager implements IXmlReader
 		// Dagger: step to the opponent's back while it cannot turn on us (FPC-144); the attack resumes once there.
 		if (positionHunterRear(phantom, data, target))
 		{
+			return;
+		}
+		// A team fighter out of reach only walks in: casting a skill that needs no target in range (a taunt, an area
+		// shout) every tick would interrupt the walk and it would never arrive.
+		if (data.teamFighter && (phantom.calculateDistance2D(target) > (phantom.getPhysicalAttackRange() + 80)))
+		{
+			engageTarget(phantom, target);
 			return;
 		}
 		// Fighter: approach and auto-attack (the base ATTACK intention), then let the engine fire its class skills at
