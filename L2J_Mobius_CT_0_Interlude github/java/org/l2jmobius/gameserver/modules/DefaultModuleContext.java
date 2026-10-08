@@ -34,7 +34,7 @@ class DefaultModuleContext implements ModuleContext
 	private final ModuleCompanions _companions = new ModuleCompanions();
 	private final ModuleEncounters _encounters = new ModuleEncounters();
 	private final ModuleDamage _damage;
-	private final ModuleDuels _duels = new ModuleDuels();
+	private final ModuleDuels _duels;
 	private final ModuleTeams _teams = new ModuleTeams();
 	private final Logger _logger;
 
@@ -44,6 +44,7 @@ class DefaultModuleContext implements ModuleContext
 		_handlers = handlers;
 		_events = events;
 		_damage = new ModuleDamage(handles);
+		_duels = new ModuleDuels(handles);
 		_logger = Logger.getLogger("module." + moduleId);
 	}
 

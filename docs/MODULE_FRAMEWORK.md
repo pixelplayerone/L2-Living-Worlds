@@ -259,13 +259,17 @@ own duel system (countdown, nobody dies, HP restored at the end); the platform a
 - `spawn(where, level, role, enchant, name, classId)` makes a geared phantom that stays where it was put. It does
   nothing on its own, takes a duel from anyone who asks, and fights it with the same PvP logic as every phantom. A
   `classId` pins its class (resolved for its level like any named recruit); 0 or less takes any class for the role.
+- Between duels a duelist looks after itself: killed outside a duel it gets back up at its post after 10 seconds,
+  and once it is out of combat it walks back to its post after a challenge or a duel elsewhere. It does not fight
+  anyone outside a duel.
 - `challenge(duelist, target)` sends a duelist to walk up to a player, or another duelist, and ask. It returns `false`
-  when either side is busy or cannot duel right now (out of combat, HP and MP above half, not flagged).
+  when either side is busy or cannot duel right now (out of combat, HP and MP above half, not flagged), or when the
+  target is another phantom and phantom versus phantom PvP is off.
 - `isFree(duelist)`, `isDuelist(player)`, `isPhantom(player)` and `discard(duelist)` complete the set.
-- `addListener(listener)` is told when a one-on-one duel ends, with both players and the `DuelResult`;
+- `addListener(listener)` (not null, recorded as the module's own) is told when a one-on-one duel ends, with both players and the `DuelResult`;
   `ModuleDuels.firstWon(result)` turns that into the winner.
-- `openArena(zone)` opens a PvP zone to duels. The stock rules refuse duels inside any PvP zone; this lifts that for the
-  named zones only, for the whole run. Nothing changes anywhere else.
+- `openArena(zone)` opens a PvP zone to duels. The stock rules refuse and cancel duels inside any PvP zone; this
+  lifts both for the named zones only, for the whole run. Nothing changes anywhere else.
 
 What a duel is worth, where duelists stand, and when they challenge is the module's.
 

@@ -377,6 +377,8 @@ public class PhantomManager implements IXmlReader
 	private static final int DUEL_ASK_RANGE = 200;
 	// A challenging phantom gives up walking to its opponent after this long.
 	private static final long DUEL_APPROACH_MAX_MS = 15000;
+	private static final long ARENA_REVIVE_MS = 10000; // FPC-268: an arena duelist killed outside a duel gets back up at its post after this
+	private static final int ARENA_POST_RADIUS = 100; // FPC-268: an idle arena duelist further than this from its post walks back
 	// Stock start: the duel is scheduled 3s after acceptance, then counts down 5s. This covers it with slack.
 	private static final long DUEL_COUNTDOWN_MAX_MS = 12000;
 	// Stock 1v1 duels last 120s; a safety cap a little past that in case the end is never observed.
@@ -5304,6 +5306,10 @@ public class PhantomManager implements IXmlReader
 					{
 						continuePvp(phantom, data, now);
 					}
+					else
+					{
+						tendArenaDuelist(phantom, data, now); // FPC-268
+					}
 					continue;
 				}
 				// Peace zone, dead, dormant, or mid-disperse: drop any engagement and skip (applies to every role).
@@ -7039,6 +7045,38 @@ public class PhantomManager implements IXmlReader
 		return duelist;
 	}
 
+	/**
+	 * FPC-268: between duels an arena duelist looks after itself. Killed outside a duel, it gets back up at its post
+	 * after {@link #ARENA_REVIVE_MS}; sent to challenge someone, or left wherever its last duel ended, it walks back.
+	 */
+	private static void tendArenaDuelist(Player duelist, PhantomData data, long now)
+	{
+		if (duelist.isDead())
+		{
+			if (data.deadSince == 0)
+			{
+				data.deadSince = now;
+			}
+			else if ((now - data.deadSince) >= ARENA_REVIVE_MS)
+			{
+				data.deadSince = 0;
+				duelist.doRevive();
+				duelist.setCurrentHp(duelist.getMaxHp());
+				duelist.setCurrentMp(duelist.getMaxMp());
+				duelist.setCurrentCp(duelist.getMaxCp());
+				duelist.teleToLocation(data.home);
+			}
+			return;
+		}
+		data.deadSince = 0;
+		if (duelist.isInDuel() || duelist.isProcessingRequest() || duelist.isInCombat() || duelist.isMoving() || (duelist.calculateDistance2D(data.home) <= ARENA_POST_RADIUS))
+		{
+			return;
+		}
+		duelist.setTarget(null);
+		duelist.getAI().setIntention(Intention.MOVE_TO, data.home);
+	}
+
 	/** @return {@code true} if this is a duelist made by {@link #spawnArenaDuelist} */
 	public boolean isArenaDuelist(Player player)
 	{
@@ -7060,6 +7098,10 @@ public class PhantomManager implements IXmlReader
 		if ((data == null) || !data.arenaDuelist || (target == null) || (target == duelist) || !PhantomPvpManager.duelsEnabled())
 		{
 			return false;
+		}
+		if (!validPvpOpponent(duelist, target))
+		{
+			return false; // FPC-269: a duelist challenging another phantom needs phantom-versus-phantom PvP on
 		}
 		if (duelist.isDead() || target.isDead() || duelist.isInDuel() || target.isInDuel() || duelist.isProcessingRequest() || target.isProcessingRequest() || !duelist.canDuel() || !target.canDuel())
 		{
