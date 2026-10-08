@@ -25,6 +25,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -38,6 +39,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
 
@@ -57,11 +59,16 @@ import org.l2jmobius.gameserver.data.xml.ExperienceData;
 import org.l2jmobius.gameserver.data.xml.ItemData;
 import org.l2jmobius.gameserver.data.xml.PetSkillData;
 import org.l2jmobius.gameserver.data.xml.PhantomPlaystyleData;
+import org.l2jmobius.gameserver.data.xml.InitialEquipmentData;
 import org.l2jmobius.gameserver.data.xml.PlayerTemplateData;
 import org.l2jmobius.gameserver.data.xml.SkillData;
+import org.l2jmobius.gameserver.data.xml.SkillTreeData;
 import org.l2jmobius.gameserver.managers.PhantomWeaponSets.GearContext;
 import org.l2jmobius.gameserver.managers.PhantomWeaponSets.WeaponKind;
 import org.l2jmobius.gameserver.geoengine.GeoEngine;
+import org.l2jmobius.gameserver.geoengine.pathfinding.GeoLocation;
+import org.l2jmobius.gameserver.geoengine.pathfinding.PathFinding;
+import org.l2jmobius.gameserver.livingpop.LivingGear;
 import org.l2jmobius.gameserver.handler.ItemHandler;
 import org.l2jmobius.gameserver.model.Location;
 import org.l2jmobius.gameserver.model.StatSet;
@@ -96,6 +103,7 @@ import org.l2jmobius.gameserver.model.item.Armor;
 import org.l2jmobius.gameserver.model.item.EtcItem;
 import org.l2jmobius.gameserver.model.item.ItemTemplate;
 import org.l2jmobius.gameserver.model.item.Weapon;
+import org.l2jmobius.gameserver.model.item.holders.InitialEquipment;
 import org.l2jmobius.gameserver.model.item.enums.BodyPart;
 import org.l2jmobius.gameserver.model.item.enums.ItemProcessType;
 import org.l2jmobius.gameserver.model.item.instance.Item;
@@ -107,6 +115,7 @@ import org.l2jmobius.gameserver.model.item.type.WeaponType;
 import org.l2jmobius.gameserver.model.itemcontainer.Inventory;
 import org.l2jmobius.gameserver.model.skill.AbnormalType;
 import org.l2jmobius.gameserver.model.skill.Skill;
+import org.l2jmobius.gameserver.model.skill.holders.SkillLearn;
 import org.l2jmobius.gameserver.model.skill.targets.TargetType;
 import org.l2jmobius.gameserver.model.zone.ZoneId;
 import org.l2jmobius.gameserver.modules.ModuleTeams;
@@ -147,6 +156,10 @@ public class PhantomManager implements IXmlReader
 	// live under this distinct account so the boot sweep (which only targets ACCOUNT_NAME) never touches them
 	// and despawn() knows to keep their row instead of deleting it.
 	private static final String ACCOUNT_NAME_REGULAR = "phantom_regular";
+	// Living Population (opt-in module) hot characters. Persistent like regulars (their row is kept across the
+	// hot/cold handoff and restarts) but on their own account so they are never swept, never friend-managed, and
+	// never counted as human observers by the module. See spawnLivingPopulationPhantom / coolLivingPopulationPhantom.
+	private static final String ACCOUNT_NAME_LIVINGPOP = "living_population";
 	// Olympiad roster nobles (PhantomOlympiadManager) live on their own account: persistent like regulars, since their
 	// Olympiad record and Hero status are keyed to the charId, but never part of the friend tier. The boot sweep only
 	// targets ACCOUNT_NAME, so it never touches them either.
@@ -223,6 +236,32 @@ public class PhantomManager implements IXmlReader
 	private static final int HP_POTION_ID = 1539; // Greater Healing Potion
 	private static final int HP_POTION_COUNT = 20000;
 	private static final int HP_POTION_PERCENT = 60;
+	// Living Population travel: the healing potions a living bot may carry (Lesser, normal, Greater), its Scroll of Escape
+	// and the escape cast shown when it uses one.
+	private static final int[] LIVING_POTION_IDS =
+	{
+		1060,
+		1061,
+		1539
+	};
+	private static final int LIVING_ESCAPE_ID = 736;
+	// The paperdoll slots a Living Population bot wears its gear in (weapon, shield, armor and jewelry).
+	private static final int[] LIVING_GEAR_SLOTS =
+	{
+		Inventory.PAPERDOLL_RHAND,
+		Inventory.PAPERDOLL_LHAND,
+		Inventory.PAPERDOLL_CHEST,
+		Inventory.PAPERDOLL_LEGS,
+		Inventory.PAPERDOLL_HEAD,
+		Inventory.PAPERDOLL_GLOVES,
+		Inventory.PAPERDOLL_FEET,
+		Inventory.PAPERDOLL_NECK,
+		Inventory.PAPERDOLL_REAR,
+		Inventory.PAPERDOLL_LEAR,
+		Inventory.PAPERDOLL_RFINGER,
+		Inventory.PAPERDOLL_LFINGER
+	};
+	private static final int LIVING_ESCAPE_SKILL_ID = 2013;
 	// Encounter actors fight once, so they carry a modest stack of the best potions and drink them from the fight tick.
 	private static final int ENC_ESCAPE_SCROLL_ID = 1538; // Blessed Scroll of Escape
 	private static final int ENC_ESCAPE_SKILL_ID = 2036;
@@ -320,6 +359,14 @@ public class PhantomManager implements IXmlReader
 	private static final int REST_MP_SIT_PERCENT = 30; // sit once MP drops to ~this
 	private static final int REST_MP_STAND_PERCENT = 100; // and stay seated until MP is fully restored
 	private static final int REST_DANGER_RANGE = 700;
+	// A Living Population bot plays like a player: it rests sooner (half HP or MP) whenever nothing is fighting it, even
+	// with passive monsters around, and heals itself with its own heal before it reaches for a potion.
+	private static final int LIVING_REST_SIT_PERCENT = 50;
+	private static final int LIVING_REST_MP_SIT_PERCENT = 50;
+	private static final int LIVING_SELF_HEAL_PERCENT = 60;
+	private static final int LIVING_HEALER_POTION_PERCENT = 40; // potions are the backup once it has a heal of its own
+	private static final long LIVING_SELF_HEAL_INTERVAL = 1000;
+	private static final int LIVING_ATTACKER_RANGE = 1500;
 	// Share of phantoms that roll a (DD) mage instead of a fighter.
 	private static final int MAGE_CHANCE = 30;
 	// Default chance a spawn uses one of a population's fixed "regular" identities (name/appearance) instead
@@ -1142,7 +1189,9 @@ public class PhantomManager implements IXmlReader
 	private static class PhantomData
 	{
 		final Player player;
-		final Location home;
+		// Where it roams around and revives. Fixed for field phantoms; a traveling Living Population bot moves it to each
+		// new hunting spot (see setLivingIdle).
+		volatile Location home;
 		final Population population; // null for ad-hoc (admin) spawns
 		final boolean mage; // pure caster: needs the mage combat tick to position/kite it
 		final BuddyRole role; // NONE for hunters; otherwise this is an idle support buddy (see PhantomBuddyManager)
@@ -1160,6 +1209,12 @@ public class PhantomManager implements IXmlReader
 		volatile boolean buddyEngaged; // buddy is partied/claimed by a player: skip the proximity despawn (grace)
 		volatile boolean recruited; // recruited combat party member: PhantomPartyManager owns it; skip ALL hunter logic
 		int friendOwnerId; // objectId of the real player this regular was login-spawned to accompany (0 = not a friend spawn)
+		volatile long livingBotId; // id of the Living Population cold row this phantom materializes (0 = not a living-population bot)
+		// Living Population travel or town visit (walking, casting a Scroll of Escape, shopping, AFK): the module drives the
+		// character through the living* methods, so every hunter tick (supervise, assignTargets, mageCombat) stands aside.
+		volatile boolean livingIdle;
+		// The module revives this dead Living Population bot in a town like a player (the ad-hoc revive in place stands aside).
+		volatile boolean livingDeathClaimed;
 		PhantomPlaystyleEngine.PlayState play; // hunter-owned playstyle runtime (null until this fighter is parked; see parkHunterPlaystyle)
 		boolean playstyleParked; // this fighter's offensive AutoUse was handed to the playstyle engine (restored on teardown/adopt)
 		long nextRetargetAt; // earliest time this hunter may switch target to a fresh attacker again (retaliation hysteresis)
@@ -2408,6 +2463,19 @@ public class PhantomManager implements IXmlReader
 	 */
 	private Player finishSpawn(Player phantom, Location spawnLocation, int level, boolean mage, BuddyRole role, Population population, boolean loadedRegular, int friendOwnerId)
 	{
+		return finishSpawn(phantom, spawnLocation, level, mage, role, population, loadedRegular, friendOwnerId, null);
+	}
+
+	/**
+	 * Full form of {@link #finishSpawn(Player, Location, int, boolean, BuddyRole, Population, boolean, int)} with an
+	 * optional Living Population loadout. When {@code living} is non-null the phantom is outfitted from the cold row
+	 * (gated gear, owned consumables) instead of the fabricated field-phantom kit; every other caller passes null and is
+	 * unchanged.
+	 * @param living the row-driven loadout, or null for the normal fabricated kit
+	 * @return the phantom, now live
+	 */
+	private Player finishSpawn(Player phantom, Location spawnLocation, int level, boolean mage, BuddyRole role, Population population, boolean loadedRegular, int friendOwnerId, LivingLoadout living)
+	{
 		// Ignore the weight penalty. Phantoms carry a large stack of healing potions (+ soulshots), which
 		// easily exceeds a non-Dwarf's max load - at >=100% load the engine applies Weight Penalty (skill
 		// 4270) level 4, whose runSpd multiplier is 0, so the phantom is fully immobilized. Dwarves have a
@@ -2426,7 +2494,13 @@ public class PhantomManager implements IXmlReader
 		{
 			phantom.getInventory().destroyAllItems(ItemProcessType.DESTROY, phantom, null);
 		}
-		if (role.isBuddy())
+		if (living != null)
+		{
+			// Persistent Living Population bot: render only what the row owns (gated gear, owned consumables, newbie
+			// starter at tier 0), not the fabricated level-appropriate field-phantom kit.
+			outfitLivingBot(phantom, level, mage, living);
+		}
+		else if (role.isBuddy())
 		{
 			outfitBuddy(phantom, level, role);
 		}
@@ -2442,8 +2516,8 @@ public class PhantomManager implements IXmlReader
 		}
 		phantom.refreshOverloaded();
 		// Bot clan (field/town hunters only): join before entering the world so the very first CharInfo already carries
-		// the clan crest and name. Buddies and friend-summons keep their own identity and are never auto-clanned.
-		if (!role.isBuddy() && (friendOwnerId == 0))
+		// the clan crest and name. Buddies, friend-summons, and Living Population bots keep their own identity.
+		if (!role.isBuddy() && (friendOwnerId == 0) && (living == null))
 		{
 			attachBotClan(phantom, population);
 		}
@@ -2459,6 +2533,12 @@ public class PhantomManager implements IXmlReader
 			// player whispers/parties them. PhantomBuddyManager owns everything from there.
 			PhantomBuddyManager.getInstance().onBuddySpawned(data.player, role.name());
 		}
+		else if ((living != null) && living.idle())
+		{
+			// A Living Population bot materialized mid-trip or in town: the module drives it from its first tick, so it
+			// must not fan out in a random direction or start hunting first.
+			data.livingIdle = true;
+		}
 		else
 		{
 			// Fan out first; the auto-hunt starts when dispersal ends (see supervise), so a freshly spawned
@@ -2466,11 +2546,1397 @@ public class PhantomManager implements IXmlReader
 			beginDisperse(phantom, data);
 		}
 		startSupervising();
-		final String kind = role.isBuddy() ? (role + " buddy") //
-			: (friendOwnerId != 0) ? "friend-regular" //
-				: ACCOUNT_NAME_REGULAR.equals(phantom.getAccountName()) ? "regular" : "phantom";
+		final String kind = (living != null) ? "living-population bot" //
+			: role.isBuddy() ? (role + " buddy") //
+				: (friendOwnerId != 0) ? "friend-regular" //
+					: ACCOUNT_NAME_REGULAR.equals(phantom.getAccountName()) ? "regular" : "phantom";
 		LOGGER.info(getClass().getSimpleName() + ": Spawned " + kind + " '" + phantom.getName() + "' (objId=" + phantom.getObjectId() + ", level " + level + ").");
 		return phantom;
+	}
+
+	/**
+	 * Living Population (module) hot spawn: brings a cold bot into the world as a real, persistent character that hunts
+	 * like an ordinary field phantom. This is the Phase 3 materialization primitive; {@link HotColdHandoff} calls it from
+	 * the game thread and cools it back with {@link #coolLivingPopulationPhantom(Player)}.
+	 *
+	 * <p>When {@code existingCharId} is greater than 0 the bot already has a persistent character, so it is reloaded
+	 * ({@link Player#load(int)}) and comes back at its stored level/class/skills. Otherwise a brand-new persistent
+	 * character is created on the dedicated {@link #ACCOUNT_NAME_LIVINGPOP} account and the caller stores the returned
+	 * player's object id as the bot's char id so the same character is reused on every later handoff.
+	 * <p>The cold row is the single source of truth for progression, so the character is always driven to the row's level
+	 * and sub-level experience (that is why {@code level}/{@code expIntoLevel} are honoured even for a reloaded character):
+	 * while the bot was cold the resolver may have advanced it past the level its character row last stored, and a
+	 * reloaded character would otherwise come back behind. Class, learned skills, gear and bars are rebuilt for that level.
+	 * @param livingBotId the cold row id (tags the phantom so it can be found and cooled)
+	 * @param existingCharId the bound character object id, or 0 to create a new persistent character
+	 * @param name the character name (must be unique when creating)
+	 * @param classId the base class id for a new character (ignored when reloading; the character then keeps its own class)
+	 * @param level the cold row's level, which the character is brought up to
+	 * @param expIntoLevel the cold row's experience into that level, restored on top of the level floor
+	 * @param adena the cold row's adena, which the character's purse is set to (Phase 4 shared economy)
+	 * @param gearLevel the gear level to equip, gated to the bot's owned gear tier; 0 or less renders the newbie starter
+	 * @param gear the exact items it wears (its gear kept per slot), or null to equip by {@code gearLevel}
+	 * @param soulshots the soulshots (or spiritshots) the bot owns, seeded into its inventory
+	 * @param potionId the healing potion a player of its level buys
+	 * @param potions the healing potions the bot owns, seeded into its inventory
+	 * @param escapes the Scrolls of Escape the bot owns, seeded into its inventory
+	 * @param idle whether it arrives traveling or in town (the module drives it; no dispersal, no auto-hunt)
+	 * @param location where to drop the character
+	 * @return the spawned player, or {@code null} on failure
+	 */
+	public Player spawnLivingPopulationPhantom(long livingBotId, int existingCharId, String name, int classId, int level, long expIntoLevel, long adena, int gearLevel, List<Integer> gear, long soulshots, int potionId, long potions, long escapes, boolean idle, long sp, Map<Integer, Integer> skills, Location location)
+	{
+		if (location == null)
+		{
+			return null;
+		}
+		if (_phantoms.size() >= MAX_PHANTOMS)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Living Population phantom cap reached (" + MAX_PHANTOMS + "); bot " + livingBotId + " stays cold.");
+			return null;
+		}
+		if ((existingCharId > 0) && _phantoms.containsKey(existingCharId))
+		{
+			return null; // already live: never a second instance of the same character
+		}
+
+		Player phantom = null;
+		boolean loadedRegular = false;
+		if (existingCharId > 0)
+		{
+			try
+			{
+				phantom = Player.load(existingCharId);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Failed to load living-population character " + existingCharId + ": " + e.getMessage());
+			}
+			loadedRegular = phantom != null;
+		}
+
+		if (phantom == null)
+		{
+			final PlayerClass playerClass = PlayerClass.getPlayerClass(classId);
+			final PlayerTemplate template = (playerClass == null) ? null : PlayerTemplateData.getInstance().getTemplate(playerClass);
+			if (template == null)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": No player template for class id " + classId + " (living-population bot " + livingBotId + ").");
+				return null;
+			}
+			if (name == null)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Living-population bot " + livingBotId + " has no name; stays cold.");
+				return null;
+			}
+			if (CharInfoTable.getInstance().doesCharNameExist(name))
+			{
+				// The name is already taken. If it is one of our own living-population characters that the cold row lost
+				// its binding to (an orphan left by dropping the module table, or an earlier unbound spawn), adopt it
+				// instead of failing forever: load it and let the caller bind char_id back. If the name belongs to any
+				// other account (for example a real player), we genuinely cannot use it, so the bot stays cold.
+				final int adoptId = findLivingPopulationCharIdByName(name);
+				if (adoptId <= 0)
+				{
+					LOGGER.warning(getClass().getSimpleName() + ": Living-population name '" + name + "' is taken by a non-living-population character; bot " + livingBotId + " stays cold.");
+					return null;
+				}
+				try
+				{
+					phantom = Player.load(adoptId);
+				}
+				catch (Exception e)
+				{
+					LOGGER.warning(getClass().getSimpleName() + ": Failed to adopt orphaned living-population character '" + name + "' (" + adoptId + "): " + e.getMessage());
+				}
+				if (phantom == null)
+				{
+					return null;
+				}
+				loadedRegular = true;
+				LOGGER.info(getClass().getSimpleName() + ": Adopted orphaned living-population character '" + name + "' (objId=" + adoptId + ") for bot " + livingBotId + ".");
+			}
+			else
+			{
+				final boolean female = Rnd.nextBoolean();
+				final PlayerAppearance appearance = new PlayerAppearance((byte) Rnd.get(0, 2), (byte) Rnd.get(0, 3), (byte) Rnd.get(0, 2), female);
+				// isBuddyBot = true: a living-population character is never counted as a human observer, mirroring phantoms.
+				phantom = Player.create(template, ACCOUNT_NAME_LIVINGPOP, name, appearance, true);
+				if (phantom == null)
+				{
+					LOGGER.warning(getClass().getSimpleName() + ": Creation failed for living-population bot " + livingBotId + " (duplicate name / db error?).");
+					return null;
+				}
+			}
+		}
+
+		// The cold row is the source of truth: bring the character up to the row's level even when reloaded (it may be
+		// behind after cold progression). finishSpawn re-levels, re-classes, re-learns and re-gears to this level.
+		final int targetLevel = Math.max(1, level);
+		final PlayerClass rowClass = PlayerClass.getPlayerClass(classId);
+		final boolean mage = (rowClass != null) ? rowClass.isMage() : phantom.getPlayerClass().isMage();
+		final int groundZ = GeoEngine.getInstance().getHeight(location.getX(), location.getY(), location.getZ());
+		final Location spawnLocation = new Location(location.getX(), location.getY(), groundZ);
+		try
+		{
+			// finishSpawn re-levels a loaded character too when we pass the (higher) cold level: outfit() only ever adds
+			// the experience gap, so this brings a behind character up and never demotes one that is somehow ahead.
+			final LivingLoadout loadout = new LivingLoadout(classId, gearLevel, gear, soulshots, potionId, potions, escapes, idle, sp, skills);
+			final Player result = finishSpawn(phantom, spawnLocation, targetLevel, mage, BuddyRole.NONE, null, loadedRegular, 0, loadout);
+			if (result == null)
+			{
+				if (!loadedRegular)
+				{
+					GameClient.deleteCharByObjId(phantom.getObjectId()); // don't leave a half-made row behind
+				}
+				return null;
+			}
+			// Sync the character's total experience to the cold row (the source of truth): set it to the level floor plus
+			// the row's sub-level residual, rather than ADDING the residual. A reloaded character already carries its own
+			// exp (outfit() only ever adds exp to reach a higher level, it never resets down), so adding here would
+			// double-count the residual on every hot/cold cycle and slowly inflate it into spurious level-ups. Only when
+			// the character sits at exactly the cold level (finishSpawn never demotes, so a character somehow ahead of the
+			// row is left untouched). The residual is always below the level's requirement, so this never rolls a level.
+			if (result.getLevel() == targetLevel)
+			{
+				result.setExp(ExperienceData.getInstance().getExpForLevel(targetLevel) + Math.max(0L, expIntoLevel));
+			}
+			// Seed the purse to the cold row's adena (SET, not add: a reloaded character already carries its last-captured
+			// adena, and any cold accrual since then lives on the row). The hot bot earns/spends real adena while hunting;
+			// the handoff captures it back on cooldown, so hot and cold share one purse.
+			final int targetAdena = (int) Math.max(0L, Math.min(Integer.MAX_VALUE, adena));
+			final int currentAdena = result.getAdena();
+			if (targetAdena > currentAdena)
+			{
+				result.addAdena(ItemProcessType.REWARD, targetAdena - currentAdena, null, false);
+			}
+			else if (targetAdena < currentAdena)
+			{
+				result.reduceAdena(ItemProcessType.REWARD, currentAdena - targetAdena, null, false);
+			}
+			// A real character does not carry a Dimensional Fragment; enterWorld() adds one to every phantom for rift
+			// eligibility, which a field-hunting living bot never uses. Strip it so the inventory reflects only what the
+			// bot actually owns. (Field phantoms keep theirs; this only touches the living-population path.)
+			if (result.getInventory().getItemByItemId(DIMENSION_FRAGMENT_ID) != null)
+			{
+				result.getInventory().destroyItemByItemId(ItemProcessType.DESTROY, DIMENSION_FRAGMENT_ID, Integer.MAX_VALUE, result, null);
+			}
+			final PhantomData data = _phantoms.get(result.getObjectId());
+			if (data != null)
+			{
+				data.livingBotId = livingBotId;
+			}
+			return result;
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to spawn living-population bot " + livingBotId + ": " + e.getMessage());
+			if (!loadedRegular)
+			{
+				GameClient.deleteCharByObjId(phantom.getObjectId());
+			}
+			return null;
+		}
+	}
+
+	/**
+	 * Cools a Living Population hot character back to cold: stores its character row (so its level, class, skills and
+	 * identity persist) and removes the live {@link Player}, but never deletes the row. The caller
+	 * ({@link HotColdHandoff}) has already captured the compact progress into the cold table. Safe to call for a player
+	 * that is no longer tracked.
+	 * @param phantom the hot character to cool
+	 * @return {@code true} only when the character is verified gone from the world and tracking was released; {@code false}
+	 *         when removal failed and the phantom is still live (kept tracked so the caller keeps it hot and retries)
+	 */
+	public boolean coolLivingPopulationPhantom(Player phantom)
+	{
+		if (phantom == null)
+		{
+			return true;
+		}
+
+		final int objectId = phantom.getObjectId();
+		final String name = phantom.getName(); // capture before deleteMe, so the cool log line can still name it
+		final int level = phantom.getLevel();
+		final PhantomData data = _phantoms.get(objectId);
+		// Teardown (best-effort): unpark AutoUse, stop the tasks, drop the runtime bot-clan membership.
+		try
+		{
+			if (data != null)
+			{
+				unparkHunterPlaystyle(phantom, data);
+			}
+			AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(phantom);
+			BotClanManager.getInstance().detach(phantom);
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Living-population teardown failed for " + objectId + ": " + e.getMessage());
+		}
+		// Persist the character row (best-effort). A failure here must NOT prevent removal below, or a persistence error
+		// would leave a live, untracked phantom in the world while the cold resolver resumes the same bot.
+		try
+		{
+			phantom.storeMe();
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to store living-population phantom " + objectId + ": " + e.getMessage());
+		}
+		// Removal MUST happen. Done in its own try so it runs even when storeMe threw.
+		try
+		{
+			phantom.deleteMe();
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to remove living-population phantom " + objectId + ": " + e.getMessage());
+		}
+		// Only release tracking once the world confirms the object is gone. If deleteMe failed and the Player is still
+		// live, keep the _phantoms entry so it is never an untracked live actor, and report failure so the caller keeps
+		// the bot hot-locked and retries the cooldown rather than resuming cold progression on a still-live character.
+		final boolean removed = World.getInstance().findObject(objectId) == null;
+		if (removed)
+		{
+			_phantoms.remove(objectId);
+			// The row is the persistent identity: never deleteCharByObjId here.
+			LOGGER.info(getClass().getSimpleName() + ": Cooled living-population phantom '" + name + "' (objId=" + objectId + ", level " + level + ").");
+		}
+		else
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Living-population phantom " + objectId + " is still live after cooldown; kept tracked for retry.");
+		}
+		return removed;
+	}
+
+	/**
+	 * Every Living Population character this manager still tracks, live or left over, so the module can find one it no
+	 * longer owns (a cooldown that failed across a restart, a stop that could not remove it) and take it back.
+	 * @return by cold row id, the tracked character
+	 */
+	public Map<Long, Player> livingPopulationPhantoms()
+	{
+		final Map<Long, Player> result = new HashMap<>();
+		for (PhantomData data : _phantoms.values())
+		{
+			final long botId = data.livingBotId;
+			if ((botId > 0) && (data.player != null))
+			{
+				result.put(botId, data.player);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Hard-discards a just-created Living Population character that was never bound to a cold row (its char id was not
+	 * stored back), deleting the persistent character row as well so it does not leak as an orphan on the
+	 * {@link #ACCOUNT_NAME_LIVINGPOP} account. Used when an activation completes into a stopped or superseded run.
+	 * @param phantom the unbound character to remove entirely
+	 */
+	public void discardLivingPopulationPhantom(Player phantom)
+	{
+		if (phantom == null)
+		{
+			return;
+		}
+
+		final int objectId = phantom.getObjectId();
+		try
+		{
+			AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(phantom);
+			BotClanManager.getInstance().detach(phantom);
+			phantom.deleteMe();
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to remove unbound living-population phantom " + objectId + ": " + e.getMessage());
+		}
+		_phantoms.remove(objectId);
+		try
+		{
+			GameClient.deleteCharByObjId(objectId); // no cold row points here, so delete the character row too
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to delete unbound living-population row " + objectId + ": " + e.getMessage());
+		}
+		LOGGER.info(getClass().getSimpleName() + ": Discarded unbound living-population character (objId=" + objectId + ").");
+	}
+
+	/**
+	 * Looks up the object id of a character on the {@link #ACCOUNT_NAME_LIVINGPOP} account by name, so a cold row that
+	 * lost its binding can re-adopt its own orphaned character instead of failing to recreate a taken name.
+	 * @param name the character name
+	 * @return the character object id, or 0 when no living-population character has that name
+	 */
+	private int findLivingPopulationCharIdByName(String name)
+	{
+		try (Connection con = DatabaseFactory.getConnection();
+			PreparedStatement ps = con.prepareStatement("SELECT charId FROM characters WHERE char_name=? AND account_name=?"))
+		{
+			ps.setString(1, name);
+			ps.setString(2, ACCOUNT_NAME_LIVINGPOP);
+			try (ResultSet rs = ps.executeQuery())
+			{
+				if (rs.next())
+				{
+					return rs.getInt("charId");
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			LOGGER.warning(getClass().getSimpleName() + ": Failed to look up living-population character '" + name + "': " + e.getMessage());
+		}
+		return 0;
+	}
+
+	/**
+	 * The row-driven loadout for a materialized Living Population bot: unlike the fabricated field-phantom kit, it renders
+	 * only what the bot has actually earned.
+	 * @param classId its class from the row (changed at a class master, never at random)
+	 * @param gearLevel the level whose gear to equip, gated to the bot's owned gear tier; 0 or less means the real newbie
+	 *            starter loadout (a brand-new bot that has bought nothing)
+	 * @param gear the exact items it wears, or null to equip by {@code gearLevel}
+	 * @param soulshots how many soulshots (or spiritshots) the bot owns
+	 * @param potionId the healing potion it carries (the one a player of its level buys)
+	 * @param potions how many healing potions the bot owns
+	 * @param escapes how many Scrolls of Escape the bot owns
+	 * @param idle whether it arrives traveling or in town rather than hunting
+	 * @param sp its SP (used only when {@code skills} is tracked)
+	 * @param skills the skills it has learned (skill id to level), or null to give it every skill of its level
+	 */
+	public record LivingLoadout(int classId, int gearLevel, List<Integer> gear, long soulshots, int potionId, long potions, long escapes, boolean idle, long sp, Map<Integer, Integer> skills)
+	{
+	}
+
+	/**
+	 * Outfits a Living Population bot from its row instead of fabricating a level-appropriate kit: its class is the row's
+	 * (earned at a class master) and its skills come from its real level, gear is gated to its owned tier and consumables
+	 * are exactly what it owns. A tier-0 bot renders the true newbie starter items, so a bot that has bought nothing looks like a new player.
+	 * @param phantom the character being materialized
+	 * @param level its real level (for class/skills)
+	 * @param mage whether it is a caster
+	 * @param loadout the owned gear level and consumable counts from the cold row
+	 */
+	private void outfitLivingBot(Player phantom, int level, boolean mage, LivingLoadout loadout)
+	{
+		if (level > 1)
+		{
+			final long currentExp = phantom.getExp();
+			final long targetExp = ExperienceData.getInstance().getExpForLevel(level);
+			if (targetExp > currentExp)
+			{
+				phantom.addExpAndSp(targetExp - currentExp, 0);
+			}
+		}
+		applyLivingClass(phantom, loadout.classId());
+		if (loadout.skills() != null)
+		{
+			applyLivingSkills(phantom, loadout.skills());
+			phantom.setSp(Math.max(0L, loadout.sp()));
+		}
+		else
+		{
+			learnAllSkills(phantom);
+		}
+
+		final ItemTemplate weapon;
+		if (loadout.gear() != null)
+		{
+			// Gear kept per slot: exactly the pieces the row says it wears, bought or found, nothing made up.
+			livingWearGear(phantom, loadout.gear());
+			weapon = phantom.getActiveWeaponItem();
+		}
+		else if (loadout.gearLevel() <= 0)
+		{
+			// Tier 0: the real newbie starter loadout (the same items a freshly created character of this class gets).
+			equipNewbieStarter(phantom);
+			weapon = phantom.getActiveWeaponItem();
+		}
+		else
+		{
+			// Owned gear tier: equip best-in-grade for the gated gear level, no enchant (enchanting is not modeled yet).
+			buildGear();
+			weapon = equipGear(phantom, loadout.gearLevel(), mage, roleForClass(phantom.getPlayerClass()), 0);
+		}
+		stockLivingConsumables(phantom, weapon, mage, loadout.soulshots(), loadout.potionId(), loadout.potions(), loadout.escapes());
+
+		phantom.setCurrentHpMp(phantom.getMaxHp(), phantom.getMaxMp());
+		phantom.setCurrentCp(phantom.getMaxCp());
+		registerAutoSkills(phantom);
+	}
+
+	/**
+	 * Puts a Living Population character in its row's class. A character saved in another branch (one given a random
+	 * transfer before classes were tracked on the row) forgets the skills only that branch teaches, so it never keeps
+	 * skills its row class has not earned; common, item and shared skills stay. The caller then learns the row class's
+	 * skills.
+	 * @param phantom the character
+	 * @param classId the row's class
+	 */
+	private static void applyLivingClass(Player phantom, int classId)
+	{
+		if ((PlayerClass.getPlayerClass(classId) == null) || (phantom.getPlayerClass().getId() == classId))
+		{
+			return;
+		}
+		if (!isLivingClassAncestor(phantom.getPlayerClass().getId(), classId))
+		{
+			final Set<Integer> kept = new HashSet<>();
+			for (SkillLearn learn : SkillTreeData.getInstance().getCompleteClassSkillTree(PlayerClass.getPlayerClass(classId)).values())
+			{
+				kept.add(learn.getSkillId());
+			}
+			final Set<Integer> branch = new HashSet<>();
+			for (SkillLearn learn : SkillTreeData.getInstance().getCompleteClassSkillTree(phantom.getPlayerClass()).values())
+			{
+				if (!kept.contains(learn.getSkillId()))
+				{
+					branch.add(learn.getSkillId());
+				}
+			}
+			for (Skill skill : new ArrayList<>(phantom.getAllSkills()))
+			{
+				if (branch.contains(skill.getId()))
+				{
+					phantom.removeSkill(skill, true, true);
+				}
+			}
+		}
+		phantom.setPlayerClass(classId);
+		phantom.setBaseClass(classId);
+	}
+
+	/** @return whether {@code ancestor} is {@code classId} or a class it came from */
+	private static boolean isLivingClassAncestor(int ancestor, int classId)
+	{
+		PlayerClass current = PlayerClass.getPlayerClass(classId);
+		while (current != null)
+		{
+			if (current.getId() == ancestor)
+			{
+				return true;
+			}
+			current = current.getParent();
+		}
+		return false;
+	}
+
+	/**
+	 * Changes a live Living Population bot's class after its cold row changed class at a class master: the new class,
+	 * its skills, and its combat rotation (the playstyle is re-parked for the new class).
+	 * @param phantom the bot
+	 * @param classId its new class
+	 * @param skills the skills it has learned (skill id to level), or null to give it every skill of its level
+	 */
+	public void livingSetClass(Player phantom, int classId, Map<Integer, Integer> skills)
+	{
+		if ((phantom == null) || (PlayerClass.getPlayerClass(classId) == null) || (phantom.getPlayerClass().getId() == classId))
+		{
+			return;
+		}
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		if (data != null)
+		{
+			unparkHunterPlaystyle(phantom, data);
+		}
+		applyLivingClass(phantom, classId);
+		if (skills != null)
+		{
+			applyLivingSkills(phantom, skills);
+		}
+		else
+		{
+			learnAllSkills(phantom);
+		}
+		registerAutoSkills(phantom);
+		if (data != null)
+		{
+			parkHunterPlaystyle(phantom, data);
+		}
+		phantom.broadcastUserInfo();
+	}
+
+	/**
+	 * Brings a live Living Population bot's skills and SP in line with its row after it learned at its trainer: the new
+	 * skills, and its combat rotation (the playstyle is re-parked so it picks up new skills).
+	 * @param phantom the bot
+	 * @param skills the skills it has learned (skill id to level)
+	 * @param sp its SP
+	 */
+	public void livingSyncSkills(Player phantom, Map<Integer, Integer> skills, long sp)
+	{
+		if ((phantom == null) || (skills == null))
+		{
+			return;
+		}
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		if (data != null)
+		{
+			unparkHunterPlaystyle(phantom, data);
+		}
+		applyLivingSkills(phantom, skills);
+		phantom.setSp(Math.max(0L, sp));
+		registerAutoSkills(phantom);
+		if (data != null)
+		{
+			parkHunterPlaystyle(phantom, data);
+		}
+		phantom.broadcastUserInfo();
+	}
+
+	/**
+	 * Gives a Living Population character exactly the class skills its row has learned: skills of its class tree it has
+	 * not learned are removed, and each learned skill is set to its learned level. Skills outside its class tree (item
+	 * skills and the like) are left alone.
+	 * @param phantom the character
+	 * @param skills the skills it has learned (skill id to level)
+	 */
+	private static void applyLivingSkills(Player phantom, Map<Integer, Integer> skills)
+	{
+		final Set<Integer> tree = new HashSet<>();
+		for (SkillLearn learn : SkillTreeData.getInstance().getCompleteClassSkillTree(phantom.getPlayerClass()).values())
+		{
+			tree.add(learn.getSkillId());
+		}
+		for (Skill skill : new ArrayList<>(phantom.getAllSkills()))
+		{
+			if (tree.contains(skill.getId()) && (skills.getOrDefault(skill.getId(), 0) <= 0))
+			{
+				phantom.removeSkill(skill, true, true);
+			}
+		}
+		for (Map.Entry<Integer, Integer> learned : skills.entrySet())
+		{
+			if (phantom.getSkillLevel(learned.getKey()) != learned.getValue())
+			{
+				final Skill skill = SkillData.getInstance().getSkill(learned.getKey(), learned.getValue());
+				if (skill != null)
+				{
+					phantom.addSkill(skill, true);
+				}
+			}
+		}
+	}
+
+	/** Grants (and equips) the class's newbie starter items, exactly as character creation does. */
+	private void equipNewbieStarter(Player phantom)
+	{
+		final Collection<InitialEquipment> starter = InitialEquipmentData.getInstance().getClassEquipment(phantom.getPlayerClass());
+		if (starter == null)
+		{
+			return;
+		}
+		for (InitialEquipment equipment : starter)
+		{
+			final Item item = phantom.getInventory().addItem(ItemProcessType.REWARD, equipment.getId(), equipment.getCount(), phantom, null);
+			if ((item != null) && item.isEquipable() && equipment.isEquipped())
+			{
+				phantom.getInventory().equipItem(item);
+			}
+		}
+	}
+
+	/**
+	 * Stocks a Living Population bot with exactly the consumables it owns (from its row), not the fabricated field-phantom
+	 * amounts. Zero soulshots means it fires none until it restocks. Arrows are given a functional stock when it wields a
+	 * bow, since a bow cannot fire without ammunition (arrows are not row-tracked yet).
+	 * @param phantom the bot
+	 * @param weapon its equipped weapon (fixes the shot grade), may be null
+	 * @param mage whether it uses spiritshots
+	 * @param soulshots how many shots to seed
+	 * @param potionId the healing potion it carries
+	 * @param potions how many potions to seed
+	 * @param escapes how many Scrolls of Escape to seed
+	 */
+	private void stockLivingConsumables(Player phantom, ItemTemplate weapon, boolean mage, long soulshots, int potionId, long potions, long escapes)
+	{
+		if ((weapon != null) && (soulshots > 0))
+		{
+			final int shotId = mage ? spiritshotIdFor(weapon.getCrystalType()) : soulshotIdFor(weapon.getCrystalType());
+			phantom.getInventory().addItem(ItemProcessType.REWARD, shotId, (int) Math.min(Integer.MAX_VALUE, soulshots), phantom, null);
+			phantom.addAutoSoulShot(shotId);
+		}
+		if ((weapon instanceof Weapon) && (((Weapon) weapon).getItemType() == WeaponType.BOW))
+		{
+			final ItemTemplate arrow = findArrow(weapon.getCrystalType());
+			if (arrow != null)
+			{
+				phantom.getInventory().addItem(ItemProcessType.REWARD, arrow.getId(), ARROW_COUNT, phantom, null);
+			}
+		}
+		if (potions > 0)
+		{
+			final int id = (potionId > 0) ? potionId : HP_POTION_ID;
+			phantom.getInventory().addItem(ItemProcessType.REWARD, id, (int) Math.min(Integer.MAX_VALUE, potions), phantom, null);
+			phantom.getAutoUseSettings().setAutoPotionItem(id);
+			phantom.getAutoPlaySettings().setAutoPotionPercent(livingPotionPercent(phantom));
+		}
+		if (escapes > 0)
+		{
+			phantom.getInventory().addItem(ItemProcessType.REWARD, LIVING_ESCAPE_ID, (int) Math.min(Integer.MAX_VALUE, escapes), phantom, null);
+		}
+	}
+
+	/**
+	 * Reads a hot Living Population bot's remaining consumables so the handoff can capture them back to the cold row.
+	 * @param phantom the hot character
+	 * @return a three-element array: [remaining soulshots/spiritshots, remaining healing potions of any kind it carries,
+	 *         remaining Scrolls of Escape]
+	 */
+	public long[] captureLivingConsumables(Player phantom)
+	{
+		long shots = 0;
+		final Weapon weapon = phantom.getActiveWeaponItem();
+		if (weapon != null)
+		{
+			final int shotId = weapon.isMagicWeapon() ? spiritshotIdFor(weapon.getCrystalType()) : soulshotIdFor(weapon.getCrystalType());
+			shots = phantom.getInventory().getInventoryItemCount(shotId, -1);
+		}
+		long potions = 0;
+		for (int id : LIVING_POTION_IDS)
+		{
+			potions += phantom.getInventory().getInventoryItemCount(id, -1);
+		}
+		final long escapes = phantom.getInventory().getInventoryItemCount(LIVING_ESCAPE_ID, -1);
+		return new long[]
+		{
+			shots,
+			potions,
+			escapes
+		};
+	}
+
+	/**
+	 * Hands a Living Population bot to (or back from) its module-driven travel and town life. Idle stops the auto-hunt and
+	 * every hunter tick leaves the character alone, so the module can walk it, cast its Scroll of Escape or sit it down.
+	 * Leaving idle stands it up and resumes the normal auto-hunt. Game thread only.
+	 * @param phantom the hot character
+	 * @param idle whether the module drives it
+	 * @return {@code false} when the character is not a tracked phantom
+	 */
+	public boolean setLivingIdle(Player phantom, boolean idle)
+	{
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		if (data == null)
+		{
+			return false;
+		}
+		if (data.livingIdle == idle)
+		{
+			return true;
+		}
+		data.livingIdle = idle;
+		if (idle)
+		{
+			data.resting = false;
+			data.dispersing = false;
+			data.huntPauseUntil = 0;
+			data.idleTargetTicks = 0;
+			data.claimedOid = 0;
+			if (phantom.isAutoPlaying())
+			{
+				AutoPlayTaskManager.getInstance().stopAutoPlay(phantom);
+			}
+			AutoUseTaskManager.getInstance().stopAutoUseTask(phantom);
+			phantom.abortAttack();
+			phantom.setTarget(null);
+			phantom.getAI().setIntention(Intention.IDLE);
+		}
+		else
+		{
+			if (phantom.isSitting())
+			{
+				phantom.standUp();
+			}
+			data.home = new Location(phantom.getX(), phantom.getY(), phantom.getZ()); // hunt, roam and revive around here now
+			phantom.setRunning();
+			enableAutoHunt(phantom, data.mage, data);
+		}
+		return true;
+	}
+
+	/**
+	 * @param phantom a hot Living Population character
+	 * @return whether it is fighting right now (in combat, casting, attacking, or engaged in PvP), so the module should
+	 *         not pull it away mid-fight
+	 */
+	public boolean isLivingEngaged(Player phantom)
+	{
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		return phantom.isInCombat() || phantom.isCastingNow() || phantom.isAttackingNow() || ((data != null) && (data.pvpTargetOid != 0));
+	}
+
+	/**
+	 * @param phantom a character
+	 * @return whether a live monster is going for it right now (its target, while in combat), so walking off or resting
+	 *         would only drag the fight along. Unlike being in combat, this ends the moment the last attacker dies.
+	 */
+	public static boolean isLivingUnderAttack(Player phantom)
+	{
+		for (Monster monster : World.getInstance().getVisibleObjectsInRange(phantom, Monster.class, LIVING_ATTACKER_RANGE))
+		{
+			if (!monster.isDead() && monster.isInCombat() && (monster.getTarget() == phantom))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Marks a dead Living Population character as the module's to revive (in a town, like a player), so the ad-hoc revive
+	 * in place leaves it alone. Cleared by {@link #livingRevive}.
+	 * @param phantom the dead character
+	 */
+	public void claimLivingDeath(Player phantom)
+	{
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		if (data != null)
+		{
+			data.livingDeathClaimed = true;
+		}
+	}
+
+	/**
+	 * Brings a dead Living Population character back to its feet at a town point, as a player does with "to village".
+	 * The experience loss already happened at death (the game's own penalty). Game thread.
+	 * @param phantom the dead character
+	 * @param x where it stands up
+	 * @param y where it stands up
+	 * @param z where it stands up
+	 */
+	public void livingRevive(Player phantom, int x, int y, int z)
+	{
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		phantom.doRevive();
+		livingTeleport(phantom, x, y, z);
+		phantom.setRunning();
+		if (data != null)
+		{
+			data.deadSince = 0;
+			data.resting = false;
+			data.livingDeathClaimed = false;
+		}
+	}
+
+	/**
+	 * @param phantom a Living Population character
+	 * @return the HP percent its potions kick in at: low once it has a heal of its own (the heal comes first), the usual
+	 *         level otherwise
+	 */
+	private static int livingPotionPercent(Player phantom)
+	{
+		return (bestLivingSelfHeal(phantom, false) != null) ? LIVING_HEALER_POTION_PERCENT : HP_POTION_PERCENT;
+	}
+
+	/**
+	 * The strongest heal this character knows that it can put on itself (Self Heal, Heal, Battle Heal and the like).
+	 * @param phantom the character
+	 * @param usableNow also require it off cooldown, affordable in MP and in reagents
+	 * @return the heal, or {@code null}
+	 */
+	private static Skill bestLivingSelfHeal(Player phantom, boolean usableNow)
+	{
+		Skill best = null;
+		for (Skill skill : phantom.getAllSkills())
+		{
+			if ((skill == null) || skill.isPassive() || skill.isToggle() || skill.isDebuff() || !skill.hasEffectType(EffectType.HEAL))
+			{
+				continue;
+			}
+			final TargetType target = skill.getTargetType();
+			if ((target != TargetType.SELF) && (target != TargetType.ONE) && (target != TargetType.PARTY))
+			{
+				continue; // a heal it cannot aim at itself
+			}
+			if (usableNow)
+			{
+				if (phantom.isSkillDisabled(skill) || (phantom.getCurrentMp() < skill.getMpConsume()))
+				{
+					continue;
+				}
+				if ((skill.getItemConsumeId() > 0) && (phantom.getInventory().getInventoryItemCount(skill.getItemConsumeId(), -1) < skill.getItemConsumeCount()))
+				{
+					continue;
+				}
+			}
+			if ((best == null) || (skill.getMagicLevel() > best.getMagicLevel()))
+			{
+				best = skill;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Living Population bots heal themselves like players: below {@link #LIVING_SELF_HEAL_PERCENT} HP a bot that knows a
+	 * heal it can put on itself casts it, in a fight or out of one. Potions stay the backup (they kick in lower).
+	 */
+	private void livingSelfHeal()
+	{
+		for (PhantomData data : _phantoms.values())
+		{
+			if ((data.livingBotId == 0) || data.recruited || data.olympian || data.role.isBuddy())
+			{
+				continue;
+			}
+			final Player phantom = data.player;
+			try
+			{
+				if (phantom.isDead() || phantom.isCastingNow() || phantom.isSitting() || phantom.isAllSkillsDisabled() || phantom.isStunned() || phantom.isSleeping() || phantom.isParalyzed())
+				{
+					continue;
+				}
+				if (phantom.getCurrentHpPercent() >= LIVING_SELF_HEAL_PERCENT)
+				{
+					continue;
+				}
+				final Skill heal = bestLivingSelfHeal(phantom, true);
+				if (heal == null)
+				{
+					continue;
+				}
+				if (heal.getTargetType() == TargetType.ONE)
+				{
+					phantom.setTarget(phantom); // the hunt picks its monster back up after the cast
+				}
+				phantom.doCast(heal);
+			}
+			catch (Exception e)
+			{
+				LOGGER.warning(getClass().getSimpleName() + ": Living self heal error for " + phantom.getName() + ": " + e.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Runs a Living Population bot toward a point on the ground, going around buildings and walls the way a player's
+	 * click-to-move does (the engine's pathfinding). The point is not cut short at the first obstacle, since that would
+	 * hide the obstacle from the pathfinder and walk the bot into the wall. Game thread only.
+	 * @param phantom the hot character
+	 * @param x target x
+	 * @param y target y
+	 * @param z target z (snapped to the ground)
+	 * @return {@code false} when the point cannot be reached (no straight line and no path), so the caller can try another
+	 */
+	public boolean livingMoveTo(Player phantom, int x, int y, int z)
+	{
+		if (phantom.isSitting())
+		{
+			phantom.standUp();
+			return true; // the stand-up animation must finish before it can move; the next module tick moves it
+		}
+		final int tz = GeoEngine.getInstance().getHeight(x, y, z);
+		final boolean direct = GeoEngine.getInstance().canMoveToTarget(phantom.getX(), phantom.getY(), phantom.getZ(), x, y, tz, phantom.getInstanceId());
+		if (!direct)
+		{
+			final List<GeoLocation> path = PathFinding.getInstance().findPath(phantom.getX(), phantom.getY(), phantom.getZ(), x, y, tz, phantom.getInstanceId(), true);
+			if ((path == null) || (path.size() < 2))
+			{
+				return false;
+			}
+		}
+		phantom.setRunning();
+		phantom.getAI().setIntention(Intention.MOVE_TO, new Location(x, y, tz));
+		return true;
+	}
+
+	/**
+	 * Sits a Living Population bot down (AFK in town) or stands it up. Game thread only.
+	 * @param phantom the hot character
+	 * @param sit whether to sit
+	 */
+	public void livingSit(Player phantom, boolean sit)
+	{
+		if (sit && !phantom.isSitting())
+		{
+			phantom.getAI().setIntention(Intention.IDLE);
+			phantom.abortCast();
+			phantom.sitDown(false);
+		}
+		else if (!sit && phantom.isSitting())
+		{
+			phantom.standUp();
+		}
+	}
+
+	/**
+	 * Uses one Scroll of Escape the way a player does: the bot stops, the scroll is consumed and the familiar escape cast
+	 * plays for everyone around. The module teleports it to town when the cast time is up. Game thread only.
+	 * @param phantom the hot character
+	 * @param castMs how long the cast lasts
+	 */
+	public void livingCastEscape(Player phantom, int castMs)
+	{
+		if (phantom.isSitting())
+		{
+			phantom.standUp();
+		}
+		phantom.abortAttack();
+		phantom.setTarget(null);
+		phantom.getAI().setIntention(Intention.IDLE);
+		phantom.stopMove(null);
+		if (phantom.getInventory().getInventoryItemCount(LIVING_ESCAPE_ID, -1) > 0)
+		{
+			phantom.getInventory().destroyItemByItemId(ItemProcessType.DESTROY, LIVING_ESCAPE_ID, 1, phantom, null);
+		}
+		phantom.broadcastPacket(new MagicSkillUse(phantom, phantom, LIVING_ESCAPE_SKILL_ID, 1, Math.max(0, castMs), 0));
+	}
+
+	/**
+	 * Teleports a Living Population bot (Scroll of Escape arrival, or a gatekeeper). Game thread only.
+	 * @param phantom the hot character
+	 * @param x target x
+	 * @param y target y
+	 * @param z target z
+	 */
+	public void livingTeleport(Player phantom, int x, int y, int z)
+	{
+		if (phantom.isSitting())
+		{
+			phantom.standUp();
+		}
+		phantom.getAI().setIntention(Intention.IDLE);
+		phantom.teleToLocation(x, y, GeoEngine.getInstance().getHeight(x, y, z));
+	}
+
+	/**
+	 * Brings a hot Living Population bot's purse, gear and consumables in line with its row after the module decided a
+	 * purchase or paid a fee (the row is the source of truth). Counts are SET, not added. A gear upgrade swaps the whole
+	 * visible set for the new tier. Game thread only.
+	 * @param phantom the hot character
+	 * @param adena the row's adena
+	 * @param gearLevel the gear level its owned tier corresponds to (0 keeps the newbie starter)
+	 * @param regear whether its gear tier changed and the visible set must be replaced
+	 * @param soulshots the row's soulshots (or spiritshots)
+	 * @param potionId the healing potion it carries now
+	 * @param potions the row's potions
+	 * @param escapes the row's Scrolls of Escape
+	 */
+	public void livingSyncSupplies(Player phantom, long adena, int gearLevel, boolean regear, long soulshots, int potionId, long potions, long escapes)
+	{
+		final PhantomData data = _phantoms.get(phantom.getObjectId());
+		final boolean mage = phantom.getPlayerClass().isMage();
+		if (regear && (gearLevel > 0))
+		{
+			for (Item item : new ArrayList<>(phantom.getInventory().getItems()))
+			{
+				if (item.isEquipped())
+				{
+					phantom.getInventory().unEquipItemInSlot(item.getLocationSlot());
+					phantom.getInventory().destroyItem(ItemProcessType.DESTROY, item, phantom, null);
+				}
+			}
+			buildGear();
+			equipGear(phantom, gearLevel, mage, roleForClass(phantom.getPlayerClass()), 0);
+		}
+
+		final int currentAdena = phantom.getAdena();
+		final int targetAdena = (int) Math.max(0L, Math.min(Integer.MAX_VALUE, adena));
+		if (targetAdena > currentAdena)
+		{
+			phantom.addAdena(ItemProcessType.REWARD, targetAdena - currentAdena, null, false);
+		}
+		else if (targetAdena < currentAdena)
+		{
+			phantom.reduceAdena(ItemProcessType.REWARD, currentAdena - targetAdena, null, false);
+		}
+
+		// Shots follow the equipped weapon's grade; drop any other grade (left over from before an upgrade).
+		final Weapon weapon = phantom.getActiveWeaponItem();
+		final int shotId = (weapon == null) ? 0 : (weapon.isMagicWeapon() ? spiritshotIdFor(weapon.getCrystalType()) : soulshotIdFor(weapon.getCrystalType()));
+		for (CrystalType grade : CrystalType.values())
+		{
+			for (int id : new int[]
+			{
+				soulshotIdFor(grade),
+				spiritshotIdFor(grade)
+			})
+			{
+				if ((id > 0) && (id != shotId))
+				{
+					phantom.removeAutoSoulShot(id);
+					setLivingItemCount(phantom, id, 0);
+				}
+			}
+		}
+		if (shotId > 0)
+		{
+			setLivingItemCount(phantom, shotId, soulshots);
+			if (soulshots > 0)
+			{
+				phantom.addAutoSoulShot(shotId);
+			}
+		}
+
+		// Potions: only the kind a player of its level buys; any others it still carried were counted into the row total.
+		final int potion = (potionId > 0) ? potionId : HP_POTION_ID;
+		for (int id : LIVING_POTION_IDS)
+		{
+			if (id != potion)
+			{
+				setLivingItemCount(phantom, id, 0);
+			}
+		}
+		setLivingItemCount(phantom, potion, potions);
+		if (potions > 0)
+		{
+			phantom.getAutoUseSettings().setAutoPotionItem(potion);
+			phantom.getAutoPlaySettings().setAutoPotionPercent(livingPotionPercent(phantom));
+		}
+		setLivingItemCount(phantom, LIVING_ESCAPE_ID, escapes);
+
+		if (regear)
+		{
+			phantom.broadcastUserInfo();
+			if (data != null)
+			{
+				registerAutoSkills(phantom);
+			}
+		}
+	}
+
+	/**
+	 * What a class wears, for a Living Population bot choosing gear piece by piece: the same weapon and armor families
+	 * {@link #partyWeapon} and {@link PartyRole#armor} give a recruited phantom of that class.
+	 * @param playerClass the class
+	 * @return what it wears
+	 */
+	public static LivingGear.Fit livingFit(PlayerClass playerClass)
+	{
+		if (playerClass == null)
+		{
+			return new LivingGear.Fit(ArmorType.HEAVY.name(), Set.of(WeaponType.SWORD.name()), false, true, 0);
+		}
+		final PartyRole role = roleForClass(playerClass);
+		final String armor = role.armor.name();
+		if (playerClass.isMage())
+		{
+			return new LivingGear.Fit(armor, Set.of(), true, true, 0);
+		}
+		switch (role)
+		{
+			case ARCHER:
+			{
+				return new LivingGear.Fit(armor, Set.of(WeaponType.BOW.name()), false, false, 0);
+			}
+			case DAGGER:
+			{
+				return new LivingGear.Fit(armor, Set.of(WeaponType.DAGGER.name()), false, false, 0);
+			}
+			case DANCER:
+			{
+				return new LivingGear.Fit(armor, Set.of(WeaponType.DUAL.name()), false, false, 0);
+			}
+			case MONK:
+			{
+				return new LivingGear.Fit(armor, Set.of(WeaponType.DUALFIST.name(), WeaponType.FIST.name()), false, false, 0);
+			}
+			case BOUNTY_HUNTER:
+			{
+				return new LivingGear.Fit(armor, Set.of(WeaponType.BLUNT.name()), false, false, 0);
+			}
+			case TANK:
+			case SINGER:
+			{
+				return new LivingGear.Fit(armor, Set.of(WeaponType.SWORD.name()), false, true, 1);
+			}
+			case WARRIOR:
+			{
+				final String name = playerClass.name().toLowerCase();
+				if (nameHas(name, "gladiator", "duelist"))
+				{
+					return new LivingGear.Fit(armor, Set.of(WeaponType.DUAL.name()), false, false, 0);
+				}
+				if (nameHas(name, "warlord", "dreadnought"))
+				{
+					return new LivingGear.Fit(armor, Set.of(WeaponType.POLE.name()), false, false, 0);
+				}
+				if (nameHas(name, "raider", "destroyer", "titan"))
+				{
+					return new LivingGear.Fit(armor, Set.of(WeaponType.SWORD.name()), false, false, 2);
+				}
+				if (playerClass.getRace() == Race.DWARF)
+				{
+					return new LivingGear.Fit(armor, Set.of(WeaponType.BLUNT.name()), false, true, 1);
+				}
+				return new LivingGear.Fit(armor, Set.of(WeaponType.SWORD.name()), false, true, 0);
+			}
+			default:
+			{
+				return new LivingGear.Fit(armor, Set.of(WeaponType.SWORD.name()), false, true, 0);
+			}
+		}
+	}
+
+	/**
+	 * Makes a Living Population bot wear exactly these items: equipped gear that is not among them is taken off and
+	 * destroyed (the module sold it or it was replaced), and pieces it does not wear yet are added and put on. A bow gets
+	 * arrows of its grade and the shots follow the weapon's grade. Game thread only.
+	 * @param phantom the bot
+	 * @param gear the items it wears, weapon first
+	 */
+	public void livingWearGear(Player phantom, List<Integer> gear)
+	{
+		final Weapon before = phantom.getActiveWeaponItem();
+		final List<Integer> wanted = new ArrayList<>(gear);
+		final Set<Integer> seen = new HashSet<>();
+		for (int slot : LIVING_GEAR_SLOTS)
+		{
+			final Item item = phantom.getInventory().getPaperdollItem(slot);
+			if ((item == null) || !((item.getTemplate() instanceof Weapon) || (item.getTemplate() instanceof Armor)) || !seen.add(item.getObjectId()))
+			{
+				continue; // empty, arrows, or the other half of a two-handed weapon or full-body armor
+			}
+			if (!wanted.remove(Integer.valueOf(item.getId())))
+			{
+				phantom.getInventory().unEquipItemInSlot(slot);
+				phantom.getInventory().destroyItem(ItemProcessType.DESTROY, item, phantom, null);
+			}
+		}
+		for (int itemId : wanted)
+		{
+			final ItemTemplate template = ItemData.getInstance().getTemplate(itemId);
+			if (canEquip(phantom, template))
+			{
+				equip(phantom, template);
+			}
+		}
+		livingWeaponChanged(phantom, before);
+	}
+
+	/**
+	 * The items a Living Population bot wears, slot by slot.
+	 * @param phantom the bot
+	 * @return its gear
+	 */
+	public Map<LivingGear.Slot, Integer> livingGearOf(Player phantom)
+	{
+		final Map<LivingGear.Slot, Integer> gear = new EnumMap<>(LivingGear.Slot.class);
+		final Inventory inventory = phantom.getInventory();
+		final Item weapon = inventory.getPaperdollItem(Inventory.PAPERDOLL_RHAND);
+		if ((weapon != null) && (weapon.getTemplate() instanceof Weapon))
+		{
+			gear.put(LivingGear.Slot.WEAPON, weapon.getId());
+		}
+		final Item shield = inventory.getPaperdollItem(Inventory.PAPERDOLL_LHAND);
+		if ((shield != null) && (shield.getTemplate() instanceof Armor) && (shield != weapon))
+		{
+			gear.put(LivingGear.Slot.SHIELD, shield.getId()); // not arrows, which a bow also holds in the left hand
+		}
+		putWorn(gear, LivingGear.Slot.CHEST, inventory.getPaperdollItem(Inventory.PAPERDOLL_CHEST));
+		putWorn(gear, LivingGear.Slot.LEGS, inventory.getPaperdollItem(Inventory.PAPERDOLL_LEGS));
+		putWorn(gear, LivingGear.Slot.HEAD, inventory.getPaperdollItem(Inventory.PAPERDOLL_HEAD));
+		putWorn(gear, LivingGear.Slot.GLOVES, inventory.getPaperdollItem(Inventory.PAPERDOLL_GLOVES));
+		putWorn(gear, LivingGear.Slot.FEET, inventory.getPaperdollItem(Inventory.PAPERDOLL_FEET));
+		putWorn(gear, LivingGear.Slot.NECK, inventory.getPaperdollItem(Inventory.PAPERDOLL_NECK));
+		putWorn(gear, LivingGear.Slot.EAR1, inventory.getPaperdollItem(Inventory.PAPERDOLL_REAR));
+		putWorn(gear, LivingGear.Slot.EAR2, inventory.getPaperdollItem(Inventory.PAPERDOLL_LEAR));
+		putWorn(gear, LivingGear.Slot.RING1, inventory.getPaperdollItem(Inventory.PAPERDOLL_RFINGER));
+		putWorn(gear, LivingGear.Slot.RING2, inventory.getPaperdollItem(Inventory.PAPERDOLL_LFINGER));
+		if (gear.containsKey(LivingGear.Slot.LEGS) && gear.get(LivingGear.Slot.LEGS).equals(gear.get(LivingGear.Slot.CHEST)))
+		{
+			gear.remove(LivingGear.Slot.LEGS); // a full-body armor fills both paperdoll slots
+		}
+		return gear;
+	}
+
+	private static void putWorn(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, Item item)
+	{
+		if ((item != null) && (item.getTemplate() instanceof Armor))
+		{
+			gear.put(slot, item.getId());
+		}
+	}
+
+	/**
+	 * What a Living Population bot did with the items in its bag.
+	 * @param worn the pieces it put on (the pieces they replaced are among the sold items)
+	 * @param loot what the rest sells for at a shop
+	 * @param sold how many items went to the loot
+	 */
+	public record LivingBag(List<LivingGear.Change> worn, long loot, int sold)
+	{
+	}
+
+	/**
+	 * Goes through what a hot Living Population bot picked up: it puts on the pieces that are better than what it wears
+	 * and that its class uses (the same rules as a cold bot's drops), and, when {@code sell} is set, turns the rest of its
+	 * loot into sale value and takes it out of the bag, as a cold bot carries its loot's worth to town. Adena, its shots,
+	 * potions, Scrolls of Escape, arrows and quest items stay. Game thread only.
+	 * @param phantom the bot
+	 * @param fit what its class wears
+	 * @param items item facts
+	 * @param wearable which items it may wear
+	 * @param sell whether to turn the leftovers into loot value
+	 * @return what it put on and what the rest is worth
+	 */
+	public LivingBag livingReviewBag(Player phantom, LivingGear.Fit fit, LivingGear.Items items, IntPredicate wearable, boolean sell)
+	{
+		final Weapon before = phantom.getActiveWeaponItem();
+		final List<LivingGear.Change> worn = new ArrayList<>();
+		boolean progress = true;
+		while (progress)
+		{
+			progress = false;
+			final Map<LivingGear.Slot, Integer> gear = livingGearOf(phantom);
+			final List<LivingGear.Piece> found = new ArrayList<>();
+			for (Item item : phantom.getInventory().getItems())
+			{
+				if (!item.isEquipped() && wearable.test(item.getId()) && canEquip(phantom, item.getTemplate()))
+				{
+					final LivingGear.Piece piece = items.piece(item.getId());
+					if (piece != null)
+					{
+						found.add(piece);
+					}
+				}
+			}
+			final List<LivingGear.Change> best = LivingGear.wearDrops(gear, found, fit, phantom.getLevel(), items);
+			if (best.isEmpty())
+			{
+				break;
+			}
+			final LivingGear.Change change = best.get(0);
+			final Item item = phantom.getInventory().getItemByItemId(change.piece().itemId());
+			if (item == null)
+			{
+				break;
+			}
+			final int slot = livingPaperdollSlot(change.slot());
+			if (slot >= 0)
+			{
+				phantom.getInventory().unEquipItemInSlot(slot);
+			}
+			phantom.getInventory().equipItem(item);
+			worn.add(change);
+			progress = item.isEquipped();
+		}
+		livingWeaponChanged(phantom, before);
+
+		long loot = 0;
+		int sold = 0;
+		if (sell)
+		{
+			for (Item item : new ArrayList<>(phantom.getInventory().getItems()))
+			{
+				if (item.isEquipped() || (item.getId() == Inventory.ADENA_ID) || item.isQuestItem() || !item.getTemplate().isSellable() || (item.getTemplate().getReferencePrice() <= 0) || isLivingSupply(item))
+				{
+					continue;
+				}
+				loot += (item.getTemplate().getReferencePrice() / 2L) * item.getCount();
+				sold++;
+				phantom.getInventory().destroyItem(ItemProcessType.DESTROY, item, phantom, null);
+			}
+		}
+		if (!worn.isEmpty())
+		{
+			phantom.broadcastUserInfo();
+		}
+		return new LivingBag(List.copyOf(worn), loot, sold);
+	}
+
+	/** Whether an item is one of the supplies a living bot keeps: shots, potions, Scrolls of Escape, arrows. */
+	private static boolean isLivingSupply(Item item)
+	{
+		final int id = item.getId();
+		if (id == LIVING_ESCAPE_ID)
+		{
+			return true;
+		}
+		for (int potion : LIVING_POTION_IDS)
+		{
+			if (id == potion)
+			{
+				return true;
+			}
+		}
+		for (CrystalType grade : CrystalType.values())
+		{
+			if ((id == soulshotIdFor(grade)) || (id == spiritshotIdFor(grade)))
+			{
+				return true;
+			}
+		}
+		return (item.getTemplate() instanceof EtcItem) && (((EtcItem) item.getTemplate()).getItemType() == EtcItemType.ARROW);
+	}
+
+	/** The paperdoll slot of a gear slot, or -1 for the weapon (which simply replaces). */
+	private static int livingPaperdollSlot(LivingGear.Slot slot)
+	{
+		return switch (slot)
+		{
+			case SHIELD -> Inventory.PAPERDOLL_LHAND;
+			case EAR1 -> Inventory.PAPERDOLL_REAR;
+			case EAR2 -> Inventory.PAPERDOLL_LEAR;
+			case RING1 -> Inventory.PAPERDOLL_RFINGER;
+			case RING2 -> Inventory.PAPERDOLL_LFINGER;
+			default -> -1;
+		};
+	}
+
+	/**
+	 * After a weapon change: the shots it carries move to the new weapon's grade (same count), and a new bow gets arrows
+	 * of its grade.
+	 */
+	private void livingWeaponChanged(Player phantom, Weapon before)
+	{
+		final Weapon weapon = phantom.getActiveWeaponItem();
+		if ((weapon == null) || (weapon == before))
+		{
+			return;
+		}
+		final int shotId = weapon.isMagicWeapon() ? spiritshotIdFor(weapon.getCrystalType()) : soulshotIdFor(weapon.getCrystalType());
+		long shots = 0;
+		for (CrystalType grade : CrystalType.values())
+		{
+			for (int id : new int[]
+			{
+				soulshotIdFor(grade),
+				spiritshotIdFor(grade)
+			})
+			{
+				if ((id > 0) && (id != shotId))
+				{
+					shots += phantom.getInventory().getInventoryItemCount(id, -1);
+					phantom.removeAutoSoulShot(id);
+					setLivingItemCount(phantom, id, 0);
+				}
+			}
+		}
+		if ((shotId > 0) && (shots > 0))
+		{
+			setLivingItemCount(phantom, shotId, phantom.getInventory().getInventoryItemCount(shotId, -1) + shots);
+			phantom.addAutoSoulShot(shotId);
+		}
+		if (weapon.getItemType() == WeaponType.BOW)
+		{
+			final ItemTemplate arrow = findArrow(weapon.getCrystalType());
+			if ((arrow != null) && (phantom.getInventory().getInventoryItemCount(arrow.getId(), -1) <= 0))
+			{
+				phantom.getInventory().addItem(ItemProcessType.REWARD, arrow.getId(), ARROW_COUNT, phantom, null);
+			}
+		}
+	}
+
+	/** Sets the count of one stackable item in a living bot's inventory, adding or destroying the difference. */
+	private static void setLivingItemCount(Player phantom, int itemId, long count)
+	{
+		final long target = Math.max(0L, Math.min(Integer.MAX_VALUE, count));
+		final long current = phantom.getInventory().getInventoryItemCount(itemId, -1);
+		if (target > current)
+		{
+			phantom.getInventory().addItem(ItemProcessType.REWARD, itemId, (int) (target - current), phantom, null);
+		}
+		else if (target < current)
+		{
+			phantom.getInventory().destroyItemByItemId(ItemProcessType.DESTROY, itemId, (int) (current - target), phantom, null);
+		}
 	}
 
 	/**
@@ -3017,6 +4483,32 @@ public class PhantomManager implements IXmlReader
 		equipJewelry(phantom, BodyPart.NECK, grade, 1);
 		equipJewelry(phantom, BodyPart.LR_EAR, grade, 2);
 		equipJewelry(phantom, BodyPart.LR_FINGER, grade, 2);
+	}
+
+	/**
+	 * Equips a class-appropriate weapon, matching armor set, and jewelry for the given level, without stocking any
+	 * consumables. This is the gear half of {@link #gearParty} (which also stocks shots, potions and reagents); the
+	 * Living Population path uses it directly so it can gate the gear level to what a bot has actually bought.
+	 * @param phantom the phantom to gear
+	 * @param level the level whose best-in-grade gear to equip
+	 * @param mage whether it uses a caster weapon
+	 * @param role its resolved party role (drives weapon family and armor family)
+	 * @param enchant the uniform enchant to apply to weapon and armor (0 for none)
+	 * @return the equipped weapon template, or {@code null} if none was chosen
+	 */
+	private ItemTemplate equipGear(Player phantom, int level, boolean mage, PartyRole role, int enchant)
+	{
+		final CrystalType grade = gradeForLevel(level);
+		final ItemTemplate weapon = partyWeapon(phantom.getPlayerClass(), role, mage, grade, GearContext.SOLO); // a living bot hunts solo
+		if (weapon != null)
+		{
+			equip(phantom, weapon, enchant);
+		}
+		equipArmorSet(phantom, role.armor, grade, enchant, shouldEquipShield(role, mage, weapon));
+		equipJewelry(phantom, BodyPart.NECK, grade, 1);
+		equipJewelry(phantom, BodyPart.LR_EAR, grade, 2);
+		equipJewelry(phantom, BodyPart.LR_FINGER, grade, 2);
+		return weapon;
 	}
 
 	/**
@@ -4727,6 +6219,29 @@ public class PhantomManager implements IXmlReader
 	}
 
 	/**
+	 * Hands a live Living Population bot to {@link PhantomPartyManager} after it accepted a party invite, the way a
+	 * befriended regular is adopted: the party drives it, and every hunter tick and the module's life step stand aside.
+	 * @return the party role from its class, or {@code null} if it is not a live Living Population bot
+	 */
+	public PartyRole adoptLivingForParty(Player bot)
+	{
+		final PhantomData data = (bot == null) ? null : _phantoms.get(bot.getObjectId());
+		if ((data == null) || (data.livingBotId == 0))
+		{
+			return null;
+		}
+		setLivingIdle(bot, false);
+		return adoptFriendForParty(bot);
+	}
+
+	/** @return whether this live character is a Living Population bot serving in a player's party */
+	public boolean isLivingRecruit(Player player)
+	{
+		final PhantomData data = (player == null) ? null : _phantoms.get(player.getObjectId());
+		return (data != null) && data.recruited && (data.livingBotId != 0);
+	}
+
+	/**
 	 * Brings a real player's own character, already loaded from its row with {@link Player#load}, into the owner's
 	 * party as a clientless member driven by the party AI (follow, assist, playstyle, heals and buffs by class). It keeps
 	 * its own level, skills, gear and consumables: nothing is added, removed or re-geared. Its soulshots and healing
@@ -4870,6 +6385,17 @@ public class PhantomManager implements IXmlReader
 	public void despawnRecruit(Player member)
 	{
 		final PhantomData data = (member == null) ? null : _phantoms.get(member.getObjectId());
+		if ((data != null) && data.recruited && (data.livingBotId != 0))
+		{
+			// A Living Population bot is never despawned or deleted here: it goes back to its own life, which the module
+			// picks up on its next step (idle until then, so no hunter tick grabs it first).
+			data.recruited = false;
+			AutoPlayTaskManager.getInstance().stopAutoPlay(member);
+			AutoUseTaskManager.getInstance().stopAutoUseTask(member);
+			data.livingIdle = false;
+			setLivingIdle(member, true);
+			return;
+		}
 		if ((data != null) && data.recruited)
 		{
 			AutoPlayTaskManager.getInstance().stopAutoPlay(member);
@@ -4961,6 +6487,7 @@ public class PhantomManager implements IXmlReader
 		ThreadPool.scheduleAtFixedRate(this::mageCombat, MAGE_TICK_INTERVAL, MAGE_TICK_INTERVAL);
 		ThreadPool.scheduleAtFixedRate(this::assignTargets, DECONFLICT_INTERVAL, DECONFLICT_INTERVAL);
 		ThreadPool.scheduleAtFixedRate(this::pvpCombat, PVP_TICK_INTERVAL, PVP_TICK_INTERVAL);
+		ThreadPool.scheduleAtFixedRate(this::livingSelfHeal, LIVING_SELF_HEAL_INTERVAL, LIVING_SELF_HEAL_INTERVAL);
 		// Phase 2b: detach a watched owner's defense listener when it logs out, so a re-login re-attaches cleanly and
 		// nothing leaks. Registered only when PvP is enabled, so a PvP-disabled server adds no logout-path work.
 		if (PhantomPvpManager.pvpEnabled())
@@ -4980,7 +6507,7 @@ public class PhantomManager implements IXmlReader
 	{
 		for (PhantomData data : _phantoms.values())
 		{
-			if (!data.mage || data.olympian || data.role.isBuddy() || data.recruited || data.dormant || data.resting || data.dispersing || (data.huntPauseUntil > 0) || (data.pvpTargetOid != 0))
+			if (!data.mage || data.olympian || data.role.isBuddy() || data.recruited || data.dormant || data.resting || data.dispersing || data.livingIdle || (data.huntPauseUntil > 0) || (data.pvpTargetOid != 0))
 			{
 				continue; // buddies/recruits never auto-hunt; otherwise skip if fanning out, on a breather, resting, asleep, or PvP-engaged
 			}
@@ -8080,9 +9607,9 @@ public class PhantomManager implements IXmlReader
 			final Player phantom = data.player;
 			try
 			{
-				if (data.olympian || data.role.isBuddy() || data.recruited || data.dormant || data.dispersing || phantom.isDead())
+				if (data.olympian || data.role.isBuddy() || data.recruited || data.dormant || data.dispersing || data.livingIdle || phantom.isDead())
 				{
-					continue; // Olympiad nobles, buddies and recruited party members are not part of the hunt/deconflict
+					continue; // Olympiad nobles, buddies, recruited party members and traveling living bots are not part of the hunt/deconflict
 				}
 				if ((data.play != null) && PhantomClassRecovery.tick(phantom, data.play,
 					FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER && (data.huntPauseUntil == 0) && (data.pvpTargetOid == 0) && !phantom.isInCombat() && !hasLiveMonsterTarget(phantom) && !isMonsterNear(phantom)))
@@ -8651,7 +10178,7 @@ public class PhantomManager implements IXmlReader
 							despawn(data);
 						}
 					}
-					else if ((data.population == null) && ((now - data.deadSince) >= RESPAWN_DELAY))
+					else if ((data.population == null) && !data.livingDeathClaimed && ((now - data.deadSince) >= RESPAWN_DELAY))
 					{
 						// Ad-hoc (admin test) phantom only: revive it in place so the test count stays stable.
 						revive(data);
@@ -8661,6 +10188,13 @@ public class PhantomManager implements IXmlReader
 
 				// Alive again / still alive: clear the death stamp.
 				data.deadSince = 0;
+
+				// A Living Population bot that is traveling or in town is driven by the module, not by the hunter logic
+				// below (dormancy would restart its auto-hunt, roam would walk it off its route).
+				if (data.livingIdle)
+				{
+					continue;
+				}
 
 				// Proximity dormancy: only compute the auto-hunt while a real player is near (hysteresis).
 				final double nearest = nearestObserverDistance(phantom, observers);
@@ -8714,7 +10248,8 @@ public class PhantomManager implements IXmlReader
 				{
 					continue; // assignTargets owns safe class recovery and cancels it on danger
 				}
-				final boolean danger = phantom.isInCombat() || hasLiveMonsterTarget(phantom) || isMonsterNear(phantom);
+				final boolean living = data.livingBotId != 0;
+				final boolean danger = phantom.isInCombat() || hasLiveMonsterTarget(phantom) || (living ? isLivingUnderAttack(phantom) : isMonsterNear(phantom));
 				final boolean active = phantom.isMoving() || phantom.isCastingNow() || phantom.isAttackingNow();
 				// Out of the fight: turn off a stance that drains MP (Vicious Stance); the next fight turns it back on.
 				if (!phantom.isInCombat())
@@ -8729,7 +10264,7 @@ public class PhantomManager implements IXmlReader
 						data.resting = false;
 					}
 				}
-				else if (!danger && ((phantom.getCurrentHpPercent() < REST_SIT_PERCENT) || (phantom.getCurrentMpPercent() < REST_MP_SIT_PERCENT)))
+				else if (!danger && ((phantom.getCurrentHpPercent() < (living ? LIVING_REST_SIT_PERCENT : REST_SIT_PERCENT)) || (phantom.getCurrentMpPercent() < (living ? LIVING_REST_MP_SIT_PERCENT : REST_MP_SIT_PERCENT))))
 				{
 					startRest(phantom);
 					data.resting = true;

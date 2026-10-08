@@ -1,6 +1,6 @@
 # Phantom Hunting-Spot Defense
 
-`PhantomPvpSpotDefense` defaults False and needs `PhantomPvpEnabled`. A field hunter accumulates annoyance
+`PhantomPvpSpotDefense` defaults True and needs `PhantomPvpEnabled`. A field hunter accumulates annoyance
 when an eligible real player damages an already engaged monster or hunts close by. Its rolled Hot, Normal or Patient temper
 sets the limit. It complains, gives the same offender a three- or six-second ultimatum, then attempts a fight
 or a stock duel challenge. Calming below the attack threshold cancels the ultimatum. A replacement offender

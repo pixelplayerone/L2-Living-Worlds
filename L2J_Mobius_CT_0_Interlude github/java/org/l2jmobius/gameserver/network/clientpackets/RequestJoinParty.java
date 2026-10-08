@@ -21,6 +21,7 @@
 package org.l2jmobius.gameserver.network.clientpackets;
 
 import org.l2jmobius.gameserver.config.GeneralConfig;
+import org.l2jmobius.gameserver.livingpop.LivingPopulationManager;
 import org.l2jmobius.gameserver.managers.FakePlayerChatManager;
 import org.l2jmobius.gameserver.managers.PhantomBuddyManager;
 import org.l2jmobius.gameserver.managers.PhantomManager;
@@ -60,6 +61,12 @@ public class RequestJoinParty extends ClientPacket
 			return;
 		}
 		
+		// Living Population bot, live or only a row, anywhere: it answers the invite itself (project hook).
+		if (LivingPopulationManager.getInstance().onPartyInvite(requestor, _name))
+		{
+			return;
+		}
+
 		final Player target = World.getInstance().getPlayer(_name);
 		if (target == null)
 		{

@@ -2503,6 +2503,11 @@ public class FakePlayerChatManager implements IXmlReader
 
 	private String callBridge(String fpcName, String mode, String playerName, String speakerName, String body, String location, String deal, boolean human, BrainDealContext dealContext, BotIdentity identity, String meetState, String meetSpot)
 	{
+		return callBridge(fpcName, mode, playerName, speakerName, body, location, deal, human, dealContext, identity, meetState, meetSpot, null);
+	}
+
+	private String callBridge(String fpcName, String mode, String playerName, String speakerName, String body, String location, String deal, boolean human, BrainDealContext dealContext, BotIdentity identity, String meetState, String meetSpot, String activity)
+	{
 		try
 		{
 			final HttpRequest.Builder builder = HttpRequest.newBuilder() //
@@ -2518,6 +2523,10 @@ public class FakePlayerChatManager implements IXmlReader
 				.header("X-Meet-State", meetState == null ? "" : meetState) //
 				.header("X-Meet-Spot", meetSpot == null ? "" : meetSpot);
 
+			if ((activity != null) && !activity.isEmpty())
+			{
+				builder.header("X-Activity", activity); // a Living Population bot: what it is really doing right now
+			}
 			if ((identity != null) && !identity.isEmpty())
 			{
 				builder.header("X-Bot-Level", identity.level);
@@ -2680,6 +2689,102 @@ public class FakePlayerChatManager implements IXmlReader
 				}
 			}, typingDelayMillis(reply));
 		}, Rnd.get(FRIEND_THINK_MIN, FRIEND_THINK_MAX), onComplete));
+	}
+
+	// ===== Whispers to Living Population bots =====
+	// A Living Population bot is a player character leveling on its own, live near a player or only a row far away. It
+	// answers whispers from anywhere like any player, from what it is really doing. Its replies carry no trade or meet
+	// tags (it is not selling anything), so any tag the brain adds is dropped.
+	private static final Pattern ANY_TAG = Pattern.compile("\\[\\[[^\\]]*\\]\\]?");
+
+	/**
+	 * Answers a whisper to a Living Population bot through the brain.
+	 * @param player who whispered
+	 * @param botName the bot's name
+	 * @param level its level
+	 * @param className its class, display-ready
+	 * @param race its race, display-ready
+	 * @param location where it is ("in Gludio", "near Dion")
+	 * @param activity what it is doing (see {@code LivingChat.activity})
+	 * @param message what the player wrote
+	 */
+	public void handleLivingWhisper(Player player, String botName, int level, String className, String race, String location, String activity, String message)
+	{
+		if ((player == null) || (botName == null) || (message == null) || message.isEmpty())
+		{
+			return;
+		}
+		final String playerName = player.getName();
+		final BotIdentity identity = new BotIdentity(Integer.toString(level), className == null ? "" : className, race == null ? "" : race, "");
+		final String key = BrainConversationExecutor.key(playerName, botName);
+		// Talk about partying opens the window in which the bot's own "yes" (the PARTY tag) means it takes an invite.
+		notePartyAsk(player, botName, message);
+		BrainConversationExecutor.submit(key, onComplete -> scheduleBrainWork(() ->
+		{
+			final String aiReply = callBridge(botName, "WHISPER", playerName, "", message, location, "", false, null, identity, "", "", activity);
+			boolean agreed = false;
+			if ((aiReply != null) && PARTY_TAG.matcher(aiReply).find() && !INVITE_OUT_OF_BLUE.equals(message))
+			{
+				final Long asked = PARTY_ASKED.get(dealKey(playerName, botName));
+				if ((asked != null) && ((System.currentTimeMillis() - asked) <= PARTY_ASK_WINDOW_MS))
+				{
+					notePartyAgreed(playerName, botName);
+					agreed = true;
+				}
+			}
+			final String clean = (aiReply == null) ? "" : ANY_TAG.matcher(aiReply).replaceAll("").trim();
+			final String reply = !clean.isEmpty() ? clean : agreed ? (Rnd.nextBoolean() ? "sure, inv me" : "k inv") : (Rnd.nextBoolean() ? "sec, busy" : "?");
+			ThreadPool.schedule(() ->
+			{
+				if (player.isOnline())
+				{
+					player.sendPacket(new CreatureSay(null, ChatType.WHISPER, botName, reply));
+				}
+			}, typingDelayMillis(reply));
+		}, Rnd.get(FRIEND_THINK_MIN, FRIEND_THINK_MAX), onComplete));
+	}
+
+	/**
+	 * @param player the inviting player
+	 * @param botName a Living Population bot's name
+	 * @return whether the bot agreed in a whisper to party with this player and still means it (the town bot rule)
+	 */
+	public static boolean isLivingPartyAgreed(Player player, String botName)
+	{
+		return (player != null) && (botName != null) && isPartyAgreed(player, botName);
+	}
+
+	/**
+	 * The inviter-side rules of a normal invite, with the stock messages, for an invite to a Living Population bot.
+	 * @param player the inviting player
+	 * @return whether this player may invite someone now
+	 */
+	public static boolean mayInviteLivingBot(Player player)
+	{
+		return mayInviteTownFake(player);
+	}
+
+	/**
+	 * @param x a world position
+	 * @param y a world position
+	 * @return the nearest town as "in Gludio" or "near Gludio", for a bot with no live character
+	 */
+	public static String nearestLocation(int x, int y)
+	{
+		int best = -1;
+		long bestDistanceSq = Long.MAX_VALUE;
+		for (int i = 0; i < TOWN_COORDS.length; i++)
+		{
+			final long dx = x - TOWN_COORDS[i][0];
+			final long dy = y - TOWN_COORDS[i][1];
+			final long distanceSq = (dx * dx) + (dy * dy);
+			if (distanceSq < bestDistanceSq)
+			{
+				bestDistanceSq = distanceSq;
+				best = i;
+			}
+		}
+		return (best < 0) ? "" : ((Math.sqrt(bestDistanceSq) < 3000 ? "in " : "near ") + TOWN_NAMES[best]);
 	}
 
 	// ===== Party invites to town fakes =====

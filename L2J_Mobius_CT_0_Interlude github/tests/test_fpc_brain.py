@@ -199,6 +199,13 @@ class FpcBrainRegressionTests(unittest.TestCase):
         # Other tags are not trade actions and stay as they were.
         self.assertEqual("omw [[FOLLOW]]", self.brain.history_text("omw [[FOLLOW]]"))
 
+    def test_activity_note_for_living_population_bots(self):
+        self.assertEqual("", self.brain.activity_note(""))
+        note = self.brain.activity_note("hunting in Ruins of Agony")
+        self.assertIn("Right now you are hunting in Ruins of Agony", note)
+        self.assertIn("not selling anything", note)
+        self.assertIn("party behavior rules", note)
+
     def test_no_deal_note_forbids_trade_actions(self):
         with self.brain.app.test_request_context(headers={}):
             self.assertEqual("", self.brain.deal_note_from_headers())

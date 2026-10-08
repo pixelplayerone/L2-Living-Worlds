@@ -29,6 +29,7 @@ on:
       - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomServitorRules.java"
       - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomSpotRules.java"
       - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/modules/**"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/livingpop/**"
       - "L2J_Mobius_CT_0_Interlude github/tests/java/**"
       - "L2J_Mobius_CT_0_Interlude github/tests/js/**"
       - "L2J_Mobius_CT_0_Interlude github/tools/l2admin/index.html"
@@ -60,6 +61,7 @@ on:
       - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomServitorRules.java"
       - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/managers/PhantomSpotRules.java"
       - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/modules/**"
+      - "L2J_Mobius_CT_0_Interlude github/java/org/l2jmobius/gameserver/livingpop/**"
       - "L2J_Mobius_CT_0_Interlude github/tests/java/**"
       - "L2J_Mobius_CT_0_Interlude github/tests/js/**"
       - "L2J_Mobius_CT_0_Interlude github/tools/l2admin/index.html"
@@ -118,6 +120,30 @@ jobs:
             "java/org/l2jmobius/gameserver/modules/ModuleResourceType.java" \
             "java/org/l2jmobius/gameserver/modules/ModuleValidator.java" \
             "java/org/l2jmobius/gameserver/modules/ModuleDatabaseSpec.java" \
+            "java/org/l2jmobius/gameserver/livingpop/LivingPopulationConfig.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ColdBot.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ColdProgression.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ColdSeedPlan.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ColdBotStatus.java" \
+            "java/org/l2jmobius/gameserver/livingpop/PopulationDirector.java" \
+            "java/org/l2jmobius/gameserver/livingpop/HandoffPolicy.java" \
+            "java/org/l2jmobius/gameserver/livingpop/NeedsEvaluator.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ColdEconomy.java" \
+            "java/org/l2jmobius/gameserver/livingpop/DecisionLog.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ZoneCatalog.java" \
+            "java/org/l2jmobius/gameserver/livingpop/SupplyPlanner.java" \
+            "java/org/l2jmobius/gameserver/livingpop/GoalPlanner.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ZoneChooser.java" \
+            "java/org/l2jmobius/gameserver/livingpop/TravelLeg.java" \
+            "java/org/l2jmobius/gameserver/livingpop/TravelConfig.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ColdLife.java" \
+            "java/org/l2jmobius/gameserver/livingpop/LivingSupplies.java" \
+            "java/org/l2jmobius/gameserver/livingpop/DropYield.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ColdRisk.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ClassPath.java" \
+            "java/org/l2jmobius/gameserver/livingpop/SkillPlanner.java" \
+            "java/org/l2jmobius/gameserver/livingpop/LivingGear.java" \
+            "java/org/l2jmobius/gameserver/livingpop/LivingChat.java" \
             tests/java/*.java
           java -cp build/test-classes FakePlayerChatParsingTest
           java -cp build/test-classes FakePlayerStorePricingTest
@@ -141,6 +167,8 @@ jobs:
           java -cp build/test-classes PhantomSpotRulesTest
           java -cp build/test-classes TradeAdParserTest
           java -cp build/test-classes ModuleFrameworkTest
+          java -cp build/test-classes LivingPopulationTest
+          java -cp build/test-classes LivingTravelTest
 
       - name: Set up Node
         uses: actions/setup-node@v4

@@ -440,6 +440,125 @@
 #fpcRoot #app { height: 100%; }
 .panel[data-panel="__fpc"] { padding-bottom: 0; }
 body.fpc-active { overflow-x: hidden; }
+/* ---- Living Population observer (full-bleed, like the Population tab) ---- */
+body.lp-active { overflow-x: hidden; }
+body.lp-active #editor .banner { display: none; }
+.panel[data-panel="__lp"] { padding-bottom: 0; }
+#lpRoot { position: relative; width: 100vw; margin-left: calc(50% - 50vw); height: calc(100vh - 170px); min-height: 560px;
+  display: flex; flex-direction: column; border-top: 1px solid var(--line-solid); background: var(--bg-2); }
+#lpRoot .lp-bar { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 10px 18px; border-bottom: 1px solid var(--line-solid); background: var(--panel); }
+#lpRoot .lp-title { display: flex; flex-direction: column; min-width: 170px; }
+#lpRoot .lp-title strong { font-family: var(--serif); font-size: 19px; letter-spacing: .02em; color: var(--gold-bright); }
+#lpRoot .lp-status { font-size: 12px; color: var(--stone); }
+#lpRoot .lp-status.warn { color: var(--warn); }
+#lpRoot .lp-stats { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+#lpRoot .lp-stat { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; background: var(--panel-2);
+  border: 1px solid var(--line-solid); font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
+#lpRoot .lp-stat b { color: var(--ink); font-size: 14px; }
+#lpRoot .lp-stat i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+#lpRoot .lp-stat-total b { color: var(--gold-bright); font-size: 16px; }
+#lpRoot .lp-actions { display: flex; gap: 8px; align-items: center; }
+#lpRoot .lp-btn { padding: 6px 12px; font-size: 12px; }
+#lpRoot .lp-danger { color: var(--ember); border-color: var(--ember); }
+#lpRoot .lp-pick { flex: none; width: 16px; height: 16px; accent-color: var(--gold); cursor: pointer; }
+#lpRoot .lp-picked-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; color: var(--ink-soft); font-size: 13px; }
+#lpRoot .lp-removing { color: var(--ember); font-size: 11.5px; font-weight: 600; }
+#lpRoot .lp-reduce { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#lpRoot .lp-reduce input { width: 90px; }
+.lp-remove-list { max-height: 240px; overflow: auto; margin: 8px 0; padding-left: 18px; }
+#lpRoot .lp-live { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-solid);
+  font-size: 12px; font-weight: 600; letter-spacing: .04em; cursor: pointer; color: var(--stone); user-select: none; }
+#lpRoot .lp-live input { display: none; }
+#lpRoot .lp-live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--stone-dim); }
+#lpRoot .lp-live.on { color: var(--good); border-color: var(--good); }
+#lpRoot .lp-live.on::before { background: var(--good); box-shadow: 0 0 0 3px #6faf6f33; }
+#lpRoot .lp-filters { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 8px 18px; border-bottom: 1px solid var(--line-solid);
+  background: var(--panel); font-size: 13px; color: var(--ink-soft); }
+#lpRoot .lp-filters label { display: inline-flex; align-items: center; gap: 6px; }
+#lpRoot .lp-filters select, #lpRoot .lp-filters input { padding: 5px 8px; background: var(--panel-2); color: var(--ink);
+  border: 1px solid var(--line-solid); border-radius: 6px; font: inherit; }
+#lpRoot .lp-filters input[type=number] { width: 62px; }
+#lpRoot .lp-search input { width: 220px; }
+#lpRoot .lp-main { flex: 1; display: flex; min-height: 0; }
+#lpRoot .lp-map { position: relative; flex: 1; min-width: 0; background: #0b1a1f; overflow: hidden; }
+#lpRoot .lp-map canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+#lpRoot .lp-zoom { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; }
+#lpRoot .lp-zoom button { min-width: 42px; height: 34px; border-radius: 8px; border: 1px solid #ffffff2a; background: #0e1417e6; color: #e8dcc4;
+  font-size: 14px; font-weight: 600; cursor: pointer; }
+#lpRoot .lp-zoom button:hover { border-color: #e7c877; color: #e7c877; }
+#lpRoot .lp-legend { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 14px; flex-wrap: wrap; padding: 7px 12px; border-radius: 8px;
+  background: #0e1417e6; color: #e8dcc4; font-size: 12.5px; }
+#lpRoot .lp-hint { position: absolute; left: 12px; top: 12px; padding: 5px 10px; border-radius: 8px; background: #0e1417d9; color: #c3b492; font-size: 12px; }
+#lpRoot .lp-tip { position: absolute; display: none; pointer-events: none; max-width: 300px; padding: 7px 10px; border-radius: 8px; background: #0e1417f2;
+  border: 1px solid #ffffff22; color: #e8dcc4; font-size: 12.5px; z-index: 2; }
+#lpRoot .lp-side { width: clamp(360px, 30vw, 520px); display: flex; flex-direction: column; border-left: 1px solid var(--line-solid); background: var(--panel); min-height: 0; }
+#lpRoot .lp-side-tabs { display: flex; border-bottom: 1px solid var(--line-solid); }
+#lpRoot .lp-side-tabs button { flex: 1; padding: 12px 6px; white-space: nowrap; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--stone);
+  font: 600 13px var(--sans); letter-spacing: .03em; cursor: pointer; }
+#lpRoot .lp-side-tabs button b { font-weight: 600; margin-left: 4px; padding: 1px 7px; border-radius: 999px; background: var(--panel-3); color: var(--ink-soft); font-size: 11.5px; }
+#lpRoot .lp-side-tabs button.active { color: var(--gold-bright); border-bottom-color: var(--gold-bright); }
+#lpRoot .lp-side-body { flex: 1; overflow: auto; padding: 14px 16px 24px; }
+#lpRoot .lp-empty { text-align: center; color: var(--stone); font-size: 13px; margin: 14px 0; }
+#lpRoot .lp-empty-big { margin-top: 60px; }
+#lpRoot .lp-empty-big strong { display: block; color: var(--ink); font-size: 16px; margin: 8px 0 4px; }
+#lpRoot .lp-empty-glyph { font-size: 34px; color: var(--gold); }
+#lpRoot .lp-muted { color: var(--stone); font-size: 13px; margin: 4px 0; }
+#lpRoot .lp-seg { display: inline-flex; border: 1px solid var(--line-solid); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+#lpRoot .lp-seg button { padding: 6px 12px; background: none; border: 0; border-right: 1px solid var(--line-solid); color: var(--stone); font: 600 12px var(--sans); cursor: pointer; }
+#lpRoot .lp-seg button:last-child { border-right: 0; }
+#lpRoot .lp-seg button.active { background: var(--panel-3); color: var(--gold-bright); }
+#lpRoot .lp-chip-row { margin-bottom: 10px; }
+#lpRoot .lp-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 6px 5px 12px; border-radius: 999px; background: var(--panel-3);
+  border: 1px solid var(--gold); color: var(--ink); font-size: 13px; }
+#lpRoot .lp-chip button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--panel-2); color: var(--ink); cursor: pointer; font-size: 14px; line-height: 1; }
+#lpRoot .lp-roster { display: flex; flex-direction: column; gap: 2px; }
+#lpRoot .lp-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+#lpRoot .lp-row:hover { background: var(--panel-2); }
+#lpRoot .lp-row.active { background: var(--panel-3); box-shadow: inset 3px 0 0 var(--gold-bright); }
+#lpRoot .lp-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; }
+#lpRoot .lp-row-main { flex: 1; min-width: 0; }
+#lpRoot .lp-row-name { color: var(--ink); font-weight: 600; font-size: 14px; }
+#lpRoot .lp-row-sub { color: var(--stone); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lpRoot .lp-row-lv { color: var(--ink-soft); font-size: 13px; white-space: nowrap; }
+#lpRoot .lp-rank { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); color: var(--ink-soft); font-weight: 700; font-size: 13px; flex: none; }
+#lpRoot .lp-rank.top1 { background: #e7c877; color: #1a1408; }
+#lpRoot .lp-rank.top2 { background: #c8ccd2; color: #1a1408; }
+#lpRoot .lp-rank.top3 { background: #c98a52; color: #1a1408; }
+#lpRoot .lp-card-head { display: flex; gap: 14px; align-items: center; }
+#lpRoot .lp-avatar { width: 58px; height: 58px; border-radius: 14px; border: 2px solid; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--panel-2); color: var(--ink); font-size: 22px; font-weight: 700; line-height: 1; flex: none; }
+#lpRoot .lp-avatar small { font-size: 10px; color: var(--stone); font-weight: 600; margin-top: 3px; letter-spacing: .06em; }
+#lpRoot .lp-card-id h3 { margin: 0; font-family: var(--serif); font-size: 21px; color: var(--ink); }
+#lpRoot .lp-card-id div { color: var(--ink-soft); font-size: 13.5px; }
+#lpRoot .lp-pill { display: inline-block; margin-top: 5px; padding: 1px 9px; border: 1px solid; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+#lpRoot .lp-card-actions { display: flex; gap: 8px; margin: 12px 0; }
+#lpRoot .lp-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 6px; }
+#lpRoot .lp-tile { padding: 9px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line-solid); min-width: 0; }
+#lpRoot .lp-tile span { display: block; font-size: 11px; color: var(--stone); letter-spacing: .04em; text-transform: uppercase; }
+#lpRoot .lp-tile b { display: block; font-size: 16px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+#lpRoot .lp-section { margin-top: 16px; }
+#lpRoot .lp-section h4 { margin: 0 0 8px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+#lpRoot .lp-kv { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; margin: 0; font-size: 13.5px; }
+#lpRoot .lp-kv dt { color: var(--stone); }
+#lpRoot .lp-kv dd { margin: 0; color: var(--ink); }
+#lpRoot .lp-gear dt { text-transform: capitalize; }
+#lpRoot .lp-gear-grade { margin: 0 0 8px; color: var(--ink); font-size: 13.5px; }
+#lpRoot .lp-log { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line-solid); }
+#lpRoot .lp-log li { position: relative; margin: 0 0 10px; font-size: 13.5px; color: var(--ink); }
+#lpRoot .lp-log li::before { content: ""; position: absolute; left: -19px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+#lpRoot .lp-log time { display: block; font-size: 11.5px; color: var(--stone); }
+#lpRoot .lp-pos { margin-top: 16px; font-size: 12px; }
+#lpRoot .lp-bar-row { display: grid; grid-template-columns: 150px 1fr 56px; gap: 10px; align-items: center; margin: 5px 0; font-size: 13px; }
+#lpRoot .lp-bar-label { color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lpRoot .lp-bar-track { height: 10px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
+#lpRoot .lp-bar-fill { display: block; height: 100%; border-radius: 999px; }
+#lpRoot .lp-bar-row b { text-align: right; color: var(--ink); }
+@media (max-width: 900px) {
+  #lpRoot { height: auto !important; }
+  #lpRoot .lp-main { flex-direction: column; }
+  #lpRoot .lp-map { height: 60vh; flex: none; }
+  #lpRoot .lp-side { width: auto; border-left: 0; border-top: 1px solid var(--line-solid); }
+}
 
 </style>
 </head>
@@ -642,6 +761,28 @@ const PANELS = [
       {key:"PhantomOlympiadRejoinParty", label:"Party rejoins after your match", type:"bool", default:"True",
        help:"Your recruited party members and buddies wait during your match and rejoin your party when you come back."},
     ]},
+  { id:"livingpop", title:"Living Population Settings", file:"living-population/module.ini",
+    blurb:"The simulated population of player-like bots that level, shop and travel on their own. Read at server start, so restart the server to apply (the bot count can also be lowered live from the monitor).",
+    fields:[
+      {key:"Enabled", label:"Run the simulation", type:"bool", default:"False", help:"Master switch for the whole Living Population. Restart required."},
+      {key:"PopulationSize", label:"Number of bots", type:"int", default:"100", help:"How many bots the world holds. Raising it adds bots in waves (below). Lowering it here removes none: use Reduce in the monitor's Overview to remove bots."},
+      {key:"BirthBatch", label:"New bots per wave", type:"int", default:"10", isNew:true, help:"While the population is below the number of bots, this many are born at a time, at level 1 in their starting village. 0 = all at once."},
+      {key:"BirthIntervalMinutes", label:"Minutes between waves", type:"int", default:"20", isNew:true, help:"Time between waves of new bots. Waves spread the levels out, like new players joining over time."},
+      {key:"DirectorEnabled", label:"Level director", type:"bool", default:"True", help:"Steer bot leveling toward a target level: bots below it level faster, bots above it slower."},
+      {key:"DirectorLevelGoal", label:"Level goal", type:"int", default:"0", isNew:true, help:"The level the director steers toward. 0 = follow the online players' level; any other number is a fixed goal."},
+      {key:"MaxLevel", label:"Max level", type:"int", default:"80", help:"Bots never level past this."},
+      {key:"ColdKillsPerMinute", label:"Kills per minute", type:"float", default:"12", help:"How fast an unseen bot hunts. Higher = the whole population levels faster."},
+      {key:"HandoffMaxHotBots", label:"Max live bots", type:"int", default:"40", help:"How many bots may be real characters in the world at once (the ones near you). They share the server's 200 phantom limit."},
+      {key:"HandoffActivationRadius", label:"Live distance", type:"int", default:"3000", help:"How close (game units) you must be for a bot to become a real character you can see."},
+      {key:"TravelEnabled", label:"Travel and towns", type:"bool", default:"True", help:"Bots pick hunting grounds for their level, go to town to shop and sell, and walk or teleport between them."},
+      {key:"AfkChancePercent", label:"AFK chance in town (%)", type:"int", default:"15", help:"Chance a bot takes a break after its town errands."},
+      {key:"ClassChanges", label:"Class changes", type:"bool", default:"True", help:"Bots do their class change quests at 20, 40 and 76."},
+      {key:"SkillTraining", label:"Skill training", type:"bool", default:"True", help:"Bots learn skills from their trainer with SP and adena instead of knowing every skill of their level."},
+      {key:"GearSlots", label:"Gear per slot", type:"bool", default:"True", help:"Bots buy and wear gear piece by piece and wear better drops."},
+      {key:"GearTrade", label:"Buy gear shops do not sell", type:"bool", default:"True", help:"Gear no town shop sells is bought at its reference price as if from another player."},
+      {key:"ColdDeathsPerHour", label:"Deaths per hour", type:"float", default:"0.3", help:"How often an unseen bot dies while hunting (it loses experience and recovers in town)."},
+      {key:"SnapshotIntervalSeconds", label:"Monitor update (seconds)", type:"int", default:"5", isNew:true, help:"How often the server writes what the Living Population monitor shows. Lower is fresher."},
+    ]},
 
 ];
 
@@ -814,6 +955,7 @@ async function loadFromHandle(picked){
   }
   state.dirHandle = configDir;
   await scanDir(configDir, "");
+  await lpLoadModuleIni(picked);
   if (Object.keys(state.files).length === 0){
     toast("No .ini files found. Pick your server's game folder (the one holding config and data).", true);
     return;
@@ -882,6 +1024,24 @@ async function scanDir(dir, prefix){
       try{ await scanDir(entry, entry.name); }catch(_){}
     }
   }
+}
+
+// The Living Population settings live in the module's own folder (game/modules/living-population/config), not in
+// config/, so they are loaded on their own under a key no config file can have.
+const LP_MODULE_FILE = "living-population/module.ini";
+async function lpLoadModuleIni(picked){
+  for (const hop of [["modules", "living-population", "config"], ["game", "modules", "living-population", "config"]]){
+    try{
+      const dir = await subDir(picked, ...hop);
+      const fh = await dir.getFileHandle("module.ini");
+      const text = await (await fh.getFile()).text();
+      const parsed = parseIni(text);
+      state.files[LP_MODULE_FILE] = { relPath:"modules/living-population/config/module.ini", fileHandle:fh, lines:parsed.lines,
+        keyIndex:parsed.keyIndex, original:text.replace(/\r\n/g,"\n"), dirty:false };
+      return true;
+    }catch(_){}
+  }
+  return false;
 }
 
 /* ---------- Download fallback (no FS API) ---------- */
@@ -962,6 +1122,15 @@ function buildTabs(){
   gp.innerHTML = '<div id="fpcRoot"></div>';
   panels.appendChild(gp);
 
+  // Living Population tab (always) - a read-only monitor of the bot-simulation snapshot the
+  // living-population module writes (log/LivingPopulation.json under the game folder).
+  const lt = document.createElement("button");
+  lt.className = "tab"; lt.dataset.tab = "__lp";
+  lt.innerHTML = 'Living Population<span class="dot"></span>';
+  lt.onclick = () => { switchTab("__lp"); lpRender(); };
+  tabs.appendChild(lt);
+  panels.appendChild(lpBuildPanel());
+
   // Raw editor tab (always).
   const rt = document.createElement("button");
   rt.className = "tab"; rt.dataset.tab = "__raw";
@@ -973,6 +1142,752 @@ function buildTabs(){
   state.activeTab = available.length ? available[0].id : "__raw";
   if (!available.length) switchTab("__raw");
   psRender();
+}
+
+/* ============================================================
+ * Living Population monitor (read-only)
+ * ------------------------------------------------------------
+ * Renders the JSON snapshot the living-population module writes. It never edits anything: it reads
+ * game/log/LivingPopulation.json from the same picked folder as the other tabs, or a file you pick, and
+ * shows a world map of where the bots are, the population totals, per-race and per-level-band counts, and the
+ * per-bot list. The map and the list share one set of filters. Clicking a bot opens its full state and its recent
+ * decisions (why it restocked, upgraded, went hot, and so on). It is safe when the module is off or has not
+ * written a snapshot yet: it just says so.
+ * ============================================================ */
+const lpState = { source: null, timer: null, data: null, selected: null, cluster: null, rank: "level", side: "bot", sort: "level",
+  logDir: null, picked: new Set(), removing: new Set() };
+// World coordinates covered by tools/l2admin/world-map.png (the same calibration the Population tab uses).
+const LP_WORLD = { x1: -134971, y1: -256040, x2: 230737, y2: 258432 };
+// Map colours per bot state. "hunt" includes resting in the field; "town" covers bots in town, AFK in town, or on
+// the road to or from it; "dead" is a bot recovering in town after a death.
+const LP_CATS = {
+  hot:  { label: "Live (near a player)", color: "#e0533d" },
+  hunt: { label: "Hunting or resting",   color: "#6ea8fe" },
+  town: { label: "Town or travelling",   color: "#e8c24a" },
+  dead: { label: "Recovering from death", color: "#a7a9ac" }
+};
+// Interlude class names by class id (the PlayerClass enum), so the monitor shows names instead of numbers.
+const LP_CLASS_NAMES = {0:"Fighter", 1:"Warrior", 2:"Gladiator", 3:"Warlord", 4:"Knight", 5:"Paladin", 6:"Dark Avenger", 7:"Rogue", 8:"Treasure Hunter", 9:"Hawkeye", 10:"Mage", 11:"Wizard", 12:"Sorcerer", 13:"Necromancer", 14:"Warlock", 15:"Cleric", 16:"Bishop", 17:"Prophet", 18:"Elven Fighter", 19:"Elven Knight", 20:"Temple Knight", 21:"Swordsinger", 22:"Elven Scout", 23:"Plains Walker", 24:"Silver Ranger", 25:"Elven Mage", 26:"Elven Wizard", 27:"Spellsinger", 28:"Elemental Summoner", 29:"Oracle", 30:"Elder", 31:"Dark Fighter", 32:"Palus Knight", 33:"Shillien Knight", 34:"Bladedancer", 35:"Assassin", 36:"Abyss Walker", 37:"Phantom Ranger", 38:"Dark Mage", 39:"Dark Wizard", 40:"Spellhowler", 41:"Phantom Summoner", 42:"Shillien Oracle", 43:"Shillien Elder", 44:"Orc Fighter", 45:"Orc Raider", 46:"Destroyer", 47:"Orc Monk", 48:"Tyrant", 49:"Orc Mage", 50:"Orc Shaman", 51:"Overlord", 52:"Warcryer", 53:"Dwarven Fighter", 54:"Scavenger", 55:"Bounty Hunter", 56:"Artisan", 57:"Warsmith", 88:"Duelist", 89:"Dreadnought", 90:"Phoenix Knight", 91:"Hell Knight", 92:"Sagittarius", 93:"Adventurer", 94:"Archmage", 95:"Soultaker", 96:"Arcana Lord", 97:"Cardinal", 98:"Hierophant", 99:"Eva Templar", 100:"Sword Muse", 101:"Wind Rider", 102:"Moonlight Sentinel", 103:"Mystic Muse", 104:"Elemental Master", 105:"Eva Saint", 106:"Shillien Templar", 107:"Spectral Dancer", 108:"Ghost Hunter", 109:"Ghost Sentinel", 110:"Storm Screamer", 111:"Spectral Master", 112:"Shillien Saint", 113:"Titan", 114:"Grand Khavatari", 115:"Dominator", 116:"Doomcryer", 117:"Fortune Seeker", 118:"Maestro"};
+function lpClassName(id){ const n = LP_CLASS_NAMES[Number(id)]; return n ? n : "class " + id; }
+const LP_TOWN_ACTIVITIES = ["in_town", "afk", "walking_to_town", "escaping", "to_zone"];
+// Plain words for the activity codes the module writes.
+const LP_ACTIVITY_WORDS = {
+  hunting: "Hunting", resting: "Resting in the field", in_town: "In town", afk: "AFK in town",
+  walking_to_town: "Walking to town", escaping: "Casting Scroll of Escape", to_zone: "Heading to a hunting ground",
+  dead: "Recovering from a death"
+};
+function lpCat(b){
+  if (b.hot) return "hot";
+  if (String(b.activity) === "dead") return "dead";
+  return LP_TOWN_ACTIVITIES.indexOf(String(b.activity)) >= 0 ? "town" : "hunt";
+}
+function lpActivity(b){ const a = String(b.activity || "hunting"); return LP_ACTIVITY_WORDS[a] || a.replace(/_/g, " "); }
+function lpNum(v){ return (v == null || v === "") ? "-" : (typeof v === "number" ? v.toLocaleString() : String(v)); }
+// The tab is a full-screen observer: a large map with a side panel (bot card, roster, rankings, overview).
+function lpBuildPanel(){
+  const sec = document.createElement("section");
+  sec.className = "panel"; sec.dataset.panel = "__lp";
+  sec.innerHTML =
+    '<div id="lpRoot">' +
+      '<div class="lp-bar">' +
+        '<div class="lp-title"><strong>Living Population</strong><span id="lpStatus" class="lp-status"></span></div>' +
+        '<div id="lpStats" class="lp-stats"></div>' +
+        '<div class="lp-actions">' +
+          '<label class="lp-live" title="Reload the snapshot every 5 seconds"><input type="checkbox" id="lpAuto" checked><span>Live</span></label>' +
+          '<button id="lpReload" class="btn btn-ghost lp-btn">Reload</button>' +
+          '<button id="lpPick" class="btn btn-ghost lp-btn">Load file</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="lpFilters" class="lp-filters">' +
+        '<label class="lp-search"><input id="lpFName" type="search" placeholder="Find a bot by name" autocomplete="off"></label>' +
+        '<label>State <select id="lpFState">' +
+          '<option value="all">All</option><option value="hot">Live (near a player)</option><option value="hunt">Hunting or resting</option><option value="town">Town or travelling</option><option value="dead">Recovering from death</option>' +
+        '</select></label>' +
+        '<label>Level <input id="lpFMin" type="number" min="1" max="80" placeholder="1"><span class="muted">to</span><input id="lpFMax" type="number" min="1" max="80" placeholder="80"></label>' +
+        '<label>Race <select id="lpFRace"><option value="all">All races</option></select></label>' +
+        '<label>Class <select id="lpFClass"><option value="all">All classes</option></select></label>' +
+        '<button id="lpFReset" class="btn btn-ghost lp-btn">Clear filters</button>' +
+      '</div>' +
+      '<div class="lp-main">' +
+        '<div id="lpMapWrap" class="lp-map">' +
+          '<canvas id="lpMap"></canvas>' +
+          '<div class="lp-zoom">' +
+            '<button id="lpZoomIn" title="Zoom in">+</button>' +
+            '<button id="lpZoomOut" title="Zoom out">&#8722;</button>' +
+            '<button id="lpFitBots" title="Fit the shown bots">Fit</button>' +
+            '<button id="lpFitWorld" title="Show the whole world">World</button>' +
+          '</div>' +
+          '<div id="lpLegend" class="lp-legend"></div>' +
+          '<div id="lpTip" class="lp-tip"></div>' +
+          '<div id="lpMapNote" class="lp-hint">Click a circle to list its bots. Drag to pan, scroll to zoom.</div>' +
+        '</div>' +
+        '<aside class="lp-side">' +
+          '<div id="lpSideTabs" class="lp-side-tabs">' +
+            '<button data-lp-side="bot">Bot</button>' +
+            '<button data-lp-side="roster">Roster <b id="lpRosterCount">0</b></button>' +
+            '<button data-lp-side="rank">Rankings</button>' +
+            '<button data-lp-side="overview">Overview</button>' +
+          '</div>' +
+          '<div id="lpSide" class="lp-side-body"></div>' +
+        '</aside>' +
+      '</div>' +
+    '</div>';
+  return sec;
+}
+function lpRender(){
+  const reload = document.getElementById("lpReload");
+  const pick = document.getElementById("lpPick");
+  const auto = document.getElementById("lpAuto");
+  if (reload && !reload._wired){ reload._wired = true; reload.onclick = () => lpReloadFromFolder(); }
+  if (pick && !pick._wired){ pick._wired = true; pick.onclick = () => lpPickFile(); }
+  if (auto && !auto._wired){
+    auto._wired = true;
+    auto.onchange = () => {
+      if (lpState.timer){ clearInterval(lpState.timer); lpState.timer = null; }
+      if (auto.checked){ lpState.timer = setInterval(() => lpRefresh(), 5000); }
+      auto.parentElement.classList.toggle("on", auto.checked);
+    };
+    auto.onchange(); // Live is on from the start
+  }
+  const tabs = document.getElementById("lpSideTabs");
+  if (tabs && !tabs._wired){
+    tabs._wired = true;
+    tabs.onclick = ev => { const b = ev.target.closest("button[data-lp-side]"); if (b){ lpState.side = b.dataset.lpSide; lpRenderSide(); } };
+  }
+  if (!window._lpResizeWired){ window._lpResizeWired = true; window.addEventListener("resize", lpFitHeight); }
+  lpWireFilters();
+  lpMapInit();
+  lpFitHeight();
+  lpRenderSide();
+  lpReloadFromFolder();
+}
+// Fill the window below the page header: the observer is as tall as the screen allows.
+function lpFitHeight(){
+  const root = document.getElementById("lpRoot");
+  if (!root || !root.offsetParent) return;
+  const top = root.getBoundingClientRect().top + window.scrollY;
+  root.style.height = Math.max(560, window.innerHeight - top - 10) + "px";
+  lpMapDraw();
+}
+// Try the remembered game folder first, so the common case needs no file pick.
+async function lpReloadFromFolder(){
+  if (!("showDirectoryPicker" in window) || !rememberedDir){
+    lpSetStatus("Open your game folder (top of the page), or use Load file.", true);
+    return;
+  }
+  const candidates = [["log","LivingPopulation.json"], ["game","log","LivingPopulation.json"], ["LivingPopulation.json"]];
+  for (const hop of candidates){
+    try{
+      let d = rememberedDir;
+      for (let i = 0; i < hop.length - 1; i++) d = await d.getDirectoryHandle(hop[i]);
+      const fh = await d.getFileHandle(hop[hop.length - 1]);
+      lpState.source = { kind:"handle", handle: fh };
+      lpState.logDir = d;
+      await lpRenderFromHandle(fh);
+      return;
+    }catch(_){}
+  }
+  lpSetStatus("No snapshot found under the game folder yet. Enable the module and let it run, or use Load file.", true);
+}
+async function lpPickFile(){
+  if (!("showOpenFilePicker" in window)){ lpSetStatus("File picking is not available in this browser.", true); return; }
+  try{
+    const [fh] = await window.showOpenFilePicker({ id:"l2admin-lp", types:[{ description:"Snapshot JSON", accept:{ "application/json":[".json"] } }] });
+    lpState.source = { kind:"handle", handle: fh };
+    lpState.logDir = null; // a picked file gives no folder to write requests into
+    await lpRenderFromHandle(fh);
+  }catch(err){ if (err && err.name === "AbortError") return; lpSetStatus("Could not read that file.", true); }
+}
+async function lpRefresh(){
+  if (lpState.source && lpState.source.kind === "handle"){ await lpRenderFromHandle(lpState.source.handle); }
+  else { await lpReloadFromFolder(); }
+}
+async function lpRenderFromHandle(fh){
+  try{
+    const text = await (await fh.getFile()).text();
+    lpRenderData(JSON.parse(text));
+  }catch(err){
+    lpSetStatus("Snapshot could not be read or parsed.", true);
+  }
+}
+function lpSetStatus(msg, warn){
+  const el = document.getElementById("lpStatus");
+  if (el){ el.textContent = msg || ""; el.classList.toggle("warn", !!warn); }
+}
+function lpBots(){ return Array.isArray(lpState.data && lpState.data.bots) ? lpState.data.bots : []; }
+// ---- filters (shared by the map, the roster and the rankings) ----
+function lpWireFilters(){
+  const root = document.getElementById("lpFilters");
+  if (!root || root._wired) return;
+  root._wired = true;
+  ["lpFState","lpFMin","lpFMax","lpFRace","lpFClass","lpFName"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", () => { lpState.cluster = null; lpRenderView(); });
+  });
+  document.getElementById("lpFReset").onclick = () => {
+    document.getElementById("lpFState").value = "all";
+    document.getElementById("lpFMin").value = "";
+    document.getElementById("lpFMax").value = "";
+    document.getElementById("lpFRace").value = "all";
+    document.getElementById("lpFClass").value = "all";
+    document.getElementById("lpFName").value = "";
+    lpState.cluster = null;
+    lpRenderView();
+  };
+}
+function lpFilterValues(){
+  const v = id => { const el = document.getElementById(id); return el ? el.value : ""; };
+  return {
+    state: v("lpFState") || "all",
+    min: parseInt(v("lpFMin"), 10),
+    max: parseInt(v("lpFMax"), 10),
+    race: v("lpFRace") || "all",
+    cls: v("lpFClass") || "all",
+    name: v("lpFName").trim().toLowerCase()
+  };
+}
+function lpFiltered(){
+  const f = lpFilterValues();
+  return lpBots().filter(b => {
+    if (f.state !== "all" && lpCat(b) !== f.state) return false;
+    if (!isNaN(f.min) && Number(b.level) < f.min) return false;
+    if (!isNaN(f.max) && Number(b.level) > f.max) return false;
+    if (f.race !== "all" && String(b.race) !== f.race) return false;
+    if (f.cls !== "all" && String(b.classId) !== f.cls) return false;
+    if (f.name && String(b.name || "").toLowerCase().indexOf(f.name) < 0) return false;
+    return true;
+  });
+}
+function lpFillRaceOptions(){
+  const sel = document.getElementById("lpFRace");
+  if (!sel) return;
+  const races = Array.from(new Set(lpBots().map(b => String(b.race)).filter(r => r && r !== "null"))).sort();
+  const have = Array.from(sel.options).slice(1).map(o => o.value);
+  if (have.join("|") === races.join("|")) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">All races</option>' + races.map(r => '<option value="' + escapeHtml(r) + '">' + escapeHtml(r) + '</option>').join('');
+  sel.value = races.indexOf(current) >= 0 ? current : "all";
+}
+function lpFillClassOptions(){
+  const sel = document.getElementById("lpFClass");
+  if (!sel) return;
+  const ids = Array.from(new Set(lpBots().map(b => String(b.classId)).filter(c => c && c !== "null" && c !== "undefined")))
+    .sort((a, b) => lpClassName(a).localeCompare(lpClassName(b)));
+  const have = Array.from(sel.options).slice(1).map(o => o.value);
+  if (have.join("|") === ids.join("|")) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">All classes</option>' + ids.map(c => '<option value="' + escapeHtml(c) + '">' + escapeHtml(lpClassName(c)) + '</option>').join('');
+  sel.value = ids.indexOf(current) >= 0 ? current : "all";
+}
+function lpRenderData(data){
+  lpState.data = data;
+  const ids = new Set((Array.isArray(data && data.bots) ? data.bots : []).map(b => String(b.id)));
+  [...lpState.removing].forEach(id => { if (!ids.has(id)) lpState.removing.delete(id); });
+  [...lpState.picked].forEach(id => { if (!ids.has(id)) lpState.picked.delete(id); });
+  const when = data && data.generatedAt ? new Date(Number(data.generatedAt)).toLocaleTimeString() : "unknown";
+  lpSetStatus("Snapshot " + when, false);
+  lpFillRaceOptions();
+  lpFillClassOptions();
+  if (!lpMap.fitted && lpBots().length){ lpFitHeight(); lpMapFitBots(); lpMap.fitted = true; }
+  lpRenderView();
+}
+function lpSelect(id){
+  lpState.selected = (id == null) ? null : String(id);
+  lpState.side = "bot";
+  lpRenderView();
+}
+// Redraw everything that depends on the data or the filters: header counts, map and side panel.
+function lpRenderView(){
+  const all = lpBots();
+  const shown = lpFiltered();
+  const counts = { hot: 0, hunt: 0, town: 0, dead: 0 };
+  all.forEach(b => counts[lpCat(b)]++);
+  const data = lpState.data || {};
+  const stats = document.getElementById("lpStats");
+  if (stats){
+    stats.innerHTML =
+      '<span class="lp-stat lp-stat-total"><b>' + lpNum(data.total != null ? data.total : all.length) + '</b> bots</span>' +
+      Object.keys(LP_CATS).map(k => '<span class="lp-stat" title="' + escapeHtml(LP_CATS[k].label) + '"><i style="background:' + LP_CATS[k].color + '"></i><b>' + lpNum(counts[k]) + '</b> ' + escapeHtml(LP_CATS[k].label.split(" (")[0].toLowerCase()) + '</span>').join('') +
+      (data.directorTarget ? '<span class="lp-stat" title="The level the population director is steering bots toward">target Lv <b>' + escapeHtml(String(data.directorTarget)) + '</b></span>' : '');
+  }
+  const rc = document.getElementById("lpRosterCount");
+  if (rc) rc.textContent = lpState.cluster ? String(lpState.cluster.length) : String(shown.length);
+  lpMapDraw();
+  lpRenderSide();
+}
+// ---- side panel ----
+function lpRenderSide(){
+  const el = document.getElementById("lpSide");
+  if (!el) return;
+  document.querySelectorAll("#lpSideTabs button").forEach(b => b.classList.toggle("active", b.dataset.lpSide === lpState.side));
+  const byId = {};
+  lpBots().forEach(b => byId[String(b.id)] = b);
+  const keep = el.scrollTop;
+  if (lpState.side === "roster") el.innerHTML = lpRosterHtml(byId);
+  else if (lpState.side === "rank") el.innerHTML = lpRankingsHtml(lpFiltered());
+  else if (lpState.side === "overview") el.innerHTML = lpOverviewHtml(lpFiltered());
+  else el.innerHTML = lpDetailHtml(byId[String(lpState.selected)]);
+  if (lpState._sideWas === lpState.side + ":" + lpState.selected) el.scrollTop = keep;
+  lpState._sideWas = lpState.side + ":" + lpState.selected;
+  el.onclick = ev => {
+    const t = ev.target;
+    const pick = t.closest("input[data-lp-pick]");
+    if (pick){ if (pick.checked) lpState.picked.add(pick.dataset.lpPick); else lpState.picked.delete(pick.dataset.lpPick); lpRenderSide(); return; }
+    if (t.closest("#lpPickShown")){ (lpState.cluster || lpFiltered().map(b => String(b.id))).forEach(id => lpState.picked.add(String(id))); lpRenderSide(); return; }
+    if (t.closest("#lpClearPicked")){ lpState.picked.clear(); lpRenderSide(); return; }
+    if (t.closest("#lpDeletePicked")){ lpConfirmRemove([...lpState.picked].map(id => byId[id]).filter(Boolean)); return; }
+    if (t.closest("#lpDeleteBot")){ const b = byId[String(lpState.selected)]; if (b) lpConfirmRemove([b]); return; }
+    if (t.closest("#lpReduceGo")){ lpConfirmReduce(); return; }
+    const rank = t.closest("button[data-lp-rank]");
+    if (rank){ lpState.rank = rank.dataset.lpRank; lpRenderSide(); return; }
+    const sort = t.closest("button[data-lp-sort]");
+    if (sort){ lpState.sort = sort.dataset.lpSort; lpRenderSide(); return; }
+    if (t.closest("#lpClusterClose")){ lpState.cluster = null; lpRenderView(); return; }
+    if (t.closest("#lpShowOnMap")){ const b = byId[String(lpState.selected)]; if (b) lpMapFocus(b); return; }
+    if (t.closest("#lpBackToRoster")){ lpState.side = "roster"; lpRenderSide(); return; }
+    const row = t.closest("[data-lp-bot]");
+    if (row) lpSelect(row.dataset.lpBot);
+  };
+}
+function lpDot(b){ return '<i class="lp-dot" style="background:' + LP_CATS[lpCat(b)].color + '"></i>'; }
+function lpWhere(b){
+  if (b.town) return b.town;
+  if (b.zone) return b.zone;
+  return b.region != null ? b.region : "";
+}
+const LP_SORTS = {
+  level: { label: "Level", cmp: (a, b) => (Number(b.level) - Number(a.level)) || String(a.name).localeCompare(String(b.name)) },
+  name:  { label: "Name",  cmp: (a, b) => String(a.name).localeCompare(String(b.name)) },
+  adena: { label: "Adena", cmp: (a, b) => (Number(b.adena) || 0) - (Number(a.adena) || 0) },
+  kills: { label: "Kills", cmp: (a, b) => (Number(b.kills) || 0) - (Number(a.kills) || 0) }
+};
+const LP_ROSTER_LIMIT = 400;
+function lpRosterHtml(byId){
+  const list = lpState.cluster ? lpState.cluster.map(id => byId[id]).filter(Boolean) : lpFiltered();
+  const sort = LP_SORTS[lpState.sort] || LP_SORTS.level;
+  const rows = list.slice().sort(sort.cmp);
+  const head = lpState.cluster
+    ? '<div class="lp-chip-row"><span class="lp-chip">' + rows.length + (rows.length === 1 ? ' bot' : ' bots') + ' in this circle <button id="lpClusterClose" title="Show all bots">&#215;</button></span></div>'
+    : '';
+  const sorts = '<div class="lp-seg">' + Object.keys(LP_SORTS).map(k => '<button data-lp-sort="' + k + '"' + (k === lpState.sort ? ' class="active"' : '') + '>' + LP_SORTS[k].label + '</button>').join('') + '</div>';
+  if (!rows.length) return head + sorts + '<div class="lp-empty">' + (lpBots().length ? 'No bots match the filters.' : 'No snapshot loaded yet.') + '</div>';
+  const shown = rows.slice(0, LP_ROSTER_LIMIT);
+  const picked = lpState.picked.size;
+  const pickBar = '<div class="lp-picked-bar">' +
+    (picked ? '<span>' + picked + ' selected</span><button id="lpDeletePicked" class="btn btn-ghost lp-btn lp-danger">Delete selected</button><button id="lpClearPicked" class="btn btn-ghost lp-btn">Clear</button>'
+            : '<button id="lpPickShown" class="btn btn-ghost lp-btn">Select all shown</button>') + '</div>';
+  return head + sorts + pickBar + '<div class="lp-roster">' + shown.map(b =>
+    '<div class="lp-row' + (String(b.id) === String(lpState.selected) ? ' active' : '') + '" data-lp-bot="' + escapeHtml(String(b.id)) + '">' +
+      '<input type="checkbox" class="lp-pick" data-lp-pick="' + escapeHtml(String(b.id)) + '"' + (lpState.picked.has(String(b.id)) ? ' checked' : '') + ' title="Select">' +
+      lpDot(b) +
+      '<div class="lp-row-main"><div class="lp-row-name">' + escapeHtml(String(b.name)) + '</div>' +
+      '<div class="lp-row-sub">' + escapeHtml(lpClassName(b.classId)) + ' &#183; ' + escapeHtml(lpWhere(b) || lpActivity(b)) + '</div></div>' +
+      (lpState.removing.has(String(b.id)) ? '<span class="lp-removing">removing</span>' : '') +
+      '<div class="lp-row-lv">Lv ' + escapeHtml(String(b.level)) + '</div>' +
+    '</div>').join('') + '</div>' +
+    (rows.length > shown.length ? '<div class="lp-empty">Showing the first ' + LP_ROSTER_LIMIT + ' of ' + rows.length + '. Narrow the filters to see the rest.</div>' : '');
+}
+// Rankings: the top twenty of the shown bots by level (then progress into the level), adena, gear tier, or kills.
+const LP_RANKS = {
+  level: { label: "Level", value: b => Number(b.level) || 0, tie: b => Number(b.levelProgress) || 0, show: b => "Lv " + b.level },
+  adena: { label: "Adena", value: b => Number(b.adena) || 0, tie: b => Number(b.level) || 0, show: b => (Number(b.adena) || 0).toLocaleString() + " adena" },
+  gear:  { label: "Gear", value: b => Number(b.gearTier) || 0, tie: b => Number(b.level) || 0, show: b => lpGear(b) },
+  kills: { label: "Kills", value: b => Number(b.kills) || 0, tie: b => Number(b.level) || 0, show: b => (Number(b.kills) || 0).toLocaleString() + " kills" }
+};
+function lpRankingsHtml(bots){
+  const key = LP_RANKS[lpState.rank] ? lpState.rank : "level";
+  const r = LP_RANKS[key];
+  const top = bots.slice().sort((a, b) => (r.value(b) - r.value(a)) || (r.tie(b) - r.tie(a)) || String(a.name).localeCompare(String(b.name))).slice(0, 20);
+  const tabs = '<div class="lp-seg">' + Object.keys(LP_RANKS).map(k => '<button data-lp-rank="' + k + '"' + (k === key ? ' class="active"' : '') + '>' + LP_RANKS[k].label + '</button>').join('') + '</div>';
+  if (!top.length) return tabs + '<div class="lp-empty">No bots to rank.</div>';
+  return tabs + '<div class="lp-roster">' + top.map((b, i) =>
+    '<div class="lp-row' + (String(b.id) === String(lpState.selected) ? ' active' : '') + '" data-lp-bot="' + escapeHtml(String(b.id)) + '">' +
+      '<div class="lp-rank' + (i < 3 ? ' top' + (i + 1) : '') + '">' + (i + 1) + '</div>' +
+      '<div class="lp-row-main"><div class="lp-row-name">' + escapeHtml(String(b.name)) + '</div>' +
+      '<div class="lp-row-sub">' + escapeHtml(String(b.race)) + ' ' + escapeHtml(lpClassName(b.classId)) + '</div></div>' +
+      '<div class="lp-row-lv">' + escapeHtml(r.show(b)) + '</div>' +
+    '</div>').join('') + '</div>' +
+    '<div class="lp-empty">Top 20 of the bots the filters show.</div>';
+}
+// Overview: how the shown bots split by state, race and level band, as bars.
+function lpOverviewHtml(bots){
+  const group = (keyOf) => { const m = {}; bots.forEach(b => { const k = keyOf(b); m[k] = (m[k] || 0) + 1; }); return m; };
+  const bars = (title, counts, order, colorOf, labelOf) => {
+    const keys = order || Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const max = Math.max(1, ...keys.map(k => counts[k] || 0));
+    return '<div class="lp-section"><h4>' + title + '</h4>' + keys.map(k =>
+      '<div class="lp-bar-row"><span class="lp-bar-label">' + escapeHtml(labelOf ? labelOf(k) : k) + '</span>' +
+      '<span class="lp-bar-track"><span class="lp-bar-fill" style="width:' + Math.round(100 * (counts[k] || 0) / max) + '%;background:' + (colorOf ? colorOf(k) : 'var(--gold)') + '"></span></span>' +
+      '<b>' + lpNum(counts[k] || 0) + '</b></div>').join('') + '</div>';
+  };
+  if (!bots.length) return '<div class="lp-empty">' + (lpBots().length ? 'No bots match the filters.' : 'No snapshot loaded yet.') + '</div>';
+  const band = b => { const l = Number(b.level) || 1; if (l < 10) return "1-9"; const lo = Math.floor(l / 10) * 10; return lo + "-" + (lo + 9); };
+  const bandOrder = Object.keys(group(band)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  const all = lpBots().length;
+  const reduce = '<div class="lp-section"><h4>Number of bots</h4>' +
+    '<p class="lp-muted">' + lpNum(all) + ' bots now' + (lpTargetSize() != null ? ', set to ' + lpNum(lpTargetSize()) : '') + '. To have fewer, pick a number: that many random bots are chosen for you to check before anything is removed.</p>' +
+    '<div class="lp-reduce"><input id="lpReduceTo" type="number" min="0" max="' + all + '" placeholder="' + Math.max(0, all - 1) + '">' +
+    '<button id="lpReduceGo" class="btn btn-ghost lp-btn lp-danger">Reduce</button></div></div>';
+  return reduce + '<div class="lp-empty" style="text-align:left;margin-top:0">' + lpNum(bots.length) + ' bots shown.</div>' +
+    bars("State", group(lpCat), Object.keys(LP_CATS), k => LP_CATS[k].color, k => LP_CATS[k].label) +
+    bars("Race", group(b => String(b.race))) +
+    bars("Level band", group(band), bandOrder) +
+    bars("Doing now", group(lpActivity));
+}
+// ---- removing bots ----
+// The monitor cannot reach the server: it writes a request file next to the snapshot, which the module reads on its
+// next tick (or at its next start). Each bot is named by id and name, so a stale request never removes another bot.
+const LP_REQ_FILE = "LivingPopulation-requests.json";
+function lpTargetSize(){
+  const v = getVal(LP_MODULE_FILE, "PopulationSize");
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+async function lpWriteRequest(bots, populationSize){
+  const dir = lpState.logDir;
+  if (!dir){ toast("Open your game folder first (top of the page), so the monitor can reach the server's log folder.", true); return false; }
+  const req = { remove: [] };
+  try{
+    const old = JSON.parse(await (await (await dir.getFileHandle(LP_REQ_FILE)).getFile()).text());
+    if (Array.isArray(old.remove)) req.remove = old.remove;
+    if (old.populationSize != null) req.populationSize = old.populationSize;
+  }catch(_){ /* no request waiting */ }
+  const have = new Set(req.remove.map(r => String(r.id)));
+  bots.forEach(b => { if (!have.has(String(b.id))) req.remove.push({ id: Number(b.id), name: String(b.name) }); });
+  if (populationSize != null) req.populationSize = populationSize;
+  const fh = await dir.getFileHandle(LP_REQ_FILE, { create: true });
+  const w = await fh.createWritable();
+  await w.write(JSON.stringify(req));
+  await w.close();
+  return true;
+}
+// Keep the settings file in step with a lowered bot count, so a restart does not bring the removed bots back.
+async function lpSaveTargetSize(n){
+  const f = state.files[LP_MODULE_FILE];
+  if (!f) return false;
+  const wasDirty = f.dirty;
+  setVal(LP_MODULE_FILE, "PopulationSize", String(n));
+  if (wasDirty || state.mode !== "fs" || !f.fileHandle) return false; // left for Save changes
+  const text = serializeIni(f);
+  const w = await f.fileHandle.createWritable();
+  await w.write(text);
+  await w.close();
+  f.original = text.replace(/\r\n/g, "\n");
+  f.dirty = false;
+  refreshDirtyUI();
+  return true;
+}
+async function lpRemove(bots, lower){
+  const target = lpTargetSize();
+  const now = target != null ? target : lpBots().length;
+  const size = lower ? Math.max(0, now - bots.length) : null;
+  if (!(await lpWriteRequest(bots, size))) return;
+  bots.forEach(b => { lpState.removing.add(String(b.id)); lpState.picked.delete(String(b.id)); });
+  let saved = false;
+  if (size != null){ try{ saved = await lpSaveTargetSize(size); }catch(_){ saved = false; } }
+  toast(bots.length + (bots.length === 1 ? " bot" : " bots") + " will be removed on the server's next tick (or its next start)." +
+    (size != null ? (saved ? " Number of bots set to " + size + "." : " Save changes to keep the number of bots at " + size + ".") : ""));
+  lpRenderSide();
+}
+function lpRemoveListHtml(bots){
+  return '<ol class="lp-remove-list">' + bots.slice().sort((a, b) => Number(b.level) - Number(a.level)).map(b =>
+    '<li>' + escapeHtml(String(b.name)) + ' &#183; Lv ' + escapeHtml(String(b.level)) + ' ' + escapeHtml(lpClassName(b.classId)) + '</li>').join('') + '</ol>';
+}
+function lpConfirmRemove(bots){
+  bots = bots.filter(b => !lpState.removing.has(String(b.id)));
+  if (!bots.length) return;
+  const target = lpTargetSize();
+  const body = '<p>' + (bots.length === 1 ? 'This bot, its character and everything it owns are' : 'These ' + bots.length + ' bots, their characters and everything they own are') + ' deleted for good:</p>' +
+    lpRemoveListHtml(bots) +
+    '<label><input type="checkbox" id="lpLower" checked> Also lower the number of bots' + (target != null ? ' (' + target + ' to ' + Math.max(0, target - bots.length) + ')' : '') + '</label>' +
+    '<p class="muted">Unticked, new level 1 bots are born to take their place.</p>';
+  psModal(bots.length === 1 ? "Delete " + bots[0].name + "?" : "Delete " + bots.length + " bots?", body, null,
+    mask => { lpRemove(bots, mask.querySelector("#lpLower").checked); }, "Delete");
+}
+function lpConfirmReduce(){
+  const all = lpBots().filter(b => !lpState.removing.has(String(b.id)));
+  const n = parseInt((document.getElementById("lpReduceTo") || {}).value, 10);
+  if (!Number.isFinite(n) || n < 0){ toast("Enter how many bots to keep.", true); return; }
+  if (n >= all.length){ toast("There are " + all.length + " bots. To have more, raise Number of bots in Living Population Settings.", true); return; }
+  const pick = () => {
+    const pool = all.slice();
+    for (let i = pool.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    return pool.slice(0, all.length - n);
+  };
+  let chosen = pick();
+  const render = mask => { mask.querySelector("#lpReduceList").innerHTML = lpRemoveListHtml(chosen); };
+  psModal("Reduce to " + n + " bots?", '<p>These ' + (all.length - n) + ' random bots, their characters and everything they own are deleted for good:</p>' +
+    '<div id="lpReduceList"></div><button class="btn btn-ghost btn-sm" id="lpRepick">Pick others</button>',
+    mask => { render(mask); mask.querySelector("#lpRepick").onclick = () => { chosen = pick(); render(mask); }; },
+    () => {
+      (async () => {
+        if (!(await lpWriteRequest(chosen, n))) return;
+        chosen.forEach(b => lpState.removing.add(String(b.id)));
+        let saved = false;
+        try{ saved = await lpSaveTargetSize(n); }catch(_){ saved = false; }
+        toast((all.length - n) + " bots will be removed on the server's next tick (or its next start). " + (saved ? "Number of bots set to " + n + "." : "Save changes to keep the number of bots at " + n + "."));
+        lpRenderSide();
+      })();
+    }, "Delete");
+}
+// The selected bot as a card: identity, key numbers as tiles, then what it is doing, supplies, gear, skills and its log.
+function lpDetailHtml(b){
+  if (!b){
+    return '<div class="lp-empty lp-empty-big"><div class="lp-empty-glyph">&#9678;</div><strong>No bot selected</strong>' +
+      '<p>Click a bot on the map, in the Roster or in the Rankings to see what it is doing and why.</p></div>';
+  }
+  const cat = LP_CATS[lpCat(b)];
+  const tile = (label, value, sub) => '<div class="lp-tile"><span>' + label + '</span><b>' + value + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>';
+  const kv = rows => '<dl class="lp-kv">' + rows.filter(r => r[1] != null && r[1] !== "" && r[1] !== "-").map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>' + escapeHtml(String(r[1])) + '</dd>').join('') + '</dl>';
+  const worn = Array.isArray(b.equipment) ? b.equipment : null;
+  const gearItems = worn && worn.length
+    ? '<dl class="lp-kv lp-gear">' + worn.map(w => '<dt>' + escapeHtml(String(w.slot)) + '</dt><dd>' + escapeHtml(String(w.item)) + '</dd>').join('') + '</dl>'
+    : '<p class="lp-muted">' + (worn ? 'Nothing equipped.' : 'No item list for this bot.') + '</p>';
+  const decisions = Array.isArray(b.decisions) ? b.decisions : [];
+  const log = decisions.length
+    ? '<ol class="lp-log">' + decisions.map(d => '<li><time>' + escapeHtml(new Date(Number(d.t)).toLocaleString()) + '</time>' + escapeHtml(String(d.m)) + '</li>').join('') + '</ol>'
+    : '<p class="lp-muted">No decisions recorded yet.</p>';
+  const quest = b.classQuest ? String(b.classQuest).toLowerCase().replace(/_/g, " ") : null;
+  return '<div class="lp-card">' +
+    '<div class="lp-card-head">' +
+      '<div class="lp-avatar" style="border-color:' + cat.color + '">' + escapeHtml(String(b.level)) + '<small>Lv</small></div>' +
+      '<div class="lp-card-id"><h3>' + escapeHtml(String(b.name)) + '</h3><div>' + escapeHtml(String(b.race)) + ' &#183; ' + escapeHtml(lpClassName(b.classId)) + '</div>' +
+      '<span class="lp-pill" style="color:' + cat.color + ';border-color:' + cat.color + '">' + escapeHtml(cat.label) + '</span></div>' +
+    '</div>' +
+    '<div class="lp-card-actions"><button id="lpShowOnMap" class="btn btn-ghost lp-btn">Show on map</button>' +
+      (lpState.cluster || lpFiltered().length ? '<button id="lpBackToRoster" class="btn btn-ghost lp-btn">Back to roster</button>' : '') +
+      (lpState.removing.has(String(b.id)) ? '<span class="lp-removing">Being removed</span>' : '<button id="lpDeleteBot" class="btn btn-ghost lp-btn lp-danger">Delete bot</button>') + '</div>' +
+    '<div class="lp-tiles">' +
+      tile("Adena", lpNum(b.adena)) + tile("Kills", lpNum(b.kills)) + tile("Deaths", lpNum(b.deaths)) +
+      tile("Adena earned", lpNum(b.adenaEarned)) + tile("To next level", (b.levelProgress == null) ? "-" : (b.levelProgress + "%")) +
+    '</div>' +
+    '<div class="lp-section"><h4>Now</h4>' + kv([
+      ["Doing", lpActivity(b)], ["Goal", b.goal], ["Hunting ground", b.zone], ["Town", b.town], ["Class change", quest]
+    ]) + '</div>' +
+    '<div class="lp-section"><h4>Supplies</h4>' + kv([
+      ["Soulshots", lpNum(b.soulshots)], ["Potions", lpNum(b.potions)], ["Scrolls of Escape", lpNum(b.escapes)], ["Loot to sell", lpNum(b.loot)]
+    ]) + '</div>' +
+    '<div class="lp-section"><h4>Gear</h4><p class="lp-gear-grade">' + escapeHtml(lpGear(b)) + '</p>' + gearItems + '</div>' +
+    ((b.sp != null || b.skills != null) ? '<div class="lp-section"><h4>Skills</h4>' + kv([
+      ["SP", lpNum(b.sp)], ["Skills known", (b.skills == null || Number(b.skills) < 0) ? null : lpNum(b.skills)]
+    ]) + '</div>' : '') +
+    '<div class="lp-section"><h4>Recent decisions</h4>' + log + '</div>' +
+    '<p class="lp-muted lp-pos">Position ' + (b.x != null ? lpNum(b.x) + ", " + lpNum(b.y) + ", " + lpNum(b.z) : "-") + ' &#183; id ' + escapeHtml(String(b.id)) + '</p>' +
+  '</div>';
+}
+// Gear as the grade its owned tier reaches.
+function lpGear(b){
+  if (b.gearGrade == null) return b.gearTier != null ? "tier " + b.gearTier : "-";
+  if (!Number(b.gearLevel)) return "Starter gear (tier " + (Number(b.gearTier) || 0) + ")";
+  const grade = String(b.gearGrade) === "none" ? "No-grade" : String(b.gearGrade) + "-grade";
+  return grade + " set for level " + b.gearLevel + " (tier " + b.gearTier + ")";
+}
+/* ---- population map ----
+ * The world map with the shown bots grouped into numbered circles, one set per state colour. Bots are
+ * grouped by a fixed on-screen grid, so circles split apart as you zoom in. Clicking a circle lists its bots
+ * in the side panel and zooms in on it; clicking a lone bot selects it. */
+const lpMap = { cv: null, ctx: null, img: null, imgOk: false, cam: { x: LP_WORLD.x1, y: LP_WORLD.y1, scale: 0.001 }, clusters: [], drag: null, fitted: false };
+const LP_CELL = 56;       // cluster grid size in screen pixels
+const LP_MAX_SCALE = 0.25; // closest zoom, screen pixels per world unit
+function lpMapInit(){
+  const cv = document.getElementById("lpMap");
+  if (!cv || cv._wired) return;
+  cv._wired = true;
+  lpMap.cv = cv; lpMap.ctx = cv.getContext("2d");
+  const legend = document.getElementById("lpLegend");
+  if (legend) legend.innerHTML = Object.keys(LP_CATS).map(k => '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;background:' + LP_CATS[k].color + '"></span>' + LP_CATS[k].label + '</span>').join('');
+  const img = new Image();
+  img.onload = () => { lpMap.imgOk = true; lpMapDraw(); };
+  img.onerror = () => { lpMap.imgOk = false; const note = document.getElementById("lpMapNote"); if (note) note.textContent = "World map image (world-map.png) not found next to this page. Bots are still shown."; };
+  img.src = "world-map.png";
+  lpMap.img = img;
+  lpMapFitWorld();
+  if (window.ResizeObserver) new ResizeObserver(() => lpMapDraw()).observe(cv);
+  cv.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    const r = cv.getBoundingClientRect();
+    lpMapZoomAt(ev.clientX - r.left, ev.clientY - r.top, ev.deltaY < 0 ? 1.25 : 0.8);
+  }, { passive: false });
+  cv.addEventListener("pointerdown", ev => {
+    cv.setPointerCapture(ev.pointerId);
+    lpMap.drag = { x: ev.clientX, y: ev.clientY, camX: lpMap.cam.x, camY: lpMap.cam.y, moved: false };
+    cv.style.cursor = "grabbing";
+  });
+  cv.addEventListener("pointermove", ev => {
+    const d = lpMap.drag;
+    const r = cv.getBoundingClientRect();
+    if (d){
+      const dx = ev.clientX - d.x, dy = ev.clientY - d.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+      if (d.moved){
+        lpMap.cam.x = d.camX - dx / lpMap.cam.scale;
+        lpMap.cam.y = d.camY - dy / lpMap.cam.scale;
+        lpMapDraw();
+      }
+      return;
+    }
+    lpMapTip(ev.clientX - r.left, ev.clientY - r.top);
+  });
+  cv.addEventListener("pointerup", ev => {
+    const d = lpMap.drag;
+    lpMap.drag = null;
+    cv.style.cursor = "grab";
+    if (d && !d.moved){
+      const r = cv.getBoundingClientRect();
+      lpMapClick(ev.clientX - r.left, ev.clientY - r.top);
+    }
+  });
+  cv.addEventListener("pointerleave", () => { const tip = document.getElementById("lpTip"); if (tip) tip.style.display = "none"; });
+  document.getElementById("lpZoomIn").onclick = () => lpMapZoomAt(cv.clientWidth / 2, cv.clientHeight / 2, 1.5);
+  document.getElementById("lpZoomOut").onclick = () => lpMapZoomAt(cv.clientWidth / 2, cv.clientHeight / 2, 1 / 1.5);
+  document.getElementById("lpFitBots").onclick = () => { lpMapFitBots(); lpMapDraw(); };
+  document.getElementById("lpFitWorld").onclick = () => { lpMapFitWorld(); lpMapDraw(); };
+}
+function lpW2S(x, y){ return [(x - lpMap.cam.x) * lpMap.cam.scale, (y - lpMap.cam.y) * lpMap.cam.scale]; }
+function lpMinScale(){
+  const cv = lpMap.cv;
+  const w = (cv && cv.clientWidth) || 600, h = (cv && cv.clientHeight) || 560;
+  return Math.min(w / (LP_WORLD.x2 - LP_WORLD.x1), h / (LP_WORLD.y2 - LP_WORLD.y1)) * 0.8;
+}
+// Frame a world rectangle in the canvas.
+function lpMapFrame(x1, y1, x2, y2){
+  const cv = lpMap.cv;
+  if (!cv) return;
+  const w = cv.clientWidth || 600, h = cv.clientHeight || 560;
+  const scale = Math.max(lpMinScale(), Math.min(LP_MAX_SCALE, Math.min(w / Math.max(1, x2 - x1), h / Math.max(1, y2 - y1))));
+  lpMap.cam.scale = scale;
+  lpMap.cam.x = (x1 + x2) / 2 - w / 2 / scale;
+  lpMap.cam.y = (y1 + y2) / 2 - h / 2 / scale;
+}
+function lpMapFitWorld(){ lpMapFrame(LP_WORLD.x1, LP_WORLD.y1, LP_WORLD.x2, LP_WORLD.y2); }
+function lpMapFitBots(){
+  const pts = lpFiltered().filter(b => b.x != null && b.y != null);
+  if (!pts.length){ lpMapFitWorld(); return; }
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  pts.forEach(b => { x1 = Math.min(x1, b.x); y1 = Math.min(y1, b.y); x2 = Math.max(x2, b.x); y2 = Math.max(y2, b.y); });
+  const pad = Math.max(8000, (x2 - x1) * 0.1, (y2 - y1) * 0.1);
+  lpMapFrame(x1 - pad, y1 - pad, x2 + pad, y2 + pad);
+}
+function lpMapZoomAt(sx, sy, factor){
+  const cam = lpMap.cam;
+  const wx = cam.x + sx / cam.scale, wy = cam.y + sy / cam.scale;
+  cam.scale = Math.max(lpMinScale(), Math.min(LP_MAX_SCALE, cam.scale * factor));
+  cam.x = wx - sx / cam.scale;
+  cam.y = wy - sy / cam.scale;
+  lpMapDraw();
+}
+function lpMapFocus(b){
+  if (b.x == null || b.y == null) return;
+  const r = 6000;
+  lpMapFrame(b.x - r, b.y - r, b.x + r, b.y + r);
+  lpMapDraw();
+}
+// Group the shown bots per state colour by the on-screen grid cell they fall in.
+function lpMapCluster(w, h){
+  const cells = new Map();
+  lpFiltered().forEach(b => {
+    if (b.x == null || b.y == null) return;
+    const [sx, sy] = lpW2S(Number(b.x), Number(b.y));
+    if (sx < -LP_CELL || sy < -LP_CELL || sx > w + LP_CELL || sy > h + LP_CELL) return;
+    const cat = lpCat(b);
+    const key = cat + ":" + Math.floor(sx / LP_CELL) + ":" + Math.floor(sy / LP_CELL);
+    let c = cells.get(key);
+    if (!c){ c = { cat: cat, ids: [], names: [], sx: 0, sy: 0 }; cells.set(key, c); }
+    c.ids.push(String(b.id)); c.names.push(String(b.name));
+    c.sx += sx; c.sy += sy;
+  });
+  return Array.from(cells.values()).map(c => {
+    const n = c.ids.length;
+    return { cat: c.cat, ids: c.ids, names: c.names, x: c.sx / n, y: c.sy / n, r: n === 1 ? 6 : Math.min(26, 11 + 3.2 * Math.log2(n)) };
+  }).sort((a, b) => a.ids.length - b.ids.length);
+}
+// Keep the map on screen: no empty strip beside it once it is wider or taller than the view, centred when smaller.
+function lpMapClamp(w, h){
+  const cam = lpMap.cam;
+  const viewW = w / cam.scale, viewH = h / cam.scale;
+  const worldW = LP_WORLD.x2 - LP_WORLD.x1, worldH = LP_WORLD.y2 - LP_WORLD.y1;
+  cam.x = (viewW >= worldW) ? (LP_WORLD.x1 - (viewW - worldW) / 2) : Math.min(Math.max(cam.x, LP_WORLD.x1), LP_WORLD.x2 - viewW);
+  cam.y = (viewH >= worldH) ? (LP_WORLD.y1 - (viewH - worldH) / 2) : Math.min(Math.max(cam.y, LP_WORLD.y1), LP_WORLD.y2 - viewH);
+}
+function lpMapDraw(){
+  const cv = lpMap.cv, ctx = lpMap.ctx;
+  if (!cv || !ctx || !cv.clientWidth) return;
+  lpMapClamp(cv.clientWidth, cv.clientHeight);
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){ cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#0b1a1f";
+  ctx.fillRect(0, 0, w, h);
+  if (lpMap.imgOk){
+    const [sx, sy] = lpW2S(LP_WORLD.x1, LP_WORLD.y1);
+    const [ex, ey] = lpW2S(LP_WORLD.x2, LP_WORLD.y2);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(lpMap.img, sx, sy, ex - sx, ey - sy);
+  }
+  const clusters = lpMapCluster(w, h);
+  lpMap.clusters = clusters;
+  const labels = lpMap.cam.scale >= 0.02;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  clusters.forEach(c => {
+    const color = LP_CATS[c.cat].color;
+    const n = c.ids.length;
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#101010cc"; ctx.stroke();
+    if (n > 1){
+      ctx.fillStyle = "#111";
+      ctx.font = "bold " + (n > 99 ? 11 : 12) + "px ui-sans-serif,system-ui,Segoe UI,sans-serif";
+      ctx.fillText(String(n), c.x, c.y + 0.5);
+    } else if (labels){
+      ctx.font = "12px ui-sans-serif,system-ui,Segoe UI,sans-serif";
+      ctx.lineWidth = 3; ctx.strokeStyle = "#000c";
+      ctx.strokeText(c.names[0], c.x, c.y - 14);
+      ctx.fillStyle = "#f3ead6";
+      ctx.fillText(c.names[0], c.x, c.y - 14);
+    }
+  });
+  // Ring the selected bot so it stands out inside its circle.
+  const sel = lpBots().find(b => String(b.id) === String(lpState.selected));
+  if (sel && sel.x != null && sel.y != null){
+    const [sx, sy] = lpW2S(Number(sel.x), Number(sel.y));
+    ctx.beginPath(); ctx.arc(sx, sy, 9, 0, Math.PI * 2);
+    ctx.lineWidth = 3; ctx.strokeStyle = "#ffffff"; ctx.stroke();
+  }
+}
+function lpMapHit(x, y){
+  const cs = lpMap.clusters;
+  for (let i = cs.length - 1; i >= 0; i--){
+    const c = cs[i];
+    const dx = x - c.x, dy = y - c.y;
+    if (dx * dx + dy * dy <= (c.r + 3) * (c.r + 3)) return c;
+  }
+  return null;
+}
+function lpMapClick(x, y){
+  const c = lpMapHit(x, y);
+  if (!c) return;
+  if (c.ids.length === 1){
+    lpSelect(c.ids[0]);
+    return;
+  }
+  lpState.cluster = c.ids.slice();
+  lpState.side = "roster";
+  if (lpMap.cam.scale < LP_MAX_SCALE) lpMapZoomAt(x, y, 2.5);
+  lpRenderView();
+}
+function lpMapTip(x, y){
+  const tip = document.getElementById("lpTip");
+  if (!tip) return;
+  const c = lpMapHit(x, y);
+  if (!c){ tip.style.display = "none"; lpMap.cv.style.cursor = "grab"; return; }
+  lpMap.cv.style.cursor = "pointer";
+  const n = c.ids.length;
+  const names = c.names.slice(0, 8).join(", ") + (n > 8 ? " and " + (n - 8) + " more" : "");
+  tip.textContent = (n === 1 ? "" : n + " bots, " + LP_CATS[c.cat].label.toLowerCase() + ": ") + names;
+  tip.style.display = "block";
+  tip.style.left = Math.min(x + 14, lpMap.cv.clientWidth - 270) + "px";
+  tip.style.top = (y + 14) + "px";
 }
 
 function buildCuratedPanel(p, active){
@@ -1118,6 +2033,7 @@ function switchTab(id){
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === id));
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.dataset.panel === id));
   document.body.classList.toggle("fpc-active", id === "__fpc");   // full-bleed map tab: suppress the 100vw h-scrollbar
+  document.body.classList.toggle("lp-active", id === "__lp");     // full-bleed Living Population observer, same reason
   window.scrollTo({ top:0, behavior:"smooth" });
 }
 
@@ -1187,7 +2103,9 @@ async function saveAll(){
 
     // The halves apply with different commands, so say only what's relevant.
     const parts = [];
-    if (dirty.length) parts.push(dirty.length + " config file" + (dirty.length>1?"s":"") + " (//reload config)");
+    const cfg = dirty.filter(n => n !== LP_MODULE_FILE);
+    if (cfg.length) parts.push(cfg.length + " config file" + (cfg.length>1?"s":"") + " (//reload config)");
+    if (dirty.includes(LP_MODULE_FILE)) parts.push("the Living Population settings (restart the server to apply)");
     if (psd) parts.push(PS_FILE + " (//phantom playstyle)");
     if (bcd) parts.push(BC_FILE + " (restart to apply)");
     toast((state.mode === "fs" ? "Saved " : "Downloaded ") + parts.join(" and ") +

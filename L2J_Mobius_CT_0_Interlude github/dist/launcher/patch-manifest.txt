@@ -26,6 +26,7 @@
 game/data/html/admin/rates.htm
 game/data/scripts/handlers/chat/commands/admin/AdminRates.java
 game/data/scripts/handlers/chat/commands/admin/AdminReload.java
+game/data/scripts/handlers/chat/channels/ChatWhisper.java
 game/data/html/CommunityBoard/Custom/navigation.html
 brain/fpc_brain.py
 brain/knowledge/50_items.txt
@@ -37,6 +38,7 @@ scripts/Configure-Brain.bat
 launcher/update.ps1
 tools/l2admin/index.html
 tools/l2admin/native-bridge.js
+tools/l2admin/world-map.png
 # One-release exception to the "no customizable configs" rule. These configs changed
 # defaults this release, so they ship in the patch and overwrite the tester's copy:
 #   - FakePlayers.ini: phantom gear enchant is now +0 to +3, duel settings documented.
