@@ -21,7 +21,9 @@
 package org.l2jmobius.gameserver.modules;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.l2jmobius.gameserver.managers.PhantomManager;
@@ -46,7 +48,8 @@ import org.l2jmobius.gameserver.model.zone.ZoneType;
 public class ModuleDuels
 {
 	private static final Logger LOGGER = Logger.getLogger(ModuleDuels.class.getName());
-	private static final List<Listener> LISTENERS = new CopyOnWriteArrayList<>();
+	private record Registration(ModuleHandles owner, Listener listener) { }
+	private static final List<Registration> LISTENERS = new CopyOnWriteArrayList<>();
 	private static final List<ZoneType> ARENAS = new CopyOnWriteArrayList<>();
 
 	/** Told when a one-on-one duel ends. */
@@ -60,22 +63,25 @@ public class ModuleDuels
 		void onDuelEnd(Player first, Player second, DuelResult result);
 	}
 
-	ModuleDuels()
+	private final ModuleHandles _handles;
+
+	ModuleDuels(ModuleHandles handles)
 	{
+		_handles = Objects.requireNonNull(handles);
 	}
 
 	/** Called by the duel system when a one-on-one duel has ended. */
 	public static void duelEnded(Player first, Player second, DuelResult result)
 	{
-		for (Listener listener : LISTENERS)
+		for (Registration registration : LISTENERS)
 		{
 			try
 			{
-				listener.onDuelEnd(first, second, result);
+				registration.listener().onDuelEnd(first, second, result);
 			}
 			catch (Exception e)
 			{
-				LOGGER.warning("Duel listener failed: " + e.getMessage());
+				LOGGER.log(Level.WARNING, "Duel listener from module '" + registration.owner().getModuleId() + "' failed.", e); // FPC-270
 			}
 		}
 	}
@@ -130,7 +136,8 @@ public class ModuleDuels
 	/** Be told when a one-on-one duel ends. */
 	public void addListener(Listener listener)
 	{
-		LISTENERS.add(listener);
+		LISTENERS.add(new Registration(_handles, Objects.requireNonNull(listener))); // FPC-270: owned and never null, like ModuleDamage
+		_handles.record("duel listener");
 	}
 
 	/** @return {@code true} if duelists can run on this server (fake players, phantom PvP and phantom duels are all on) */

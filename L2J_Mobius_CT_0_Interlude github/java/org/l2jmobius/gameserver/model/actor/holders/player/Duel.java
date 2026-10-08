@@ -932,8 +932,8 @@ public class Duel
 				return DuelResult.CANCELED;
 			}
 			
-			// is one of the players in a Siege, Peace or PvP zone?
-			if (_playerA.isInsideZone(ZoneId.PEACE) || _playerB.isInsideZone(ZoneId.PEACE) || _playerA.isInsideZone(ZoneId.NO_PVP) || _playerB.isInsideZone(ZoneId.NO_PVP) || _playerA.isInsideZone(ZoneId.SIEGE) || _playerB.isInsideZone(ZoneId.SIEGE) || _playerA.isInsideZone(ZoneId.PVP) || _playerB.isInsideZone(ZoneId.PVP))
+			// is one of the players in a Siege, Peace or PvP zone? (a PvP zone a module opened with ModuleDuels.openArena is allowed)
+			if (_playerA.isInsideZone(ZoneId.PEACE) || _playerB.isInsideZone(ZoneId.PEACE) || _playerA.isInsideZone(ZoneId.NO_PVP) || _playerB.isInsideZone(ZoneId.NO_PVP) || _playerA.isInsideZone(ZoneId.SIEGE) || _playerB.isInsideZone(ZoneId.SIEGE) || (_playerA.isInsideZone(ZoneId.PVP) && !ModuleDuels.isDuelArena(_playerA)) || (_playerB.isInsideZone(ZoneId.PVP) && !ModuleDuels.isDuelArena(_playerB)))
 			{
 				return DuelResult.CANCELED;
 			}
