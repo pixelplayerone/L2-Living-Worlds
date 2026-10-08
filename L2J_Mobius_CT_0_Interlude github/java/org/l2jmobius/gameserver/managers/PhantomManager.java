@@ -109,6 +109,7 @@ import org.l2jmobius.gameserver.model.skill.AbnormalType;
 import org.l2jmobius.gameserver.model.skill.Skill;
 import org.l2jmobius.gameserver.model.skill.targets.TargetType;
 import org.l2jmobius.gameserver.model.zone.ZoneId;
+import org.l2jmobius.gameserver.modules.ModuleTeams;
 import org.l2jmobius.gameserver.network.Disconnection;
 import org.l2jmobius.gameserver.network.GameClient;
 import org.l2jmobius.gameserver.network.SystemMessageId;
@@ -893,7 +894,7 @@ public class PhantomManager implements IXmlReader
 	// The valid race x archetype matrix is derived from the game's own class table (below), so it can't drift from it.
 	// ---------------------------------------------------------------------------------------------------------------
 
-	/** 2nd-class (depth-2), non-summoner representative(s) of each archetype, per race - the anchor a generic role walks from. */
+	/** 2nd-class (depth-2) representative(s) of each archetype, per race, summoners included - the anchor a generic role walks from. */
 	private static final Map<Race, Map<PartyRole, List<PlayerClass>>> RACE_ROLE_ANCHORS = buildRaceRoleAnchors();
 
 	private static Map<Race, Map<PartyRole, List<PlayerClass>>> buildRaceRoleAnchors()
@@ -6718,7 +6719,7 @@ public class PhantomManager implements IXmlReader
 	/** @return {@code true} if {@code other} is a living member of a team that is not {@code phantom}'s */
 	private static boolean isTeamEnemy(Player phantom, Player other)
 	{
-		if ((other == phantom) || other.isDead() || !other.isOnEvent() || other.isInvul()) // a held fighter waiting its turn is not a target
+		if ((other == phantom) || other.isDead() || !other.isOnEvent() || !ModuleTeams.isParticipant(other) || other.isInvul()) // a held fighter waiting its turn is not a target; FPC-272: nor a stock event player
 		{
 			return false;
 		}
@@ -7006,7 +7007,7 @@ public class PhantomManager implements IXmlReader
 		{
 			return true;
 		}
-		return !phantom.isOnSoloEvent() && other.isOnEvent() && (phantom.getTeam() != Team.NONE) && (other.getTeam() == phantom.getTeam());
+		return !phantom.isOnSoloEvent() && other.isOnEvent() && ModuleTeams.isParticipant(other) && (phantom.getTeam() != Team.NONE) && (other.getTeam() == phantom.getTeam());
 	}
 
 	// ---------------------------------------------------------------------

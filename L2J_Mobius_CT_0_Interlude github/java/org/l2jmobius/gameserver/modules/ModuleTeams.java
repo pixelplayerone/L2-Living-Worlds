@@ -51,6 +51,14 @@ public class ModuleTeams
 	 */
 	private static ModuleTeams _owner;
 	private final java.util.Set<Integer> _members = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	/** FPC-272: everyone any module put on a team, so stock events (TvT, CtF, Deathmatch) on the same flags stay apart. */
+	private static final java.util.Set<Integer> PARTICIPANTS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	/** @return {@code true} if a module put this player (or fighter) on a team event, as opposed to a stock event */
+	public static boolean isParticipant(Player player)
+	{
+		return (player != null) && PARTICIPANTS.contains(player.getObjectId());
+	}
 
 	ModuleTeams()
 	{
@@ -96,6 +104,15 @@ public class ModuleTeams
 				java.util.logging.Logger.getLogger("ModuleTeams").warning("ModuleTeams: another module's team event is still running; only one runs at a time.");
 				return false;
 			}
+			// FPC-272: a stock event (TvT, CtF, Deathmatch) uses the same global flags, so wait for it to finish too.
+			for (Player p : org.l2jmobius.gameserver.model.World.getInstance().getPlayers())
+			{
+				if (p.isOnEvent() && !isParticipant(p))
+				{
+					java.util.logging.Logger.getLogger("ModuleTeams").warning("ModuleTeams: a stock event is running; a team event waits until it ends.");
+					return false;
+				}
+			}
 			_owner = this;
 			return true;
 		}
@@ -107,7 +124,12 @@ public class ModuleTeams
 		_members.removeIf(id ->
 		{
 			final Player p = org.l2jmobius.gameserver.model.World.getInstance().getPlayer(id);
-			return (p == null) || !p.isOnEvent();
+			final boolean gone = (p == null) || !p.isOnEvent();
+			if (gone)
+			{
+				PARTICIPANTS.remove(id);
+			}
+			return gone;
 		});
 		return !_members.isEmpty();
 	}
@@ -117,6 +139,7 @@ public class ModuleTeams
 		if (player != null)
 		{
 			_members.add(player.getObjectId());
+			PARTICIPANTS.add(player.getObjectId());
 		}
 		return player;
 	}
@@ -142,6 +165,10 @@ public class ModuleTeams
 			return false;
 		}
 		track(player);
+		if (player.isInParty())
+		{
+			player.leaveParty(); // FPC-271: a free-for-all has no parties, and a party blocks attacks between its members
+		}
 		player.setTeam(Team.NONE);
 		player.setOnSoloEvent(true);
 		player.setOnEvent(true);
@@ -263,7 +290,28 @@ public class ModuleTeams
 		player.setOnSoloEvent(false); // FPC-247: a stale solo flag would bypass the teammate protection
 		player.setTeam(blue ? Team.BLUE : Team.RED);
 		player.setOnEvent(true);
+		leaveMixedParty(player);
 		return true;
+	}
+
+	/**
+	 * FPC-271: a party member cannot attack another member (the party check comes before the event one), so a player
+	 * whose party holds anyone who is not on the same event team leaves it.
+	 */
+	private static void leaveMixedParty(Player player)
+	{
+		if (!player.isInParty())
+		{
+			return;
+		}
+		for (Player member : player.getParty().getMembers())
+		{
+			if ((member != player) && (!member.isOnEvent() || member.isOnSoloEvent() || (member.getTeam() != player.getTeam())))
+			{
+				player.leaveParty();
+				return;
+			}
+		}
 	}
 
 	/** Takes a real player off their team, and frees them if {@link #lock} still holds them. */
@@ -272,6 +320,7 @@ public class ModuleTeams
 		if (player != null)
 		{
 			_members.remove(player.getObjectId());
+			PARTICIPANTS.remove(player.getObjectId());
 			unlock(player);
 			player.setOnEvent(false);
 			player.setOnSoloEvent(false);
@@ -322,6 +371,7 @@ public class ModuleTeams
 		if (fighter != null)
 		{
 			_members.remove(fighter.getObjectId());
+			PARTICIPANTS.remove(fighter.getObjectId());
 		}
 		PhantomManager.getInstance().discardTeamFighter(fighter);
 	}

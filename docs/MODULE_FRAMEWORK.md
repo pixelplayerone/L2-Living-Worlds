@@ -305,12 +305,16 @@ other, enemies can, players outside the event cannot attack them, a team circle 
 
 - One team event runs at a time: the server's event flags carry no event identity. The first module to spawn or
   join a participant holds the slot; another module's `spawn`, `spawnSolo`, `join` and `joinSolo` are refused (null
-  or false) until all of its participants have left. Players outside the event cannot attack or use skills on them.
+  or false) until all of its participants have left. They are also refused while a stock event (TvT, CtF,
+  Deathmatch) has players on it, and fighters never target or heal a stock event player. Players outside the event
+  cannot attack or use skills on them.
 - `available()` is true when fake players and phantom PvP are on. While phantom PvP is off, `spawn` returns null,
   and switching it off removes every team fighter.
 - `spawn(blue, where, rally, level, role, enchant, name, classId)` makes a geared fighter. It buffs, then hunts the
   nearest living enemy within sight, and walks to `rally` when none is in sight. It never flees.
-- `join(player, blue)` and `leave(player)` put a real player on or off a team. `teamOf(player)` returns true for blue,
+- `join(player, blue)` and `leave(player)` put a real player on or off a team. A player whose party holds anyone
+  not on the same team leaves that party on `join`, and `joinSolo` always leaves the party, since party members
+  cannot attack each other. `teamOf(player)` returns true for blue,
   false for red, null for none.
 - A new fighter starts **held**: it buffs and drinks but does not move, fight or take damage. `hold(fighter, false)` lets it loose, `hold(fighter, true)` freezes it again. Set a whole event up, then release everyone at once.
 - `revive(fighter, where)` brings a dead fighter back at full strength on the same team. `discard(fighter)` removes it.

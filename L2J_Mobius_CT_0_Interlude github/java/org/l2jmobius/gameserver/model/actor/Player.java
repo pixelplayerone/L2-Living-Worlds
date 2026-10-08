@@ -9061,12 +9061,6 @@ public class Player extends Playable
 	}
 
 	/**
-	 * Check if the requested casting is a Pc->Pc skill cast and if it's a valid pvp condition
-	 * @param target WorldObject instance containing the target
-	 * @param skill Skill instance with the skill being casted
-	 * @return {@code false} if the skill is a pvpSkill and target is not a valid pvp target, {@code true} otherwise.
-	 */
-	/**
 	 * Living World (FPC-256, FPC-257): one rule for auto attacks, hostile skills and area skills.
 	 * @param actor the attacking player (a summon's owner), or {@code null} for a non-player
 	 * @param target the player being attacked
@@ -9077,6 +9071,12 @@ public class Player extends Playable
 		return (actor != null) && (target != null) && (actor != target) && target.isOnEvent() && !actor.isOnEvent();
 	}
 	
+	/**
+	 * Check if the requested casting is a Pc->Pc skill cast and if it's a valid pvp condition
+	 * @param target WorldObject instance containing the target
+	 * @param skill Skill instance with the skill being casted
+	 * @return {@code false} if the skill is a pvpSkill and target is not a valid pvp target, {@code true} otherwise.
+	 */
 	public boolean checkPvpSkill(WorldObject target, Skill skill)
 	{
 		if ((skill == null) || (target == null))
