@@ -443,29 +443,77 @@ public final class PhantomBuffs
 	// (PhantomPartyManager) and the personal support buddy (PhantomBuddyManager). A cast is not instant, so if two
 	// of them both decide to cast the SAME buff inside the cast-time window, each sees "target not buffed yet" and
 	// both cast, landing the buff twice (a double icon, and for some buffs a doubled stat). The shared, race-safe
-	// PhantomBuffReservations registry makes the sources coordinate: a caster claims (target, skill) just before
-	// casting; anyone else who finds it claimed by a different caster skips that buff. Claims auto-expire.
+	// PhantomBuffReservations registry makes the sources coordinate: a caster claims (target, abnormal slot) just
+	// before casting; anyone else who finds it claimed by a different caster skips that buff. Claims auto-expire.
 	private static final PhantomBuffReservations BUFF_RESERVATIONS = new PhantomBuffReservations();
 
 	/**
 	 * Attempts to claim a buff cast so no other bot double-casts the same buff on the same target. Call this
 	 * immediately before {@code doCast}, once every other gate (range / MP / stand-up) has passed.
 	 * @param targetObjectId the buff target's object id
-	 * @param skillId the buff skill id
+	 * @param buff the buff skill (the claim covers its whole abnormal slot)
 	 * @param casterObjectId the casting phantom's object id (a caster never blocks its own re-claim)
 	 * @param holdMillis how long the claim is held (use {@link #buffHoldMillis(Skill)})
 	 * @return {@code true} if this caster may cast now (claim taken/refreshed); {@code false} if a different bot is
 	 *         already landing this exact buff on this target and the caller should skip it
 	 */
-	public static boolean reserveBuff(int targetObjectId, int skillId, int casterObjectId, int holdMillis)
+	public static boolean reserveBuff(int targetObjectId, Skill buff, int casterObjectId, int holdMillis)
 	{
-		return BUFF_RESERVATIONS.reserve(PhantomBuffReservations.key(targetObjectId, skillId), System.currentTimeMillis(), casterObjectId, holdMillis);
+		return BUFF_RESERVATIONS.reserve(reservationKey(targetObjectId, buff), System.currentTimeMillis(), casterObjectId, holdMillis);
 	}
 
 	/** A refused native cast must leave another support free to supply this buff. */
-	public static void releaseBuff(int targetObjectId, int skillId, int casterObjectId)
+	public static void releaseBuff(int targetObjectId, Skill buff, int casterObjectId)
 	{
-		BUFF_RESERVATIONS.release(PhantomBuffReservations.key(targetObjectId, skillId), casterObjectId);
+		BUFF_RESERVATIONS.release(reservationKey(targetObjectId, buff), casterObjectId);
+	}
+
+	/**
+	 * Claims key on the buff's abnormal SLOT, not its skill id (FPC-273): Haste and Chant of Fury, Might and Chant
+	 * of Battle, Shield and Chant of Shielding each share one slot, so two buffer classes deciding on the same tick
+	 * would otherwise both cast and overwrite each other. A slotless buff stacks independently and keys on its id.
+	 */
+	private static long reservationKey(int targetObjectId, Skill buff)
+	{
+		final AbnormalType slot = buff.getAbnormalType();
+		return ((slot == null) || slot.isNone()) ? PhantomBuffReservations.key(targetObjectId, buff.getId()) : PhantomBuffReservations.slotKey(targetObjectId, slot.ordinal());
+	}
+
+	/**
+	 * For a forced "buff" / "rebuff" order (FPC-273): {@code true} if another buffer's skill already fills this
+	 * buff's slot on {@code target}, so recasting ours would only overwrite it. With several supports in a party,
+	 * every one of them answers an unaddressed "buff" order and walks its whole kit, and without this check a
+	 * Prophet and a Warcryer took turns replacing each other (Haste, then Chant of Fury, Might, then Chant of
+	 * Battle, Shield, then Chant of Shielding). Rules:
+	 * <ul>
+	 * <li>slot empty, slotless buff, or held by our own skill -&gt; not covered (a forced rebuff refreshes it);</li>
+	 * <li>held by a different skill at a HIGHER level -&gt; covered, our cast would be rejected anyway;</li>
+	 * <li>held by a different skill at an equal level with more than half its duration left -&gt; covered;</li>
+	 * <li>held by a different skill at a lower level, or an equal one past half its duration -&gt; not covered.</li>
+	 * </ul>
+	 * @param target the buff target
+	 * @param buff the buff the support is about to force-cast
+	 * @return {@code true} if the cast should be skipped because another buffer covers the slot
+	 */
+	public static boolean coveredByOtherBuffer(Player target, Skill buff)
+	{
+		final AbnormalType slot = buff.getAbnormalType();
+		if ((slot == null) || slot.isNone())
+		{
+			return false;
+		}
+		final BuffInfo info = target.getEffectList().getBuffInfoByAbnormalType(slot);
+		if ((info == null) || (info.getSkill().getId() == buff.getId()))
+		{
+			return false;
+		}
+		final int have = info.getSkill().getAbnormalLevel();
+		final int want = buff.getAbnormalLevel();
+		if (have != want)
+		{
+			return have > want;
+		}
+		return (info.getTime() * 2) > info.getAbnormalTime();
 	}
 
 	/** How long to hold a buff reservation: the skill's cast time plus a margin for the effect to actually land. */

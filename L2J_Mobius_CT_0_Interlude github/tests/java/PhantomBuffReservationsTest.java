@@ -58,6 +58,7 @@ public class PhantomBuffReservationsTest
 		testIndependentSlots();
 		testKeyUniqueness();
 		testRefusedCastRelease();
+		testSlotKeys();
 
 		System.out.println();
 		System.out.println("Ran " + checks + " checks, " + failures + " failure(s).");
@@ -66,6 +67,23 @@ public class PhantomBuffReservationsTest
 			System.exit(1);
 		}
 		System.out.println("OK");
+	}
+
+	/**
+	 * FPC-273: a claim on an abnormal slot blocks a second buffer class casting a different skill into that same slot
+	 * (a Warcryer's Chant of Fury while a Prophet lands Haste), and slot keys never collide with skill-id keys.
+	 */
+	private static void testSlotKeys()
+	{
+		final int attackTimeDown = 7; // any slot ordinal; the key only needs to be stable per slot
+		final PhantomBuffReservations r = new PhantomBuffReservations();
+		final long slot = PhantomBuffReservations.slotKey(TARGET, attackTimeDown);
+		eq(true, r.reserve(slot, 1000, PROPHET, HOLD), "Prophet claims the target's attack speed slot");
+		eq(false, r.reserve(PhantomBuffReservations.slotKey(TARGET, attackTimeDown), 1500, BUDDY, HOLD), "a second buffer is refused the same slot");
+		eq(true, r.reserve(PhantomBuffReservations.slotKey(OTHER_TARGET, attackTimeDown), 1500, BUDDY, HOLD), "the same slot on another target is free");
+		eq(true, r.reserve(PhantomBuffReservations.slotKey(TARGET, attackTimeDown + 1), 1500, BUDDY, HOLD), "a different slot on the same target is free");
+		eq(false, PhantomBuffReservations.slotKey(TARGET, 0) == PhantomBuffReservations.key(TARGET, 0), "slot 0 never collides with a skill id key");
+		eq(false, PhantomBuffReservations.slotKey(TARGET, MIGHT) == PhantomBuffReservations.key(TARGET, MIGHT), "a slot ordinal never collides with the same number as a skill id");
 	}
 
 	/** First caster wins the slot; a different caster is refused while it is held. */

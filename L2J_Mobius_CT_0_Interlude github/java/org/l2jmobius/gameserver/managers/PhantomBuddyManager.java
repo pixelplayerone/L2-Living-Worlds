@@ -1191,9 +1191,9 @@ public class PhantomBuddyManager implements IXmlReader
 				}
 				state.pendingBuff = null;
 				state.pendingBuffTarget = null;
-				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff.getId(), buddy.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
+				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff, buddy.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
 				{
-					return true; // a party support is already landing this exact buff on the target
+					return true; // a party support is already landing a buff in this slot on the target
 				}
 				buddy.setTarget(target);
 				buddy.doCast(buff);
@@ -1490,13 +1490,18 @@ public class PhantomBuddyManager implements IXmlReader
 					state.rebuffIdx++; // skip this one
 					continue;
 				}
+				if (PhantomBuffs.coveredByOtherBuffer(target, buff))
+				{
+					state.rebuffIdx++; // a party support's skill already fills this slot (FPC-273) - don't overwrite it
+					continue;
+				}
 				if (!readyToCast(buddy))
 				{
 					return true; // getting up first; recast this same buff next tick (index NOT advanced, so none is skipped)
 				}
-				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff.getId(), buddy.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
+				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff, buddy.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
 				{
-					state.rebuffIdx++; // a party support is already (re)casting this exact buff - skip so it isn't doubled
+					state.rebuffIdx++; // a party support is already (re)casting a buff in this slot - skip so it isn't doubled
 					continue;
 				}
 				state.rebuffIdx++;
@@ -1523,9 +1528,9 @@ public class PhantomBuddyManager implements IXmlReader
 			return true; // getting up first; the buff lands next tick. Return "busy" so the caller doesn't fall
 			// through to the MP-rest and sit the buddy straight back down while it's trying to stand and buff.
 		}
-		if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff.getId(), buddy.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
+		if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff, buddy.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
 		{
-			return false; // a party support is already landing this exact buff on the target - skip it this tick
+			return false; // a party support is already landing a buff in this slot on the target - skip it this tick
 		}
 		buddy.setTarget(target);
 		buddy.doCast(buff);
