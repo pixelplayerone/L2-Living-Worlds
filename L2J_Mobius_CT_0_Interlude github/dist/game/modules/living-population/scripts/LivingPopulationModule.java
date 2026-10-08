@@ -1,0 +1,171 @@
+/*
+ * Copyright (c) 2013 L2jMobius
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+package modules.livingpopulation;
+
+import org.l2jmobius.gameserver.handler.IVoicedCommandHandler;
+import org.l2jmobius.gameserver.livingpop.LivingPopulationConfig;
+import org.l2jmobius.gameserver.livingpop.LivingPopulationManager;
+import org.l2jmobius.gameserver.livingpop.TravelConfig;
+import org.l2jmobius.gameserver.model.actor.Player;
+import org.l2jmobius.gameserver.modules.GameModule;
+import org.l2jmobius.gameserver.modules.ModuleContext;
+
+/**
+ * The thin entry point for the Living Population module (architecture B: the heavy simulation lives in the core
+ * {@code org.l2jmobius.gameserver.livingpop} package, gated by this switch). On enable it reads {@code config/module.ini},
+ * builds an immutable {@link LivingPopulationConfig}, and hands it to {@link LivingPopulationManager}. When the switch is
+ * off, or the directory is removed, the manager is never started and the server is stock. It also registers a
+ * GM-only {@code .livingpop} voiced command that prints a one-line population status.
+ */
+public class LivingPopulationModule implements GameModule
+{
+	@Override
+	public void onEnable(ModuleContext context)
+	{
+		if (!context.config().getBoolean("Enabled", false))
+		{
+			return; // Switch off: start nothing, behave as stock.
+		}
+
+		final LivingPopulationConfig config = new LivingPopulationConfig( //
+			true, //
+			Math.max(0, context.config().getInt("PopulationSize", 100)), //
+			Math.max(1000L, context.config().getLong("ColdResolveIntervalSeconds", 30L) * 1000L), //
+			Math.max(1, context.config().getInt("ColdResolveBatch", 64)), //
+			Math.max(0.0, context.config().getDouble("ColdExpPerMobLevel", 13.0)), //
+			Math.max(0.0, context.config().getDouble("ColdKillsPerMinute", 12.0)), //
+			Math.max(1, context.config().getInt("MaxLevel", 80)), //
+			context.config().getBoolean("DirectorEnabled", true), //
+			Math.max(0, context.config().getInt("DirectorBandRadius", 2)), //
+			Math.max(1.0, context.config().getDouble("DirectorMaxCatchUp", 1.35)), //
+			Math.max(0.0, context.config().getDouble("DirectorSlowdown", 0.85)), //
+			Math.max(0.0, context.config().getDouble("DirectorCatchUpSlope", 0.06)), //
+			context.config().getBoolean("HandoffEnabled", true), //
+			Math.max(1000L, context.config().getLong("HandoffCheckSeconds", 5L) * 1000L), //
+			Math.max(0.0, context.config().getDouble("HandoffActivationRadius", 3000.0)), //
+			Math.max(0.0, context.config().getDouble("HandoffDeactivationRadius", 4000.0)), //
+			Math.max(0L, context.config().getLong("HandoffCooldownGraceSeconds", 30L) * 1000L), //
+			Math.max(0, context.config().getInt("HandoffMaxHotBots", 40)), //
+			context.config().getBoolean("EconomyEnabled", true), //
+			Math.max(0.0, context.config().getDouble("AdenaPerMobLevel", 5.0)), //
+			Math.max(1, context.config().getInt("SoulshotMilestoneLevel", 6)), //
+			Math.max(0L, context.config().getLong("SoulshotMilestoneGrant", 1000L)), //
+			Math.max(0.0, context.config().getDouble("SoulshotsPerKill", 6.0)), //
+			Math.max(0L, context.config().getLong("SoulshotRestockThreshold", 500L)), //
+			Math.max(0L, context.config().getLong("SoulshotRestockBatch", 1000L)), //
+			Math.max(0, context.config().getInt("SoulshotCost", 12)), //
+			Math.max(0L, context.config().getLong("PotionRestockThreshold", 100L)), //
+			Math.max(0L, context.config().getLong("PotionRestockBatch", 500L)), //
+			Math.max(0, context.config().getInt("PotionCost", 60)), //
+			Math.max(0, context.config().getInt("GearTierLevelStep", 10)), //
+			Math.max(0L, context.config().getLong("GearUpgradeCost", 50000L)), //
+			Math.max(1000L, context.config().getLong("SnapshotIntervalSeconds", 5L) * 1000L), //
+			context.config().getString("SnapshotFile", "log/LivingPopulation.json"), //
+			Math.max(0, context.config().getInt("BirthBatch", 10)), //
+			Math.max(60_000L, context.config().getLong("BirthIntervalMinutes", 20L) * 60_000L), //
+			Math.max(0, context.config().getInt("DirectorLevelGoal", 0)));
+
+		// Phase 5: travel between zones and towns, shopping only in town, player-like supplies.
+		final TravelConfig travel = new TravelConfig( //
+			context.config().getBoolean("TravelEnabled", true), //
+			context.config().getString("ZonesFile", "modules/living-population/data/zones.xml"), //
+			Math.max(0, context.config().getInt("PotionStock", 8)), //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("PotionRestockFraction", 0.25))), //
+			Math.max(0, context.config().getInt("SoulshotStockMinutes", 30)), //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("SoulshotRestockFraction", 0.2))), //
+			Math.max(0, context.config().getInt("EscapeStock", 2)), //
+			Math.max(0L, context.config().getLong("ReserveFloor", 500L)), //
+			Math.max(0L, context.config().getLong("ReservePerLevel", 250L)), //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("ReserveFraction", 0.10))), //
+			Math.max(1.0, context.config().getDouble("MoveSpeed", 120.0)), //
+			Math.max(0L, context.config().getLong("EscapeCastSeconds", 20L) * 1000L), //
+			Math.max(0L, context.config().getLong("ErrandStopSeconds", 15L) * 1000L), //
+			Math.max(0, Math.min(100, context.config().getInt("AfkChancePercent", 15))), //
+			Math.max(0L, context.config().getLong("AfkMinMinutes", 2L) * 60_000L), //
+			Math.max(0L, context.config().getLong("AfkMaxMinutes", 10L) * 60_000L), //
+			Math.max(0.0, context.config().getDouble("ColdPotionsPerHour", 4.0)), //
+			Math.max(0, context.config().getInt("ZoneCapacity", 16)), //
+			Math.max(1000L, context.config().getLong("RetrySeconds", 300L) * 1000L), //
+			Math.max(0.0, context.config().getDouble("WalkToTownWithin", 2500.0)), //
+			context.config().getBoolean("DropIncome", true), //
+			Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3)), //
+			Math.max(0L, context.config().getLong("DeathRecoverSeconds", 90L) * 1000L), //
+			Math.max(0L, context.config().getLong("RestEveryMinutes", 10L) * 60_000L), //
+			Math.max(0L, context.config().getLong("RestSeconds", 60L) * 1000L), //
+			Math.max(0L, context.config().getLong("AvoidZoneMinutes", 60L) * 60_000L), //
+			context.config().getBoolean("ClassChanges", true), //
+			new long[]
+			{
+				Math.max(0L, context.config().getLong("ClassQuestMinutes1", 60L) * 60_000L),
+				Math.max(0L, context.config().getLong("ClassQuestMinutes2", 180L) * 60_000L),
+				Math.max(0L, context.config().getLong("ClassQuestMinutes3", 240L) * 60_000L)
+			}, //
+			context.config().getBoolean("SkillTraining", true), //
+			context.config().getBoolean("GearSlots", true), //
+			context.config().getBoolean("GearTrade", true));
+
+		LivingPopulationManager.getInstance().start(config, travel);
+		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
+		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());
+	}
+
+	private static class LivingPopulationStatusCommand implements IVoicedCommandHandler
+	{
+		private static final String[] COMMANDS =
+		{
+			"livingpop"
+		};
+
+		@Override
+		public boolean onCommand(String command, Player player, String params)
+		{
+			if (player == null)
+			{
+				return false;
+			}
+
+			if (!player.isGM())
+			{
+				player.sendMessage("This command is for game masters only.");
+				return false;
+			}
+
+			// ".livingpop" alone gives the population overview; ".livingpop <name>" shows one bot and its recent decisions.
+			final String name = (params == null) ? "" : params.trim();
+			if (name.isEmpty())
+			{
+				player.sendMessage(LivingPopulationManager.getInstance().statusText());
+				return true;
+			}
+			for (String line : LivingPopulationManager.getInstance().botDetailLines(name, 8))
+			{
+				player.sendMessage(line);
+			}
+			return true;
+		}
+
+		@Override
+		public String[] getCommandList()
+		{
+			return COMMANDS;
+		}
+	}
+}

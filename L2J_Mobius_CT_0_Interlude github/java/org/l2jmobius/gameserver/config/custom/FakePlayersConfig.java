@@ -166,7 +166,7 @@ public class FakePlayersConfig
 		PHANTOM_PVP_RED_REACT_CHANCE_PERCENT = config.getInt("PhantomPvpRedReactChancePercent", 65);
 		PHANTOM_PVP_RED_REACT_ALL = config.getBoolean("PhantomPvpRedReactAll", true);
 		PHANTOM_PVP_ENGAGE_COOLDOWN_SECONDS = config.getInt("PhantomPvpEngageCooldownSeconds", 300);
-		PHANTOM_PVP_SPOT_DEFENSE = config.getBoolean("PhantomPvpSpotDefense", false);
+		PHANTOM_PVP_SPOT_DEFENSE = config.getBoolean("PhantomPvpSpotDefense", true);
 		PHANTOM_PVP_SPOT_RADIUS = config.getInt("PhantomPvpSpotRadius", 800);
 		PHANTOM_PVP_SPOT_HOT_PERCENT = config.getInt("PhantomPvpSpotHotPercent", 20);
 		PHANTOM_PVP_SPOT_NORMAL_PERCENT = config.getInt("PhantomPvpSpotNormalPercent", 50);

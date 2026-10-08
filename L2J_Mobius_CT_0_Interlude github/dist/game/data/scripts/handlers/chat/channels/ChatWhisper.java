@@ -22,6 +22,7 @@ import org.l2jmobius.gameserver.config.custom.FactionSystemConfig;
 import org.l2jmobius.gameserver.config.custom.FakePlayersConfig;
 import org.l2jmobius.gameserver.data.xml.FakePlayerData;
 import org.l2jmobius.gameserver.handler.IChatHandler;
+import org.l2jmobius.gameserver.livingpop.LivingPopulationManager;
 import org.l2jmobius.gameserver.managers.FakePlayerChatManager;
 import org.l2jmobius.gameserver.managers.PhantomBuddyManager;
 import org.l2jmobius.gameserver.managers.PhantomPartyManager;
@@ -98,6 +99,12 @@ public class ChatWhisper implements IChatHandler
 				FakePlayerChatManager.getInstance().manageChat(activeChar, botName, text);
 				return;
 			}
+		}
+
+		// Living Population bot: answers like any player from wherever it is, whether its character is live or not.
+		if (LivingPopulationManager.getInstance().handleWhisper(activeChar, target, text))
+		{
+			return;
 		}
 
 		final Player receiver = World.getInstance().getPlayer(target);

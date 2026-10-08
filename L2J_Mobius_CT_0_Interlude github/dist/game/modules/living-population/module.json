@@ -1,0 +1,15 @@
+{
+  "id": "living-population",
+  "name": "Living Population",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "entrypoint": "modules.livingpopulation.LivingPopulationModule",
+  "description": "Persistent bot population that levels, earns, shops in town and travels between hunting zones over time, and becomes real characters when a player comes near.",
+  "author": "Living World",
+  "priority": 100,
+  "database": {
+    "install": "sql/install.sql",
+    "remove": "sql/remove.sql",
+    "tables": ["living_population_bots"]
+  }
+}

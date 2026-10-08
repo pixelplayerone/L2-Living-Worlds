@@ -1535,6 +1535,21 @@ def fmt_amount(value):
 _MEET_SPOT_WORDS = {"gatekeeper": "gatekeeper (gk)", "warehouse": "warehouse (wh)", "shop": "shop"}
 
 
+def activity_note(activity):
+    """A Living Population bot is a player leveling its own character, wherever it is: Java sends what it is really
+    doing right now ("hunting in Ruins of Agony", "on the way to Gludio to sell loot and restock"). It overrides the
+    location note's 'not traveling or farming' rule and the party rule 'you are standing in town', since this bot
+    may be out hunting or travelling instead."""
+    activity = (activity or "").strip()
+    if not activity:
+        return ""
+    return (f" Right now you are {activity}; that is true, so if asked what you are doing or where you are, answer "
+            "with it (the location above is only the nearest town, and the party rule that you are standing in "
+            "town does not apply to you). You are leveling your own character, not "
+            "selling anything: never set up a trade, a price or a meeting to trade. If they ask you to party, you "
+            "are usually up for it (follow the party behavior rules).")
+
+
 def meet_note_from_headers():
     """Java's own view of a meetup with this player, so the bot never claims to be somewhere it is not yet.
 
@@ -1656,6 +1671,7 @@ def chat():
                 "do NOT claim to be in a different town or zone, traveling, or off farming/hunting somewhere else, "
                 "and if asked where you are or where to meet, answer truthfully with that.") if location else ""
     loc_note += meet_note_from_headers()
+    loc_note += activity_note(request.headers.get("X-Activity", ""))
     message = request.get_data(as_text=True)
     voice, temperature = _voice(fpc)  # this bot's stable personality + creativity
     deal_note = deal_note_from_headers()

@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
@@ -493,6 +494,9 @@ public class PhantomPartyManager
 		boolean reminded; // already whispered "here, inv me" while waiting
 		boolean rezOnArrival; // summoned to a dead solo player: self-invite on arrival (a corpse can't answer /invite) so the rez lands at once
 		Consumer<Location> afterRelease; // a town fake that joined: brings the fake back, given where the member was when it left
+		// A member that reaches its owner its own way while far (a Living Population bot travelling on the clock): true
+		// while it is still on the way, and the party behavior (follow, assist, catch-up teleport) stands aside.
+		BiPredicate<Player, Player> travel;
 		long pendingSince; // spawn time; despawn if never invited within RECRUIT_TIMEOUT
 		boolean olympiadHeld; // waiting while the owner is in an Olympiad match; rejoins the owner's party after it
 		long graceUntil;
@@ -1073,6 +1077,17 @@ public class PhantomPartyManager
 	 */
 	public boolean joinFromTownFake(Player owner, Player member, Consumer<Location> afterRelease)
 	{
+		return joinFromTownFake(owner, member, afterRelease, null);
+	}
+
+	/**
+	 * Like {@link #joinFromTownFake(Player, Player, Consumer)}, for a member that travels to its owner its own way while
+	 * far (see {@code Member.travel}): a Living Population bot that joined from across the map.
+	 * @param travel true while the member is still on its way; the party behavior stands aside meanwhile
+	 * @return {@code true} if the member joined
+	 */
+	public boolean joinFromTownFake(Player owner, Player member, Consumer<Location> afterRelease, BiPredicate<Player, Player> travel)
+	{
 		if ((owner == null) || (member == null))
 		{
 			return false;
@@ -1082,6 +1097,7 @@ public class PhantomPartyManager
 		state.owner = owner;
 		state.pendingSince = System.currentTimeMillis();
 		state.afterRelease = afterRelease;
+		state.travel = travel;
 		parkPanicButtons(state);
 		PhantomPlaystyleEngine.parkAutoSkills(member, state.play, role.name()); // the playstyle engine owns offensive casting, like any recruit
 		_members.put(member.getObjectId(), state);
@@ -2613,6 +2629,12 @@ public class PhantomPartyManager
 		if ((state.graceUntil != 0) && (state.graceUntil <= now))
 		{
 			state.graceUntil = 0;
+		}
+
+		// Still on its way from afar (travelling on the clock): nothing to follow, assist or catch up to yet.
+		if ((state.travel != null) && !npc.isDead() && state.travel.test(npc, owner))
+		{
+			return true;
 		}
 
 		// PvP owns this member: a party/clan/self defense engagement is driving it via PhantomManager's PvP tick.
