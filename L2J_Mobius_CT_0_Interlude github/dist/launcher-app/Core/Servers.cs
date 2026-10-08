@@ -13,6 +13,15 @@ public sealed class Servers
     private readonly Config _cfg;
     private readonly Action<string> _log;
 
+    private const string GameServerRole = "Game Server";
+    // Must match ShutdownRequestManager.FILE on the game server.
+    private const string ShutdownRequestFile = "shutdown.request";
+    // The server checks for the request every second.
+    private const int AcknowledgeTimeoutSeconds = 5;
+    // Saving every player and phantom plus the server tables, and a fixed 5 second
+    // pause at the end of the stock shutdown.
+    private const int SaveTimeoutSeconds = 120;
+
     public Servers(LauncherPaths paths, Config cfg, Action<string> log)
     {
         _paths = paths;
@@ -32,7 +41,7 @@ public sealed class Servers
         }
         if (_cfg.StartGame)
         {
-            StartJavaServer(registry, serverExe, "Game Server", _paths.GameDir, @"..\libs\GameServer.jar", _paths.GameJar);
+            StartJavaServer(registry, serverExe, GameServerRole, _paths.GameDir, @"..\libs\GameServer.jar", _paths.GameJar);
         }
     }
 
@@ -135,6 +144,10 @@ public sealed class Servers
             return true;
         }
 
+        // Stop the game server first, while the login server it reports logouts to
+        // is still up.
+        records = records.OrderBy(r => r.Role == GameServerRole ? 0 : 1).ToList();
+
         bool hadFailure = false;
         foreach (var r in records)
         {
@@ -150,6 +163,12 @@ public sealed class Servers
             {
                 _log($"[FAIL] PID {r.Id} no longer matches the recorded {r.Role}; it was not terminated.");
                 hadFailure = true;
+                continue;
+            }
+
+            if (r.Role == GameServerRole && StopGameServerGracefully(process))
+            {
+                _log($"{r.Role} saved and stopped (PID {r.Id}).");
                 continue;
             }
 
@@ -175,6 +194,53 @@ public sealed class Servers
             _log($"The process registry was retained for inspection: {_paths.RegistryPath}");
         }
         return hadFailure;
+    }
+
+    // Killing the game server skips every save, so players roll back to the last
+    // periodic store (CharacterDataStoreInterval, 15 minutes by default). Ask it to
+    // shut down the normal way first: ShutdownRequestManager on the server picks up
+    // the request file, deletes it as an acknowledgement, saves every player and
+    // server table, then exits. Returns false when the caller should fall back to
+    // killing the process: a server too old to know the file, one still booting, or
+    // one that did not finish in time.
+    private bool StopGameServerGracefully(Process process)
+    {
+        var request = Path.Combine(_paths.GameDir, ShutdownRequestFile);
+        try
+        {
+            File.WriteAllText(request, "shutdown");
+        }
+        catch (Exception ex)
+        {
+            _log($"Could not ask the Game Server to save and stop ({ex.Message}).");
+            return false;
+        }
+
+        _log("Asking the Game Server to save all characters and stop ...");
+        var acknowledged = WaitUntil(() => !File.Exists(request) || process.HasExited, AcknowledgeTimeoutSeconds);
+        if (!acknowledged)
+        {
+            try { File.Delete(request); } catch { /* best effort */ }
+            _log("[WARN] The Game Server did not answer the stop request (still starting, or an older server build). Stopping it the hard way; progress since the last autosave may be lost.");
+            return false;
+        }
+
+        if (process.WaitForExit(SaveTimeoutSeconds * 1000))
+            return true;
+
+        _log($"[WARN] The Game Server was still saving after {SaveTimeoutSeconds} seconds. Stopping it the hard way; some progress may be lost.");
+        return false;
+    }
+
+    private static bool WaitUntil(Func<bool> condition, int seconds)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition()) return true;
+            System.Threading.Thread.Sleep(250);
+        }
+        return condition();
     }
 
     private void StopBundledDatabase(ref bool hadFailure)

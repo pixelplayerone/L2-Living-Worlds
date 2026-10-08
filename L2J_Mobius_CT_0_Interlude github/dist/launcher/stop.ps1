@@ -72,6 +72,39 @@ function Wait-LocalPortClosed($port, $timeoutSeconds) {
     return $false
 }
 
+# Killing the game server skips every save, so players roll back to the last
+# periodic store (CharacterDataStoreInterval, 15 minutes by default). Ask it to
+# shut down the normal way first: ShutdownRequestManager on the server picks up
+# shutdown.request, deletes it as an acknowledgement, saves every player and
+# server table, then exits. Returns $false when the caller should fall back to
+# taskkill: a server too old to know the file, one still booting, or one that
+# did not finish in time.
+function Stop-GameServerGracefully($process) {
+    $request = Join-Path (Join-Path $DistDir 'game') 'shutdown.request'
+    try {
+        Set-Content -Path $request -Value 'shutdown' -Encoding ASCII
+    } catch {
+        Write-Info "Could not ask the Game Server to save and stop ($($_.Exception.Message))."
+        return $false
+    }
+
+    Write-Info "Asking the Game Server to save all characters and stop ..."
+    $acknowledged = $false
+    for ($index = 0; $index -lt 20; $index++) {
+        if (-not (Test-Path $request) -or $process.HasExited) { $acknowledged = $true; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $acknowledged) {
+        Remove-Item $request -Force -ErrorAction SilentlyContinue
+        Write-Info "The Game Server did not answer the stop request (still starting, or an older server build). Stopping it the hard way; progress since the last autosave may be lost."
+        return $false
+    }
+
+    if ($process.WaitForExit(120000)) { return $true }
+    Write-Info "The Game Server was still saving after 120 seconds. Stopping it the hard way; some progress may be lost."
+    return $false
+}
+
 function Stop-RecordedProcesses {
     Write-Host ""
     Write-Host "==== Launcher-owned processes ====" -ForegroundColor Cyan
@@ -92,6 +125,10 @@ function Stop-RecordedProcesses {
         Write-Warn "Process registry is unreadable; refusing to guess which processes belong to the server."
         return
     }
+
+    # Stop the game server first, while the login server it reports logouts to
+    # is still up.
+    $records = @(@($records) | Sort-Object { if ($_.Role -eq 'Game Server') { 0 } else { 1 } })
 
     foreach ($record in @($records)) {
         $processId = [int]$record.Id
@@ -118,6 +155,11 @@ function Stop-RecordedProcesses {
         if (($record.Marker -ne '') -and
             ($commandLine.IndexOf("$($record.Marker)", [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
             Write-Warn "PID $processId lacks the recorded $($record.Role) command marker; it was not terminated."
+            continue
+        }
+
+        if (($record.Role -eq 'Game Server') -and (Stop-GameServerGracefully $process)) {
+            Write-Ok "$($record.Role) saved and stopped (PID $processId)."
             continue
         }
 
