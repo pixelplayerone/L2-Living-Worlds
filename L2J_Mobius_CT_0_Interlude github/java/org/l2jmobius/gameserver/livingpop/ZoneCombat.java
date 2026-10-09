@@ -121,9 +121,9 @@ public final class ZoneCombat
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotations = new HashMap<>(); // line -> level -> {auto dps, dps over 5, 15, 30, 45, 60, 90, 120 s} against the sim's dummy
 	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotSelf = new HashMap<>(); // line -> level -> {dps ratio over 5 .. 120 s with the self buffs, P.Def mul, M.Def mul}
-	private final Map<String, java.util.TreeMap<Integer, Double>> _rotSelfRun = new HashMap<>(); // line -> level -> run speed multiplier from learned run-speed self buffs (Dash, Sprint, Sonic Move)
 	private final Map<String, java.util.TreeMap<Integer, int[]>> _rotSelfIds = new HashMap<>(); // line -> level -> the self buff skill ids those ratios assume
 	private final Map<Role, double[][]> _newbie = new java.util.EnumMap<>(Role.class); // Newbie Helper buffs: role -> {damage, pDef, mDef} by level (8-25)
+	private final Map<String, java.util.TreeMap<Integer, double[]>> _bufferExtras = new HashMap<>(); // buffer -> level -> {run speed added, HP regen mul, absorb share, HP mul}
 	private volatile boolean _startingBuffs;
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _serv = new HashMap<>(); // summoner line -> level -> {servitor dps, HP, P.Def}
 	private static final int[] ROTATION_WINDOWS = { 5, 15, 30, 45, 60, 90, 120 };
@@ -178,9 +178,9 @@ public final class ZoneCombat
 		final Map<Integer, String> rotationLine = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotSelf = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, int[]>> rotSelfIds = new HashMap<>();
-		final Map<String, java.util.TreeMap<Integer, Double>> rotSelfRun = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> serv = new HashMap<>();
 		final Map<Role, double[][]> newbie = new java.util.EnumMap<>(Role.class);
+		final Map<String, java.util.TreeMap<Integer, double[]>> bufferExtras = new HashMap<>();
 		final Map<String, Map<Role, java.util.TreeMap<Integer, double[]>>> rest = new HashMap<>();
 		final Map<String, Map<Role, double[][]>> partyBuffs = new HashMap<>();
 		try (BufferedReader in = new BufferedReader(reader))
@@ -236,10 +236,10 @@ public final class ZoneCombat
 						rotSelf.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, values);
 						final String idText = (f.length > 3 + values.length) ? f[3 + values.length] : "-";
 						rotSelfIds.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, idText.equals("-") ? new int[0] : java.util.Arrays.stream(idText.split(",")).mapToInt(Integer::parseInt).toArray());
-						if (f.length > 4 + values.length)
-						{
-							rotSelfRun.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, Double.parseDouble(f[4 + values.length]));
-						}
+					}
+					else if (f[0].equals("BBUFF") && (f.length >= 7))
+					{
+						bufferExtras.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), new double[] { Double.parseDouble(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]) });
 					}
 					else if (f[0].equals("NBUFF") && (f.length >= 6))
 					{
@@ -297,9 +297,9 @@ public final class ZoneCombat
 		model._rotationLine.putAll(rotationLine);
 		model._rotSelf.putAll(rotSelf);
 		model._rotSelfIds.putAll(rotSelfIds);
-		model._rotSelfRun.putAll(rotSelfRun);
 		model._serv.putAll(serv);
 		model._newbie.putAll(newbie);
+		model._bufferExtras.putAll(bufferExtras);
 		model._rest.putAll(rest);
 		model._partyBuffs.putAll(partyBuffs);
 		return model;
@@ -367,6 +367,13 @@ public final class ZoneCombat
 			final double[][] nb = _newbie.get(role);
 			healPerKill += nb[4][level] * _zones.get(_zoneIndex.get(zone)).hp();
 			sitRegen *= (nb[3][level] <= 0.0) ? 1.0 : nb[3][level];
+		}
+		else if (_startingBuffs && (level > NEWBIE_TO_LEVEL) && knows(zone) && (bufferExtras(level) != null))
+		{
+			// A Hierophant's Regeneration and a Doom Cryer's Chant of Vampire, the same way.
+			final double[] extras = bufferExtras(level);
+			healPerKill += extras[2] * _zones.get(_zoneIndex.get(zone)).hp();
+			sitRegen *= extras[1];
 		}
 		final double sitHp = Math.max(0.0, r[1] - healPerKill) / Math.max(1e-9, sitRegen);
 		final double sit = Math.max(sitHp, r[3]);
@@ -528,7 +535,7 @@ public final class ZoneCombat
 		for (int pass = 0; pass < 2; pass++)
 		{
 			final int w = (pass == 0) ? 0 : nearestWindow(fight);
-			final double dps = (rotationDps(z, Role.TANK, 90, level, tankStats.attack(), tankSkills, 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff);
+			final double dps = (rotationDps(z, Role.TANK, 90, level, tankStats.attack(), tankSkills, 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
 			fight = z.hp() / Math.max(1e-6, dps * gearCut);
 		}
 		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
@@ -590,7 +597,9 @@ public final class ZoneCombat
 		for (int pass = 0; pass < 2; pass++)
 		{
 			final int w = (pass == 0) ? 0 : nearestWindow(seconds);
-			seconds = zone.hp() / Math.max(1e-6, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, w));
+			// Servitors are auto-attackers: they get the fighter buffs, not the summoner's (the caller then divides by the summoner's own buff).
+			final double petRatio = buff(Role.MELEE, 0, level) / Math.max(1e-9, buff(role, 0, level));
+			seconds = zone.hp() / Math.max(1e-6, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, w) + (petDps(zone, classId, level, skillFraction) * petRatio));
 		}
 		return seconds;
 	}
@@ -618,15 +627,14 @@ public final class ZoneCombat
 		{
 			dps *= 1.0 + (Math.max(1.0, self.getValue()[window]) - 1.0) * (selfShare < 0 ? Math.max(0.0, Math.min(1.0, skillFraction)) : Math.min(1.0, selfShare));
 		}
-		// A summoner's servitor fights beside it (its auto-attacks and skill, scaled to the zone's defence like the rotation).
-		final double[] pet = servitor(classId, level);
-		if (pet != null)
-		{
-			// The servitor's damage joins the summoner's, so the buffs applied to the total (the bot's own, or the party's) reach it too: it carries the same buffs.
-			final double buffed = pet[0];
-			dps += buffed * (SIM_PDEF / Math.max(1.0, zone.pDef())) * Math.max(0.1, Math.max(0.0, Math.min(1.0, skillFraction)));
-		}
 		return dps;
+	}
+
+	/** @return the servitor's damage per second against the zone's defence, unbuffed (0 for any other class); the buffs are applied by the caller */
+	private double petDps(ZoneStats zone, int classId, int level, double skillFraction)
+	{
+		final double[] pet = servitor(classId, level);
+		return (pet == null) ? 0.0 : (pet[0] * (SIM_PDEF / Math.max(1.0, zone.pDef())) * Math.max(0.1, Math.max(0.0, Math.min(1.0, skillFraction))));
 	}
 
 	private java.util.Map.Entry<Integer, double[]> selfEntry(String line, int level)
@@ -942,7 +950,7 @@ public final class ZoneCombat
 		return _killCache.computeIfAbsent(key, k ->
 		{
 			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0, stats.selfBuffs()) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
-			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, classId, level, stats.selfBuffs(), skills / 10.0); // the walk between monsters shrinks with the bot's speed
+			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, level); // the walk between monsters shrinks with the bot's speed
 			double kills = 60.0 / (overhead + fightSeconds);
 			if (_restOn)
 			{
@@ -1133,28 +1141,42 @@ public final class ZoneCombat
 			final double v = (table == null) ? 0.0 : table[kind][Math.min(MAX_BUFF_LEVEL, level)];
 			return (v <= 0.0) ? 1.0 : v;
 		}
-		return (partyBuff("hierophant", role, kind, level) + partyBuff("doom_cryer", role, kind, level)) / 2.0;
+		final double base = (partyBuff("hierophant", role, kind, level) + partyBuff("doom_cryer", role, kind, level)) / 2.0;
+		final double[] extra = (kind == 0) ? null : bufferExtras(level);
+		return (extra == null) ? base : (base * extra[3]); // Blessed Body counts as effective HP in the death rate
 	}
 
 	/**
-	 * @return how much faster than a plain bot it runs between monsters: Wind Walk for Beginners at levels 8-24, or the best run-speed self buff the class has learned
-	 *         (Dash +40, Sprint +20, Sonic Move +40 on a base of 120, in proportion to the share it has bought), whichever is bigger; 1 without either
+	 * @return how much faster than a plain bot it runs between monsters: Wind Walk for Beginners at levels 8-24, a Hierophant's Wind Walk and Berserker Spirit from 26 (the class's own
+	 *         run-speed self buffs are all short, so they are not counted); 1 without them
 	 */
-	private double runSpeed(Role role, int classId, int level, double selfShare, double skillFraction)
+	private double runSpeed(Role role, int level)
 	{
 		double speed = 1.0;
 		if (_startingBuffs && (level >= NEWBIE_FROM_LEVEL) && (level <= NEWBIE_TO_LEVEL) && (_newbie.get(role) != null))
 		{
 			speed = Math.max(speed, _newbie.get(role)[5][Math.min(MAX_BUFF_LEVEL, level)] <= 0.0 ? 1.0 : _newbie.get(role)[5][Math.min(MAX_BUFF_LEVEL, level)]);
 		}
-		final java.util.TreeMap<Integer, Double> table = _rotSelfRun.get(_rotationLine.get(classId));
-		final java.util.Map.Entry<Integer, Double> entry = (table == null) ? null : table.floorEntry(level);
-		if (entry != null)
+		final double[] extras = (_startingBuffs && (level > NEWBIE_TO_LEVEL)) ? bufferExtras(level) : null;
+		if (extras != null)
 		{
-			final double share = (selfShare < 0) ? Math.max(0.0, Math.min(1.0, skillFraction)) : Math.min(1.0, selfShare);
-			speed = Math.max(speed, 1.0 + ((entry.getValue() - 1.0) * share));
+			speed = Math.max(speed, (120.0 + extras[0]) / 120.0);
 		}
 		return speed;
+	}
+
+	/** @return the average of a Hierophant's and a Doom Cryer's {run speed added, HP regen mul, absorb share, HP mul} at a level above the Newbie Helper's, or null without data */
+	private double[] bufferExtras(int level)
+	{
+		final java.util.TreeMap<Integer, double[]> a = _bufferExtras.get("hierophant");
+		final java.util.TreeMap<Integer, double[]> b = _bufferExtras.get("doom_cryer");
+		if ((a == null) || (b == null) || (a.floorEntry(level) == null) || (b.floorEntry(level) == null))
+		{
+			return null;
+		}
+		final double[] x = a.floorEntry(level).getValue();
+		final double[] y = b.floorEntry(level).getValue();
+		return new double[] { (x[0] + y[0]) / 2.0, (x[1] + y[1]) / 2.0, (x[2] + y[2]) / 2.0, (x[3] + y[3]) / 2.0 };
 	}
 
 	/** @param on whether a solo bot hunts with the Newbie Helper's buffs (levels 8-25) and then a Hierophant's or Doom Cryer's buffs at its level */
