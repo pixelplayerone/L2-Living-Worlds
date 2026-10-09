@@ -92,7 +92,7 @@ Healers cannot level alone (their rotation is weak), and at the highest levels a
 ## Known limits
 - Not validated against hot-bot measurements; late-level numbers are predictions.
 - Crits are in the rotation damage (expected crit damage) but not in the relative model. Multi-pulls, monster skills, self-heals, set bonuses and enchants are not modeled; potion healing and evasion are rough.
-- Healers (Cardinal and the like) use their line's attack rotation, which is weak outside undead zones (in zones with undead they use their undead rotation for that share, see "Undead zones"), and get no credit for healing themselves, so they kill slower than other mages and die as often as them; the virtual party is what lets them level.
+- Healers (Cardinal and the like) use their line's attack rotation, which is weak outside undead zones (in zones with undead they use their undead rotation for that share, see "Undead zones"); they heal themselves (see "Self heals"), so they kill slower than other mages but die less; the virtual party is what lets them level.
 - Rotations assume infinite MP and the sim's best gear; a bot is scaled by its weapon only, and skipped skills are estimated by share, not re-simulated.
 - Early shared classes take the first line (alphabetical) that grows from them. Self buffs are scaled by the share of skills bought, not simulated per bot.
 - **Late-level deaths (left open on purpose; needs party behavior for cold bots).** A solo bot in the highest zones (about level 76-80) dies roughly 2 times an hour in this model, and each death costs 2.5% of a level. At level 76 that is about 1.9 x 2.5% x 220M = 10M experience an hour against about 5.7M gained (`ZoneExp`), so a solo cold bot there would not level. This is not tuned away: it is the gap that cold-sim party behavior (buffers, healers, shared fights, a full buffer party raises damage x2.4-3.6 and P.Def x1.5-1.8 at those levels; see `BuffedLeveling`) is meant to close. Until that exists, either treat late levels as unfinished, or lower `MaxDeathFactor` / `AggroPullRisk`, or set the `BuffShare*` settings above 0.
@@ -110,6 +110,13 @@ Healers cannot level alone (their rotation is weak), and at the highest levels a
 - It is only used where it is faster than the plain rotation. Healers gain a lot (about 3x a Cardinal's damage at level 40, from Turn Undead style skills). Phoenix Knight's undead rotation is equal or slower in the sim (about 13% slower at level 80), so it is effectively unchanged.
 - Only damage per second is compared. If an undead rotation burns more MP, the extra sitting is not counted.
 - A healer in a party is the fourth member and only heals; the damage comes from the party's mage and the Phoenix Knight, so a healer bot only gets its undead rotation when it hunts alone.
+
+## Self heals (`SelfHealCoverage`)
+Mystic-line bots (mages, healers and summoners all learn Heal, Battle Heal and Self Heal; healers also Greater Heal, Greater Battle Heal and Major Heal) hunting alone heal themselves.
+- A bot heals `SelfHealCoverage` (0.6) of the HP it loses per kill beyond standing regen and potions. That share is no longer waited out by sitting. The mana (`SelfHealMpPerHp` per HP healed, 0.12) is added to the MP it has to sit to refill, so it sits for whichever of HP or MP takes longer.
+- Self heals also keep it alive mid-fight: its death factor is cut by half the healed share (a rough guess, tune later).
+- **Summoners** also cast Servitor Heal on the servitor: the same share of the damage it takes is repaired, so the servitor dies less (fewer 20 s resummons, less exposure for the summoner), and the mana is added to the summoner's sitting.
+- Fighters and archers have no heals and are unchanged. Parties are unaffected: the party healer already covers it. Heal cast time (Heal 5 s, Battle Heal 2 s, Servitor Heal 4 s) and the casting interrupting the attack rotation are not modeled.
 
 ## Design decisions and reasoning
 These are the smaller choices, written down so the reason survives. Almost all are deliberate rough stand-ins to be tuned later.
@@ -144,5 +151,7 @@ These are the smaller choices, written down so the reason survives. Almost all a
 - *The healer only heals.* Its mana is spent on the HP it heals (0.12 mana per HP, about what Greater Heal and Battle Heal cost), not on attack spells, so it rests only as much as the tank is hurt. This replaced an earlier rule that charged it 1.5 times an attacking mage's mana, which made parties of melee, tank and dagger bots kill slower than solo at levels 20-40.
 
 - *Random reference tank.* The party's tank used to always be a Phoenix Knight, which made every party depend on one class's numbers. It is now drawn at random from the four tank lines (Phoenix Knight, Hell Knight, Eva's Templar, Shillien Templar), the same way the damage dealer and buffer are, so no one line sets the party's strength. A bot that is itself a tank uses its own line and self buffs.
+
+- *Self heals at 0.6 with 0.12 mana per HP.* Healers, mages and summoners can heal themselves, so leaving them out made them rest and die more than real ones. 0.6 and 0.12 are rough: Greater Heal and Battle Heal run about 0.1 mana per HP, and a bot will not heal every point it loses. The death-factor cut (half the healed share) is a guess.
 
 **Spoiling and undead** are explained in their own sections above.

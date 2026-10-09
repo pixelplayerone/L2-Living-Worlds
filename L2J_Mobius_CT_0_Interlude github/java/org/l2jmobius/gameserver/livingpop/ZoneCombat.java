@@ -127,6 +127,8 @@ public final class ZoneCombat
 	private final Map<Role, double[][]> _newbie = new java.util.EnumMap<>(Role.class); // Newbie Helper buffs: role -> {damage, pDef, mDef} by level (8-25)
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _bufferExtras = new HashMap<>(); // buffer -> level -> {run speed added, HP regen mul, absorb share, HP mul}
 	private volatile boolean _startingBuffs;
+	private volatile double _selfHeal; // share of the HP a mystic-line bot loses that it heals itself (Heal, Battle Heal, Self Heal), and of the damage its servitor takes that Servitor Heal repairs; 0 = off
+	private volatile double _healMpPerHp = 0.12; // mana per HP healed
 	private volatile double _rangedWalk = 1.0; // share of the walk between monsters that archers and casters keep
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _serv = new HashMap<>(); // summoner line -> level -> {servitor dps, HP, P.Def}
 	private static final int[] ROTATION_WINDOWS = { 5, 15, 30, 45, 60, 90, 120 };
@@ -393,7 +395,7 @@ public final class ZoneCombat
 	}
 
 	/** Kills factor from sitting: the cycle over the cycle plus the sit; potions heal part of the HP deficit so it sits less. 1 without rest data. */
-	private double restFactor(String zone, Role role, int level, double killsPerMinute, double potionsPerHour, boolean spoiler)
+	private double restFactor(String zone, Role role, int level, double killsPerMinute, double potionsPerHour, boolean spoiler, double servitorHealHp)
 	{
 		final Map<Role, java.util.TreeMap<Integer, double[]>> byRole = _rest.get(zone);
 		final java.util.TreeMap<Integer, double[]> table = (byRole == null) ? null : byRole.get(role);
@@ -419,9 +421,13 @@ public final class ZoneCombat
 			healPerKill += extras[2] * _zones.get(_zoneIndex.get(zone)).hp();
 			sitRegen *= extras[1];
 		}
-		final double sitHp = Math.max(0.0, r[1] - healPerKill) / Math.max(1e-9, sitRegen);
+		// Mystic-line bots (mages, healers, summoners) heal themselves with Heal, Battle Heal and Self Heal for a share of the HP they lose, and summoners repair the servitor with Servitor Heal; the mana comes out of the same pool they sit to refill.
+		final double deficit = Math.max(0.0, r[1] - healPerKill);
+		final double selfHealed = (role == Role.MAGE) ? (deficit * _selfHeal) : 0.0;
+		final double healMp = (r.length >= 5 && r[4] > 0.0) ? (((selfHealed + servitorHealHp) * _healMpPerHp) / r[4]) : 0.0;
+		final double sitHp = (deficit - selfHealed) / Math.max(1e-9, sitRegen);
 		// A spoiler bot casts Spoil on every monster: that mana is refilled by sitting too (a spoiler in the party that is not the bot costs it nothing).
-		final double sit = Math.max(sitHp, r[3] + spoilSitSeconds(r, level, spoiler));
+		final double sit = Math.max(sitHp, r[3] + healMp + spoilSitSeconds(r, level, spoiler));
 		return r[0] / (r[0] + sit);
 	}
 
@@ -735,15 +741,16 @@ public final class ZoneCombat
 	/**
 	 * The share of a monster's fights the summoner is not shielded from. Monsters hit the servitor first (its HP drops before the summoner's); when it dies the summoner is
 	 * exposed until it summons again.
-	 * @return {share of time without the servitor, the summoner's exposure to damage (0 to 1)}
+	 * @return {share of time without the servitor, the summoner's exposure to damage (0 to 1), servitor HP healed per kill}
 	 */
 	private double[] servitorShield(ZoneStats zone, double[] pet, int level, double fightSeconds, double killsPerMinute)
 	{
 		final double defence = pet[2] * buff(Role.MELEE, 1, level); // the servitor's P.Def and HP carry the bot's buffs (Shield, Blessed Body, the buffers')
-		final double damagePerFight = fightSeconds * MOB_HITS_PER_SECOND * 70.0 * zone.pAtk() / Math.max(1.0, defence);
+		final double hitPerFight = fightSeconds * MOB_HITS_PER_SECOND * 70.0 * zone.pAtk() / Math.max(1.0, defence);
+		final double damagePerFight = hitPerFight * (1.0 - _selfHeal); // Servitor Heal repairs a share of it between hits
 		final double servitorDeathsPerHour = killsPerMinute * 60.0 * damagePerFight / Math.max(1.0, pet[1]);
 		final double dead = Math.min(SERVITOR_MAX_DEAD_SHARE, servitorDeathsPerHour * SERVITOR_RESUMMON_SECONDS / 3600.0);
-		return new double[] { dead, Math.min(1.0, SERVITOR_BASE_EXPOSURE + dead) };
+		return new double[] { dead, Math.min(1.0, SERVITOR_BASE_EXPOSURE + dead), Math.min(pet[1], hitPerFight * _selfHeal) }; // the third is the servitor HP healed per kill
 	}
 
 	private static int nearestWindow(double seconds)
@@ -1021,14 +1028,15 @@ public final class ZoneCombat
 			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0, stats.selfBuffs()) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
 			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, level) * ((role == Role.BOW || role == Role.MAGE) ? _rangedWalk : 1.0); // the walk between monsters shrinks with the bot's speed, and ranged classes move less
 			double kills = 60.0 / (overhead + fightSeconds);
+			final double[] pet = rotation ? servitor(classId, level) : null;
+			final double[] shield = (pet == null) ? null : servitorShield(_zones.get(zi), pet, level, fightSeconds, kills);
 			if (_restOn)
 			{
-				kills *= restFactor(_zones.get(zi).name(), role, level, kills, potionsPerHour, LivingSupplies.isSpoiler(classId));
+				kills *= restFactor(_zones.get(zi).name(), role, level, kills, potionsPerHour, LivingSupplies.isSpoiler(classId), (shield == null) ? 0.0 : shield[2]);
 			}
-			final double[] pet = rotation ? servitor(classId, level) : null;
-			if (pet != null)
+			if (shield != null)
 			{
-				kills *= 1.0 - servitorShield(_zones.get(zi), pet, level, fightSeconds, kills)[0]; // time spent summoning again
+				kills *= 1.0 - shield[0]; // time spent summoning again
 			}
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills));
 		});
@@ -1091,6 +1099,10 @@ public final class ZoneCombat
 				// The servitor takes the hits first: the summoner is only exposed while it is down (plus a base share of attacks that still reach the master).
 				final double fight = rotationFightSeconds(z, role, classId, level, curve(role == Role.MAGE ? "matk_mage" : "patk_melee", LivingSupplies.gradeFor(level)), 1.0, 1.0);
 				gear *= servitorShield(z, pet, level, fight, _params.baseKillsPerMinute() * 0.6)[1];
+			}
+			if (role == Role.MAGE)
+			{
+				gear *= 1.0 - (0.5 * _selfHeal); // self heals keep it up in the middle of a fight: half of the healed share of the damage no longer kills
 			}
 			return gear * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0));
 		});
@@ -1253,6 +1265,19 @@ public final class ZoneCombat
 	{
 		_rangedWalk = Math.max(0.05, Math.min(1.0, factor));
 		_killCache.clear();
+		_partyCache.clear();
+	}
+
+	/**
+	 * @param coverage the share of the HP lost that mystic-line bots (mages, healers, summoners) heal themselves, and of the servitor's damage that Servitor Heal repairs (0 = off)
+	 * @param mpPerHp the mana the heals cost per HP healed
+	 */
+	public void setSelfHeal(double coverage, double mpPerHp)
+	{
+		_selfHeal = Math.max(0.0, Math.min(0.95, coverage));
+		_healMpPerHp = Math.max(0.0, mpPerHp);
+		_killCache.clear();
+		_deathCache.clear();
 		_partyCache.clear();
 	}
 

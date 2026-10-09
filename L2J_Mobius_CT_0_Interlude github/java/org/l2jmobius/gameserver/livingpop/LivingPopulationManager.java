@@ -172,6 +172,8 @@ public class LivingPopulationManager
 
 	private volatile boolean _startingBuffs = true;
 	private volatile double _rangedWalk = 0.5;
+	private volatile double _selfHeal = 0.6;
+	private volatile double _selfHealMpPerHp = 0.12;
 
 	public void setParty(boolean on, double chance, boolean healers, ZoneCombat.PartyParams params)
 	{
@@ -200,6 +202,16 @@ public class LivingPopulationManager
 	public void setRangedWalk(double factor)
 	{
 		_rangedWalk = factor;
+	}
+
+	/**
+	 * @param coverage the share of the HP lost that mages, healers and summoners heal themselves (and of the servitor's damage Servitor Heal repairs); 0 turns it off
+	 * @param mpPerHp the mana a heal costs per HP
+	 */
+	public void setSelfHeal(double coverage, double mpPerHp)
+	{
+		_selfHeal = coverage;
+		_selfHealMpPerHp = mpPerHp;
 	}
 
 	public void setBlessedSpiritshots(double damage, double share)
@@ -294,6 +306,7 @@ public class LivingPopulationManager
 				_combat.setRest(_zoneRest);
 				_combat.setStartingBuffs(_startingBuffs);
 				_combat.setRangedWalk(_rangedWalk);
+				_combat.setSelfHeal(_selfHeal, _selfHealMpPerHp);
 				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour(), _partyParams.gearPenalty()));
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);

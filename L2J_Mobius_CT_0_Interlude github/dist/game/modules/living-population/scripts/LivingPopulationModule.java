@@ -159,6 +159,7 @@ public class LivingPopulationModule implements GameModule
 			context.config().getBoolean("PartyHealers", true), //
 			new ZoneCombat.PartyParams(true, Math.max(0.0, context.config().getDouble("PartyExpBonus", 1.3)), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealReduction", 0.2))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealCoverage", 0.75))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChainChance", 0.3))), Math.max(0.0, context.config().getDouble("PartyResetSeconds", 45.0)), Math.max(0.0, context.config().getDouble("PartyHealMpPerHp", 0.12)), Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3)), Math.max(0.0, Math.min(0.9, context.config().getDouble("PartyGearPenalty", 0.15)))));
 		LivingPopulationManager.getInstance().setRangedWalk(context.config().getDouble("ZoneRangedWalk", 0.5));
+		LivingPopulationManager.getInstance().setSelfHeal(context.config().getDouble("SelfHealCoverage", 0.6), context.config().getDouble("SelfHealMpPerHp", 0.12));
 		LivingPopulationManager.getInstance().setStartingBuffs(context.config().getBoolean("StartingBuffs", true));
 		LivingPopulationManager.getInstance().setRestAndEvasion(context.config().getBoolean("ZoneRest", true), context.config().getBoolean("ZoneEvasion", true));
 		LivingPopulationManager.getInstance().setRotationTtk(context.config().getBoolean("ZoneRotationTtk", true));
