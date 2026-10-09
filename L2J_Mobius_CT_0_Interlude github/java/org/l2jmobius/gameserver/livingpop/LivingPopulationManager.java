@@ -171,6 +171,7 @@ public class LivingPopulationManager
 	}
 
 	private volatile boolean _startingBuffs = true;
+	private volatile double _rangedWalk = 0.5;
 
 	public void setParty(boolean on, double chance, boolean healers, ZoneCombat.PartyParams params)
 	{
@@ -194,6 +195,11 @@ public class LivingPopulationManager
 	public void setStartingBuffs(boolean on)
 	{
 		_startingBuffs = on;
+	}
+
+	public void setRangedWalk(double factor)
+	{
+		_rangedWalk = factor;
 	}
 
 	public void setBlessedSpiritshots(double damage, double share)
@@ -287,6 +293,7 @@ public class LivingPopulationManager
 				_combat.setRotationTtk(_rotationTtk);
 				_combat.setRest(_zoneRest);
 				_combat.setStartingBuffs(_startingBuffs);
+				_combat.setRangedWalk(_rangedWalk);
 				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healerMpFactor(), _partyParams.baseDeathsPerHour(), _partyParams.gearPenalty()));
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);

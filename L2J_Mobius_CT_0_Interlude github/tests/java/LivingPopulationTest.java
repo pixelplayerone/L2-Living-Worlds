@@ -781,7 +781,7 @@ public class LivingPopulationTest
 			final ZoneCombat.Stats mage = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			final ZoneCombat.PartyOutcome healerParty = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3);
 			final ZoneCombat.PartyOutcome tankParty = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3);
-			check("party: a healer gets a party outcome with a quarter of the experience", (healerParty != null) && (healerParty.slot() == 3) && Math.abs(healerParty.expShare() - 0.25) < 1e-9);
+			check("party: a healer gets a party outcome with the party bonus over four of the experience", (healerParty != null) && (healerParty.slot() == 3) && Math.abs(healerParty.expShare() - 1.3 / 4.0) < 1e-9);
 			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
 			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
 			check("party: the party is cheaper to die in than going alone", tankParty.deathFactor() < rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)));
@@ -814,6 +814,17 @@ public class LivingPopulationTest
 			final double sitNoVamp = vamp.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0);
 			vamp.setStartingBuffs(true);
 			check("vampiric rage: HP returned from damage dealt means less sitting", vamp.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0) > sitNoVamp);
+			final double bowWalk = rot.killsPerMinute("Rot", 92, 40, rot.curveStats(ZoneCombat.Role.BOW, 2, 2), 1.0, 1.0);
+			final double meleeWalk = rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			rot.setRangedWalk(0.5);
+			check("ranged walk: archers and mages walk half as much between kills, fighters the same", (rot.killsPerMinute("Rot", 92, 40, rot.curveStats(ZoneCombat.Role.BOW, 2, 2), 1.0, 1.0) > bowWalk) && (Math.abs(rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - meleeWalk) < 1e-9));
+			rot.setRangedWalk(1.0);
+			final java.util.Set<String> seen = new java.util.HashSet<>();
+			for (int v = 0; v < 64; v++)
+			{
+				seen.add(String.valueOf(Math.round(rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, v).killsPerMinute() * 1000)));
+			}
+			check("party: the damage dealer varies across the whole damage list", seen.size() > 2);
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.0));

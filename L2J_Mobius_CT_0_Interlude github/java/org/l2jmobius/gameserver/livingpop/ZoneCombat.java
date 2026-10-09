@@ -125,6 +125,7 @@ public final class ZoneCombat
 	private final Map<Role, double[][]> _newbie = new java.util.EnumMap<>(Role.class); // Newbie Helper buffs: role -> {damage, pDef, mDef} by level (8-25)
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _bufferExtras = new HashMap<>(); // buffer -> level -> {run speed added, HP regen mul, absorb share, HP mul}
 	private volatile boolean _startingBuffs;
+	private volatile double _rangedWalk = 1.0; // share of the walk between monsters that archers and casters keep
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _serv = new HashMap<>(); // summoner line -> level -> {servitor dps, HP, P.Def}
 	private static final int[] ROTATION_WINDOWS = { 5, 15, 30, 45, 60, 90, 120 };
 	private static final double SIM_PDEF = 400.0;
@@ -383,7 +384,7 @@ public final class ZoneCombat
 	/**
 	 * The rough party model: a virtual party of a tank, a damage dealer, a buffer and a healer, of which the bot is one (by its class).
 	 * @param enabled whether bots may party
-	 * @param expBonus the party's experience bonus; the bot gets expBonus / 4 of a kill's experience (1.0 = a quarter; the server gives 1.30 for 4)
+	 * @param expBonus the party's experience bonus; the bot gets expBonus / 4 of a kill's experience (the server gives 1.30 for 4, so 32.5%; 1.0 would be a quarter)
 	 * @param healReduction how much of the solo tank death rate remains with a healer behind it (0.2 = a fifth)
 	 * @param healCoverage the share of the tank's HP loss the healer heals (so the tank sits less)
 	 * @param chainChance when a member dies, the chance the next in line (tank, damage dealer, buffer, healer) dies before the mob does
@@ -396,7 +397,7 @@ public final class ZoneCombat
 	{
 		public static PartyParams defaults()
 		{
-			return new PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.15);
+			return new PartyParams(true, 1.3, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.15);
 		}
 	}
 
@@ -418,6 +419,8 @@ public final class ZoneCombat
 
 	private static final Set<Integer> HEALERS = Set.of(15, 16, 97, 29, 30, 105, 42, 43, 112);
 	private static final Map<Integer, String> BUFFER_OF = Map.ofEntries(Map.entry(17, "hierophant"), Map.entry(98, "hierophant"), Map.entry(21, "sword_muse"), Map.entry(100, "sword_muse"), Map.entry(34, "spectral_dancer"), Map.entry(107, "spectral_dancer"), Map.entry(51, "dominator"), Map.entry(115, "dominator"), Map.entry(52, "doom_cryer"), Map.entry(116, "doom_cryer"));
+	/** Every damage dealer line a party can have: Duelist, Dreadnought, Titan, Grand Khavatari, Fortune Seeker, Maestro, Adventurer, Wind Rider, Ghost Hunter, Sagittarius, Moonlight and Ghost Sentinel, Archmage, Soultaker, Arcana Lord, Mystic Muse, Elemental Master, Storm Screamer, Spectral Master. */
+	private static final int[] DPS_CLASSES = { 88, 89, 113, 114, 117, 118, 93, 101, 108, 92, 102, 109, 94, 95, 96, 103, 104, 110, 111 };
 	private static final String[] BUFFERS = { "hierophant", "doom_cryer" }; // the two main buffers a party picks from at random (a bot that is itself a buffer brings its own line)
 	private final Map<String, Map<Role, double[][]>> _partyBuffs = new HashMap<>(); // buffer line -> role -> {damage, pDef, mDef} by level
 	private volatile PartyParams _partyParams = PartyParams.defaults();
@@ -520,8 +523,7 @@ public final class ZoneCombat
 		}
 		else
 		{
-			final int pick = Math.floorMod(variant / BUFFERS.length, 3);
-			dpsClass = (pick == 0) ? 88 : (pick == 1) ? 92 : 94;
+			dpsClass = DPS_CLASSES[Math.floorMod(variant / BUFFERS.length, DPS_CLASSES.length)];
 			dpsRole = roleOf(dpsClass);
 			dpsStats = curveStats(dpsRole, grade, grade);
 			dpsSkills = 1.0;
@@ -950,7 +952,7 @@ public final class ZoneCombat
 		return _killCache.computeIfAbsent(key, k ->
 		{
 			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0, stats.selfBuffs()) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
-			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, level); // the walk between monsters shrinks with the bot's speed
+			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, level) * ((role == Role.BOW || role == Role.MAGE) ? _rangedWalk : 1.0); // the walk between monsters shrinks with the bot's speed, and ranged classes move less
 			double kills = 60.0 / (overhead + fightSeconds);
 			if (_restOn)
 			{
@@ -1177,6 +1179,13 @@ public final class ZoneCombat
 		final double[] x = a.floorEntry(level).getValue();
 		final double[] y = b.floorEntry(level).getValue();
 		return new double[] { (x[0] + y[0]) / 2.0, (x[1] + y[1]) / 2.0, (x[2] + y[2]) / 2.0, (x[3] + y[3]) / 2.0 };
+	}
+
+	/** @param factor the share of the walk and targeting time between monsters that ranged classes (archers and mages) keep: 0.5 halves it, 1 turns it off */
+	public void setRangedWalk(double factor)
+	{
+		_rangedWalk = Math.max(0.05, Math.min(1.0, factor));
+		_killCache.clear();
 	}
 
 	/** @param on whether a solo bot hunts with the Newbie Helper's buffs (levels 8-25) and then a Hierophant's or Doom Cryer's buffs at its level */

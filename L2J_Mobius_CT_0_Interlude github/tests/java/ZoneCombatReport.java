@@ -33,6 +33,7 @@ public class ZoneCombatReport
 		model.setRest(true);
 		model.setEvasion(true);
 		model.setStartingBuffs(true);
+		model.setRangedWalk(0.5);
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
 		levelAverages(model, risk, args[1], args[2]);
 		System.out.println();
@@ -136,7 +137,7 @@ public class ZoneCombatReport
 		final java.util.Map<Integer, Double> loss = readTable(lossXml, "val");
 		final java.util.Map<Integer, Double> total = readTable(expXml, "tolevel");
 		final Object[][] classes = { { "Dagger (Adventurer)", 93 }, { "Summoner (Arcana Lord)", 96 }, { "Healer (Cardinal)", 97 }, { "Melee (Duelist)", 88 }, { "Tank (Phoenix Knight)", 90 } };
-		System.out.println("| level | class | solo kills/min | solo deaths/hr | solo net exp/hr | party kills/min | party deaths/hr | party net exp/hr (a quarter) |");
+		System.out.println("| level | class | solo kills/min | solo deaths/hr | solo net exp/hr | party kills/min | party deaths/hr | party net exp/hr |");
 		System.out.println("|---|---|---|---|---|---|---|---|");
 		for (int level : new int[] { 20, 40, 61, 76 })
 		{
@@ -158,16 +159,16 @@ public class ZoneCombatReport
 					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), id, level, st, 1.0, 1.0, false, 4.0), model.respawnCap(z.name(), 4, 0.5)));
 					final double d = 0.3 * model.deathFactor(z.name(), id, level, st);
 					double ppk = 0, ppd = 0, ppn = 0;
-					for (int v = 0; v < 12; v++)
+					for (int v = 0; v < 40; v++)
 					{
-						final ZoneCombat.PartyOutcome o = model.party(z.name(), id, level, st, 1.0, 1.0, false, v * 7);
+						final ZoneCombat.PartyOutcome o = model.party(z.name(), id, level, st, 1.0, 1.0, false, v);
 						if (o == null)
 						{
 							continue;
 						}
-						ppk += o.killsPerMinute() / 12;
-						ppd += 0.3 * o.deathFactor() / 12;
-						ppn += ((o.killsPerMinute() * 60.0 * z.expPerKill() * o.expShare()) - (0.3 * o.deathFactor() * lossPerDeath)) / 12;
+						ppk += o.killsPerMinute() / 40;
+						ppd += 0.3 * o.deathFactor() / 40;
+						ppn += ((o.killsPerMinute() * 60.0 * z.expPerKill() * o.expShare()) - (0.3 * o.deathFactor() * lossPerDeath)) / 40;
 					}
 					sk += k;
 					sd += d;
