@@ -115,6 +115,27 @@ public final class ZoneCatalog
 	}
 
 	/**
+	 * An island: land that water separates from the mainland, so nobody walks on or off it (FPC-277). A box around it,
+	 * from the catalog. Everything outside every island is the mainland.
+	 * @param name the island's name
+	 * @param minX west edge
+	 * @param maxX east edge
+	 * @param minY north edge
+	 * @param maxY south edge
+	 */
+	public record Island(String name, int minX, int maxX, int minY, int maxY)
+	{
+		/**
+		 * @param point a point
+		 * @return whether it is on this island
+		 */
+		public boolean contains(Point point)
+		{
+			return (point.x() >= minX) && (point.x() <= maxX) && (point.y() >= minY) && (point.y() <= maxY);
+		}
+	}
+
+	/**
 	 * A named hunting zone.
 	 * @param name the zone name
 	 * @param minLevel the lowest level it suits
@@ -166,17 +187,24 @@ public final class ZoneCatalog
 
 	private final List<Town> _towns;
 	private final List<Zone> _zones;
+	private final List<Island> _islands;
 
 	public ZoneCatalog(List<Town> towns, List<Zone> zones)
 	{
+		this(towns, zones, List.of());
+	}
+
+	public ZoneCatalog(List<Town> towns, List<Zone> zones, List<Island> islands)
+	{
 		_towns = Collections.unmodifiableList(new ArrayList<>(towns));
 		_zones = Collections.unmodifiableList(new ArrayList<>(zones));
+		_islands = Collections.unmodifiableList(new ArrayList<>(islands));
 	}
 
 	/** @return an empty catalog (travel is then inert) */
 	public static ZoneCatalog empty()
 	{
-		return new ZoneCatalog(List.of(), List.of());
+		return new ZoneCatalog(List.of(), List.of(), List.of());
 	}
 
 	public List<Town> towns()
@@ -233,18 +261,59 @@ public final class ZoneCatalog
 		return null;
 	}
 
+	public List<Island> islands()
+	{
+		return _islands;
+	}
+
 	/**
-	 * The nearest town with a grocer, measured to its arrival point.
+	 * @param point a point
+	 * @return the island it is on, or null on the mainland
+	 */
+	public Island islandAt(Point point)
+	{
+		for (Island island : _islands)
+		{
+			if (island.contains(point))
+			{
+				return island;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * @param a a point
+	 * @param b another point
+	 * @return whether both are on the same land (the same island, or both on the mainland), so one can walk between them
+	 */
+	public boolean sameLand(Point a, Point b)
+	{
+		return islandAt(a) == islandAt(b);
+	}
+
+	/**
+	 * The nearest town with a grocer, measured to its arrival point, on the same land as the bot (FPC-277): a town across
+	 * the water may be closer in a straight line (Langk Lizardman Dwellings and Talking Island Village), but the walk
+	 * there is a swim. Only when no shopping town is on its land (a bot on an island without one) is the nearest across
+	 * the water given; the bot then cannot walk there.
 	 * @param from where the bot is
 	 * @return the town, or null when the catalog has none
 	 */
 	public Town nearestShoppingTown(Point from)
 	{
+		final Town onLand = nearestShoppingTown(from, true);
+		return (onLand != null) ? onLand : nearestShoppingTown(from, false);
+	}
+
+	private Town nearestShoppingTown(Point from, boolean sameLandOnly)
+	{
+		final Island land = sameLandOnly ? islandAt(from) : null;
 		Town best = null;
 		double bestDistance = Double.MAX_VALUE;
 		for (Town town : _towns)
 		{
-			if (!town.hasGrocer())
+			if (!town.hasGrocer() || (sameLandOnly && (islandAt(town.arrival()) != land)))
 			{
 				continue;
 			}
@@ -352,6 +421,7 @@ public final class ZoneCatalog
 		final Document document = builder.parse(in);
 		final List<Town> towns = new ArrayList<>();
 		final List<Zone> zones = new ArrayList<>();
+		final List<Island> islands = new ArrayList<>();
 		final NodeList children = document.getDocumentElement().getChildNodes();
 		for (int i = 0; i < children.getLength(); i++)
 		{
@@ -388,6 +458,10 @@ public final class ZoneCatalog
 				}
 				towns.add(new Town(element.getAttribute("name"), point(element), gatekeeper, grocer, Map.copyOf(routes), Map.copyOf(masters)));
 			}
+			else if ("island".equals(element.getTagName()))
+			{
+				islands.add(new Island(element.getAttribute("name"), Integer.parseInt(element.getAttribute("minX")), Integer.parseInt(element.getAttribute("maxX")), Integer.parseInt(element.getAttribute("minY")), Integer.parseInt(element.getAttribute("maxY"))));
+			}
 			else if ("zone".equals(element.getTagName()))
 			{
 				final List<Teleport> teleports = new ArrayList<>();
@@ -416,7 +490,7 @@ public final class ZoneCatalog
 				zones.add(new Zone(element.getAttribute("name"), Integer.parseInt(element.getAttribute("minLevel")), Integer.parseInt(element.getAttribute("maxLevel")), race.isEmpty() ? null : race, List.copyOf(teleports), List.copyOf(spots), List.copyOf(monsters)));
 			}
 		}
-		return new ZoneCatalog(towns, zones);
+		return new ZoneCatalog(towns, zones, islands);
 	}
 
 	private static List<Element> elements(Element parent)

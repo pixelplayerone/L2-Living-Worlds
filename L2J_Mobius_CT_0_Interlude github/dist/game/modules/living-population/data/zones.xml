@@ -256,6 +256,8 @@
 		<route town="Gludin Village" fee="18000" />
 		<route town="Orc Village" fee="35000" />
 	</town>
+	<island name="Talking Island" minX="-131072" maxX="-60000" minY="196608" maxY="270000" />
+	<island name="Devil&apos;s Isle" minX="36000" maxX="56000" minY="196000" maxY="220000" />
 	<zone name="Talking Island newbie grounds" minLevel="1" maxLevel="10" starterRace="Human">
 		<spot x="-81412" y="246563" z="-3596" />
 		<spot x="-95164" y="237296" z="-3348" />

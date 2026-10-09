@@ -34,15 +34,18 @@ import java.util.logging.Logger;
 import org.l2jmobius.commons.threads.ThreadPool;
 import org.l2jmobius.gameserver.data.xml.ExperienceData;
 import org.l2jmobius.gameserver.data.xml.MapRegionData;
+import org.l2jmobius.gameserver.geoengine.GeoEngine;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Point;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Town;
 import org.l2jmobius.gameserver.managers.PhantomManager;
+import org.l2jmobius.gameserver.managers.ZoneManager;
 import org.l2jmobius.gameserver.model.Location;
 import org.l2jmobius.gameserver.model.World;
 import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.model.actor.enums.player.TeleportWhereType;
 import org.l2jmobius.gameserver.model.item.enums.BodyPart;
 import org.l2jmobius.gameserver.model.item.instance.Item;
+import org.l2jmobius.gameserver.model.zone.type.WaterZone;
 
 /**
  * Phase 3, the hot/cold handoff. This is the orchestration seam: on a scan (driven by {@link LivingPopulationManager} on
@@ -96,6 +99,8 @@ public class HotColdHandoff
 		Math.toRadians(90),
 		Math.toRadians(-90)
 	};
+	// A route waypoint counts as reached this close, and the walk turns to the next one.
+	private static final double ROUTE_POINT_RANGE = 100.0;
 	// Within this of a town errand stop (grocer, gatekeeper), the stop counts as reached.
 	private static final double ERRAND_RANGE = 150.0;
 	// How long past its estimated errand time a live bot may still be walking to the shops before it moves on anyway.
@@ -126,6 +131,12 @@ public class HotColdHandoff
 		private long _progressAt; // when it last gained ground
 		private long _fightingSince; // when it started fighting back on the road (0 = not fighting)
 		private long _deadSince; // when the live character died (0 = alive)
+		// The planned route of the current walk (FPC-278): its waypoints, the next one, and what it leads to.
+		private List<Point> _route;
+		private int _routeIndex;
+		private Point _routeTarget;
+		private boolean _routeFailed; // no route could be planned from here: the straight walk is used until it moves on
+		private boolean _replanned; // stuck once on this route and planned again; stuck again places it at its next waypoint
 
 		private HotEntry(ColdBot bot)
 		{
@@ -521,6 +532,7 @@ public class HotColdHandoff
 				entry._fightingSince = now;
 				phantoms.setLivingIdle(player, false);
 				entry._applied = null;
+				entry._route = null; // the fight moves it off its route: plan again from where it ends
 			}
 			// The fight clock only lets it walk off once nothing is still going for it: walking away from an attacker
 			// drags the fight along the road (and made the stuck check hop it forward mid-fight).
@@ -730,6 +742,7 @@ public class HotColdHandoff
 		}
 		if (teleported)
 		{
+			clearRoute(entry); // a route planned before the teleport starts somewhere else
 			// Teleported away from whoever was watching: let the next scan cool it at once if nobody is near the new spot.
 			entry._lastNearAt = 0L;
 		}
@@ -758,10 +771,12 @@ public class HotColdHandoff
 	}
 
 	/**
-	 * Keeps the live character walking toward a target, around buildings and walls through the engine's pathfinding. A
-	 * target close enough is walked to directly; a far one is approached one waypoint at a time, trying the straight
-	 * heading first and then headings to either side (and shorter hops) until one can be reached. A walk that stops
-	 * gaining ground is stuck on terrain, so the character is placed at its next waypoint and carries on.
+	 * Keeps the live character walking toward a target the way a player would: along a route planned around water and
+	 * over bridges ({@link LivingRoute}), one stretch at a time, the engine's pathfinding handling each short stretch. A
+	 * long walk is planned in pieces. Where there is no terrain data to plan on, the old walk is used: a target close
+	 * enough is walked to directly, a far one one waypoint at a time on the straight heading or headings to either side. A
+	 * walk that stops gaining ground is planned again, and if it stays stuck the character is placed at its next waypoint
+	 * (never in water) and carries on.
 	 * @param arriveRange how close counts as there
 	 * @return whether it has arrived
 	 */
@@ -770,22 +785,111 @@ public class HotColdHandoff
 		final double distance = HandoffPolicy.planarDistance(player.getX(), player.getY(), target.x(), target.y());
 		if (distance <= arriveRange)
 		{
+			clearRoute(entry);
 			return true;
 		}
+		if (!target.equals(entry._routeTarget))
+		{
+			clearRoute(entry);
+			entry._routeTarget = target;
+			resetProgress(entry, now);
+		}
+		if (PhantomManager.isLivingUnderAttack(player))
+		{
+			resetProgress(entry, now); // held up by a fight, not by the terrain: never hop it away mid-fight
+			entry._route = null; // a fight moves it off its route: plan again from where it ends
+			return false;
+		}
+		final GeoTerrain terrain = new GeoTerrain(player.getInstanceId());
+		if ((entry._route == null) && !entry._routeFailed)
+		{
+			entry._route = LivingRoute.plan(terrain, new Point(player.getX(), player.getY(), player.getZ()), target);
+			entry._routeIndex = 0;
+			entry._routeFailed = entry._route == null;
+			resetProgress(entry, now);
+		}
+		if (entry._route != null)
+		{
+			return followRoute(entry, player, terrain, now);
+		}
+		return walkStraight(entry, player, target, distance, terrain, now);
+	}
+
+	/** One tick along the planned route. */
+	private boolean followRoute(HotEntry entry, Player player, GeoTerrain terrain, long now)
+	{
+		final PhantomManager phantoms = PhantomManager.getInstance();
+		Point next = entry._route.get(entry._routeIndex);
+		double toNext = HandoffPolicy.planarDistance(player.getX(), player.getY(), next.x(), next.y());
+		boolean advanced = false;
+		while ((toNext <= ROUTE_POINT_RANGE) && (entry._routeIndex < (entry._route.size() - 1)))
+		{
+			entry._routeIndex++;
+			next = entry._route.get(entry._routeIndex);
+			toNext = HandoffPolicy.planarDistance(player.getX(), player.getY(), next.x(), next.y());
+			advanced = true;
+		}
+		if (toNext <= ROUTE_POINT_RANGE)
+		{
+			entry._route = null; // the end of a partial plan: plan the rest from here on the next tick
+			resetProgress(entry, now);
+			return false;
+		}
+		if (advanced)
+		{
+			resetProgress(entry, now);
+		}
+		else if (toNext < (entry._bestDistance - 50.0))
+		{
+			entry._bestDistance = toNext;
+			entry._progressAt = now;
+		}
+		if ((now - entry._progressAt) > STUCK_MS)
+		{
+			if (!entry._replanned)
+			{
+				entry._replanned = true; // first plan again from where it stands
+				entry._route = null;
+			}
+			else
+			{
+				entry._replanned = false;
+				if (!terrain.water(next.x(), next.y(), next.z()))
+				{
+					phantoms.livingTeleport(player, next.x(), next.y(), next.z());
+				}
+				entry._route = null;
+			}
+			resetProgress(entry, now);
+			return false;
+		}
+		if (player.isMoving() && !advanced)
+		{
+			return false;
+		}
+		if (!phantoms.livingMoveTo(player, next.x(), next.y(), next.z()))
+		{
+			entry._route = null; // the stretch cannot be walked after all (a door, a moved obstacle): plan again
+		}
+		return false;
+	}
+
+	/** The walk used where there is no terrain data to plan a route on. */
+	private boolean walkStraight(HotEntry entry, Player player, Point target, double distance, GeoTerrain terrain, long now)
+	{
 		if (distance < (entry._bestDistance - 50.0))
 		{
 			entry._bestDistance = distance;
 			entry._progressAt = now;
 		}
-		if (PhantomManager.isLivingUnderAttack(player))
-		{
-			resetProgress(entry, now); // held up by a fight, not by the terrain: never hop it away mid-fight
-			return false;
-		}
 		if ((now - entry._progressAt) > STUCK_MS)
 		{
 			final Point hop = waypoint(player, target, distance, WAYPOINT_STEP, 0.0);
-			PhantomManager.getInstance().livingTeleport(player, hop.x(), hop.y(), hop.z());
+			if (!terrain.water(hop.x(), hop.y(), terrain.height(hop.x(), hop.y(), hop.z())))
+			{
+				PhantomManager.getInstance().livingTeleport(player, hop.x(), hop.y(), hop.z());
+			}
+			entry._routeFailed = false; // try planning again from the new spot
 			resetProgress(entry, now);
 			return false;
 		}
@@ -812,6 +916,50 @@ public class HotColdHandoff
 		return false; // nothing reachable this tick; the stuck fallback takes over if it stays that way
 	}
 
+	private static void clearRoute(HotEntry entry)
+	{
+		entry._route = null;
+		entry._routeIndex = 0;
+		entry._routeTarget = null;
+		entry._routeFailed = false;
+		entry._replanned = false;
+	}
+
+	/** The live terrain for route planning: the server's geodata, and its water zones (the sea and the rivers at sea level). */
+	private static final class GeoTerrain implements LivingRoute.Terrain
+	{
+		private final int _instanceId;
+
+		private GeoTerrain(int instanceId)
+		{
+			_instanceId = instanceId;
+		}
+
+		@Override
+		public boolean known(int x, int y)
+		{
+			return GeoEngine.getInstance().hasGeo(x, y);
+		}
+
+		@Override
+		public int height(int x, int y, int z)
+		{
+			return GeoEngine.getInstance().getHeight(x, y, z);
+		}
+
+		@Override
+		public boolean water(int x, int y, int z)
+		{
+			return ZoneManager.getInstance().getZone(x, y, z, WaterZone.class) != null;
+		}
+
+		@Override
+		public boolean canWalk(int x, int y, int z, int tx, int ty, int tz)
+		{
+			return GeoEngine.getInstance().canMoveToTarget(x, y, z, tx, ty, tz, _instanceId);
+		}
+	}
+
 	/**
 	 * Stands a dead live bot up in a town, the way a player does: at the server's own "to village" point when a town with
 	 * shops is near it, otherwise at that town. The row then recovers there and runs its errands (see
@@ -830,6 +978,7 @@ public class HotColdHandoff
 		entry._deadSince = 0;
 		entry._fightingSince = 0;
 		entry._applied = null; // the next step sits it down to recover
+		clearRoute(entry);
 		resetProgress(entry, now);
 	}
 
@@ -894,6 +1043,7 @@ public class HotColdHandoff
 			{
 				entry._applied = null;
 				entry._fightingSince = 0;
+				clearRoute(entry);
 				resetProgress(entry, System.currentTimeMillis());
 			}
 			bot.setActivity(ColdLife.HUNTING);

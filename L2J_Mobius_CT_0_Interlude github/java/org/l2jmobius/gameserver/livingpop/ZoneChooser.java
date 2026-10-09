@@ -117,7 +117,12 @@ public final class ZoneChooser
 		{
 			if (zone.isStarter() && zone.starterRace().equals(situation.race()) && (situation.level() <= zone.maxLevel()) && !situation.avoids(zone))
 			{
-				return new Choice(zone, Way.WALK, null, 0L, town.arrival());
+				// On foot from a town on their land, by gatekeeper from one across the water (FPC-277).
+				final Choice starter = route(zone, town, catalog);
+				if ((starter != null) && (starter.fee() <= situation.budget()))
+				{
+					return starter;
+				}
 			}
 		}
 
@@ -187,9 +192,18 @@ public final class ZoneChooser
 	 */
 	public static Choice route(Zone zone, Town town, ZoneCatalog catalog)
 	{
-		if (zone.isStarter() || (zone.center().distance(town.arrival()) <= WALK_RANGE))
+		// Never on foot across water (FPC-277): a zone on another island is reached through the gatekeepers only.
+		final boolean sameLand = catalog.sameLand(zone.center(), town.arrival());
+		if (sameLand && (zone.isStarter() || (zone.center().distance(town.arrival()) <= WALK_RANGE)))
 		{
 			return new Choice(zone, Way.WALK, null, 0L, town.arrival());
+		}
+		if (zone.isStarter())
+		{
+			// Newbie grounds across the water: the gatekeeper to the shopping town on their land, then on foot.
+			final Town home = catalog.nearestShoppingTown(zone.center());
+			final long fee = (home == null) ? -1L : town.feeTo(home.name());
+			return ((fee < 0) || !catalog.sameLand(zone.center(), home.arrival())) ? null : new Choice(zone, Way.GATEKEEPER, null, fee, home.arrival());
 		}
 		final Teleport direct = zone.teleportFrom(town.name());
 		if (direct != null)

@@ -23,6 +23,8 @@
 #     stale path can't ship a broken patch.
 #
 # ---- current release -------------------------------------------------------
+# This release also changes game/modules/living-population/data/zones.xml (islands, so living bots
+# never walk across the water). It is already listed in the Living Population block below.
 game/data/html/admin/rates.htm
 game/data/scripts/handlers/chat/commands/admin/AdminRates.java
 game/data/scripts/handlers/chat/commands/admin/AdminReload.java

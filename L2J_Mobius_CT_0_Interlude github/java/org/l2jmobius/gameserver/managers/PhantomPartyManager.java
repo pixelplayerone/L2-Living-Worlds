@@ -940,11 +940,24 @@ public class PhantomPartyManager
 		return (player != null) && _members.containsKey(player.getObjectId());
 	}
 
-	/** Recruit-only AutoPlay handoff: let the party tick handle downtime before another mob is selected. */
+	/**
+	 * Recruit-only AutoPlay handoff: let the party tick handle downtime before another mob is selected, and keep the
+	 * scanner off a member the PvP tick is driving. A free-hunting member keeps AutoPlay running (monster target mode),
+	 * so without this the scanner dropped the player target for the nearest monster every pass while the PvP tick put
+	 * the player back, and the member ran back and forth between the two (FPC-279).
+	 */
 	public boolean deferFreeHuntScan(Player player)
 	{
 		final Member state = _members.get(player.getObjectId());
-		if ((state == null) || state.assist || state.holding || !state.partied || (state.owner == null) || _camps.containsKey(state.owner.getObjectId()) || PhantomManager.getInstance().isPvpEngaged(player))
+		if (state == null)
+		{
+			return false;
+		}
+		if (PhantomManager.getInstance().isPvpEngaged(player))
+		{
+			return true; // the PvP engagement owns its target until it ends
+		}
+		if (state.assist || state.holding || !state.partied || (state.owner == null) || _camps.containsKey(state.owner.getObjectId()))
 		{
 			return false;
 		}
