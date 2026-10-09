@@ -102,6 +102,7 @@ public class LivingPopulationManager
 	private volatile ZoneCombat _combat = ZoneCombat.off(); // zone-based kill and death rates, or off for the flat ones
 	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10);
 	private static final double MIN_RESPAWN_RATE = 0.3; // kills per minute a bot always manages, whatever the zone's respawns
+	private volatile boolean _zoneExp; // experience per kill from the zone's real monsters, not level x ColdExpPerMobLevel
 	private volatile boolean _respawnLimit = true; // zone combat: a zone's respawns cap what its bots can kill
 	private volatile double _respawnShare = 0.5; // share of a zone's spawns a bot can practically reach
 	private volatile double _aggroRisk = 1.0; // zone combat: extra death multiple where every monster is aggressive
@@ -149,8 +150,9 @@ public class LivingPopulationManager
 	 * @param buffShares per role (tank, melee, bow, mage) the share of the buffer party's buffs the bots have while leveling, 0 to 1 (null or zeros = unbuffed)
 	 * @param expLevelGap whether hunting gives no experience when the bot is {@code MonsterExpMaxLevelDifference} or more levels away from the zone's monsters (uses the same data file)
 	 */
-	public void setZoneLimits(boolean respawnLimit, double respawnShare, double aggroRisk)
+	public void setZoneLimits(boolean respawnLimit, double respawnShare, double aggroRisk, boolean zoneExp)
 	{
+		_zoneExp = zoneExp;
 		_respawnLimit = respawnLimit;
 		_respawnShare = respawnShare;
 		_aggroRisk = aggroRisk;
@@ -224,7 +226,7 @@ public class LivingPopulationManager
 
 		// Zone combat: kill and death rates from each bot's stats against its zone's monsters. Needs the zone data file.
 		_combat = ZoneCombat.off();
-		if (_combatRates || _expGap)
+		if (_combatRates || _expGap || _zoneExp)
 		{
 			try (Reader reader = Files.newBufferedReader(Path.of(_combatFile), StandardCharsets.UTF_8))
 			{
@@ -539,7 +541,7 @@ public class LivingPopulationManager
 		_targetLevel = targetLevel;
 		final PopulationDirector.Params directorParams = _config.directorParams();
 		final ZoneCombat combat = _combatRates ? _combat : ZoneCombat.off(); // rates
-		final ZoneCombat gapData = _expGap ? _combat : ZoneCombat.off(); // zone monster levels for the experience gap
+		final ZoneCombat gapData = (_expGap || _zoneExp) ? _combat : ZoneCombat.off(); // zone monster levels and exp
 		final int maxLevelGap = RatesConfig.MONSTER_EXP_MAX_LEVEL_DIFFERENCE;
 		final double flatKillsPerMinute = Math.max(0.0, _config.killsPerMinute());
 		final double expPerKillUnitPerRate = Math.max(0.0, _config.expPerMobLevel()) * rate; // times a kill rate: experience per mob level per minute
@@ -594,11 +596,14 @@ public class LivingPopulationManager
 			final IntToLongFunction expPerMinuteForLevel = level ->
 			{
 				// Like the server, a kill pays no experience when the bot is too many levels away from the zone's monsters.
-				if (ZoneCombat.outleveled(level, gapData.mobLevel(bot.getZone()), maxLevelGap))
+				if (_expGap && ZoneCombat.outleveled(level, gapData.mobLevel(bot.getZone()), maxLevelGap))
 				{
 					return 0L;
 				}
-				final double base = Math.max(0.0, level * expPerKillUnitPerRate * ratePerMinute(combat, bot, level, flatKillsPerMinute, huntedMs, economyParams, occupancy));
+				// Experience per kill: the zone's real average (option), else a representative level x ColdExpPerMobLevel.
+				final double zoneExp = _zoneExp ? gapData.expPerKill(bot.getZone()) : -1.0;
+				final double perKill = (zoneExp > 0.0) ? (zoneExp * rate) : (level * expPerKillUnitPerRate);
+				final double base = Math.max(0.0, perKill * ratePerMinute(combat, bot, level, flatKillsPerMinute, huntedMs, economyParams, occupancy));
 				return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
 			};
 			final ColdProgression.Progress progress = ColdProgression.resolve(bot.getLevel(), bot.getExpIntoLevel(), huntedMs, maxLevel, expToNextLevel, expPerMinuteForLevel);

@@ -76,8 +76,9 @@ public final class ZoneCombat
 	 * @param respawnPerMinute monsters the whole zone can supply per minute (each spawn returns after its respawn delay); 0 = unknown
 	 * @param spots how many hunting spots the zone has
 	 * @param aggressivePercent the share of its spawns that attack on sight, in percent
+	 * @param expPerKill the average experience a kill gives, before the server's XP rate; 0 = unknown
 	 */
-	public record ZoneStats(String name, int minLevel, int maxLevel, double mobLevel, double hp, double pDef, double mDef, double pAtk, double mAtk, double respawnPerMinute, int spots, double aggressivePercent)
+	public record ZoneStats(String name, int minLevel, int maxLevel, double mobLevel, double hp, double pDef, double mDef, double pAtk, double mAtk, double respawnPerMinute, int spots, double aggressivePercent, double expPerKill)
 	{
 		int midLevel()
 		{
@@ -167,8 +168,8 @@ public final class ZoneCombat
 					}
 					else if (f[0].equals("ZONE") && (f.length >= 10))
 					{
-						final boolean more = f.length >= 13; // older data files stop at M.Atk
-						zones.add(new ZoneStats(f[1], Integer.parseInt(f[2]), Integer.parseInt(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]), Double.parseDouble(f[8]), Double.parseDouble(f[9]), more ? Double.parseDouble(f[10]) : 0.0, more ? Integer.parseInt(f[11]) : 0, more ? Double.parseDouble(f[12]) : 0.0));
+						final boolean more = f.length >= 14; // older data files stop at M.Atk, or before the experience
+						zones.add(new ZoneStats(f[1], Integer.parseInt(f[2]), Integer.parseInt(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]), Double.parseDouble(f[8]), Double.parseDouble(f[9]), more ? Double.parseDouble(f[10]) : 0.0, more ? Integer.parseInt(f[11]) : 0, more ? Double.parseDouble(f[12]) : 0.0, more ? Double.parseDouble(f[13]) : 0.0));
 					}
 				}
 				catch (RuntimeException e)
@@ -288,7 +289,7 @@ public final class ZoneCombat
 
 	/**
 	 * The most kills per minute a bot can get from the zone's respawns. The zone supplies a fixed number of monsters per
-	 * minute; its bots share them, and a lone bot only reaches its spot's share of them.
+	 * minute and its bots share them.
 	 * @param zone the zone
 	 * @param occupants bots in the zone, this one included
 	 * @param usableShare the share of the zone's spawns a bot can practically reach (0 to 1)
@@ -306,13 +307,23 @@ public final class ZoneCombat
 		{
 			return Double.POSITIVE_INFINITY;
 		}
-		return (z.respawnPerMinute() * Math.max(0.0, Math.min(1.0, usableShare))) / Math.max(1, Math.max(z.spots(), occupants));
+		return (z.respawnPerMinute() * Math.max(0.0, Math.min(1.0, usableShare))) / Math.max(1, occupants);
 	}
 
 	/** @return levels per gear tier */
 	public int tierStep()
 	{
 		return _params.gearTierLevelStep();
+	}
+
+	/**
+	 * @param zone a zone name
+	 * @return the average experience a kill gives there before the XP rate, or -1 when unknown
+	 */
+	public double expPerKill(String zone)
+	{
+		final Integer zi = (zone == null) ? null : _zoneIndex.get(zone);
+		return ((zi == null) || (_zones.get(zi).expPerKill() <= 0.0)) ? -1.0 : _zones.get(zi).expPerKill();
 	}
 
 	/**

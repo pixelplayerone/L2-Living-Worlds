@@ -157,7 +157,8 @@ public class LivingPopulationModule implements GameModule
 		LivingPopulationManager.getInstance().setZoneLimits( //
 			context.config().getBoolean("RespawnLimit", true), //
 			Math.max(0.0, Math.min(1.0, context.config().getDouble("RespawnUsableShare", 0.5))), //
-			context.config().getBoolean("AggroPulls", true) ? Math.max(0.0, context.config().getDouble("AggroPullRisk", 1.0)) : 0.0);
+			context.config().getBoolean("AggroPulls", true) ? Math.max(0.0, context.config().getDouble("AggroPullRisk", 1.0)) : 0.0, //
+			context.config().getBoolean("ZoneExp", false));
 		LivingPopulationManager.getInstance().start(config, travel);
 		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
 		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());

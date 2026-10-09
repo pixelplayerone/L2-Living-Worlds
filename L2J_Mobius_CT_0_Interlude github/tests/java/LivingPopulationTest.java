@@ -674,7 +674,7 @@ public class LivingPopulationTest
 		"CURVE\tpatk_melee\t38\t112\t190\t236\t305\t342", "CURVE\tpatk_bow\t64\t191\t323\t400\t570\t581", "CURVE\tmatk_mage\t31\t79\t122\t145\t167\t193",
 		"CURVE\tpdef_tank\t170\t400\t519\t666\t724\t885", "CURVE\tpdef_melee\t80\t238\t316\t428\t468\t572", "CURVE\tpdef_light\t116\t176\t245\t378\t395\t446", "CURVE\tpdef_robe\t91\t134\t191\t293\t328\t363",
 		"CURVE\tmdef_heavy\t98\t168\t224\t276\t333\t333", "CURVE\tmdef_light\t98\t168\t224\t276\t346\t346", "CURVE\tmdef_robe\t98\t168\t224\t276\t333\t333",
-		"ZONE\tEasy\t1\t10\t4\t70\t50\t33\t11\t7", "ZONE\tMid\t35\t45\t42\t1200\t180\t120\t400\t250", "ZONE\tMid2\t40\t50\t46\t1500\t200\t130\t450\t280", "ZONE\tHard\t70\t75\t72\t2566\t308\t200\t743\t507", "ZONE\tCrowded\t35\t45\t42\t1200\t180\t120\t400\t250\t30\t4\t100");
+		"ZONE\tEasy\t1\t10\t4\t70\t50\t33\t11\t7", "ZONE\tMid\t35\t45\t42\t1200\t180\t120\t400\t250", "ZONE\tMid2\t40\t50\t46\t1500\t200\t130\t450\t280", "ZONE\tHard\t70\t75\t72\t2566\t308\t200\t743\t507", "ZONE\tCrowded\t35\t45\t42\t1200\t180\t120\t400\t250\t30\t4\t100\t3940");
 
 	private static void testZoneCombat() throws RuntimeException
 	{
@@ -750,9 +750,10 @@ public class LivingPopulationTest
 		model.setShotDamage(1.0, 1.0);
 		check("shots: a bonus of 1 turns the check off", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0) - fitted) < 1e-9);
 		model.setShotDamage(2.0, Math.sqrt(2.0));
+		check("zone exp: the zone's average exp per kill is read, unknown is -1", (Math.abs(model.expPerKill("Crowded") - 3940.0) < 1e-9) && (model.expPerKill("Mid") < 0) && (model.expPerKill("Nowhere") < 0));
 		// respawn limit and aggressive zones
-		check("respawn: a lone bot reaches its spot's share (30 a minute over 4 spots, half usable)", Math.abs(model.respawnCap("Crowded", 1, 0.5) - 3.75) < 1e-9);
-		check("respawn: more bots than spots share the zone", Math.abs(model.respawnCap("Crowded", 10, 0.5) - 1.5) < 1e-9);
+		check("respawn: a lone bot gets the usable share of the zone (30 a minute, half usable)", Math.abs(model.respawnCap("Crowded", 1, 0.5) - 15.0) < 1e-9);
+		check("respawn: bots share the zone", Math.abs(model.respawnCap("Crowded", 10, 0.5) - 1.5) < 1e-9);
 		check("respawn: unknown respawns or zone never cap", Double.isInfinite(model.respawnCap("Mid", 5, 0.5)) && Double.isInfinite(model.respawnCap("Nowhere", 5, 0.5)));
 		final double calm = model.deathFactor("Crowded", 2, 40, 2);
 		model.setAggroRisk(1.0);

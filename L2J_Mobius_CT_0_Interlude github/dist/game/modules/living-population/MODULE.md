@@ -149,6 +149,7 @@ keeps it.
 | `ExpLevelGap` | Like the server (`MonsterExpMaxLevelDifference` in Rates.ini), a cold bot earns no experience or SP while hunting in a zone whose average monster is that many levels or more away from it. |
 | `BuffedLeveling` / `BuffShareTank` / `BuffShareMelee` / `BuffShareBow` / `BuffShareMage` | Emulates buffers keeping cold bots buffed while they level: the full buffer party's damage and defence multipliers for the bot's level, blended by a share per role (0 = unbuffed, 1 = everything). Off by default. |
 | `ShotsMatter` / `SoulshotDamage` / `SpiritshotDamage` | With zone combat, a bot without its soulshots (spiritshots for a mystic) does less damage for the part of the time it has none: x2.0 with soulshots, x1.41 with spiritshots. Its stock lasts as long as its kills use it up. |
+| `ZoneExp` | Experience per kill from the zone's real monsters (times `RateXp`) instead of `ColdExpPerMobLevel x level`. Much faster leveling at the same rate. Off by default. |
 | `RespawnLimit` / `RespawnUsableShare` | A zone only supplies so many monsters a minute; its bots share them, so crowded or sparse zones cap kills per minute. Needs `ZoneCombat`. |
 | `AggroPulls` / `AggroPullRisk` | Zones full of monsters that attack on sight are riskier (packs, pulls): the death rate rises by `AggroPullRisk` times the zone's aggressive share. |
 | `MinKillsPerMinute` / `MaxKillsPerMinute` / `MinDeathFactor` / `MaxDeathFactor` | Limits on the model's kill rate and on its death rate as a multiple of `ColdDeathsPerHour`. |

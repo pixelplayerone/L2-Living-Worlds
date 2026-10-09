@@ -28,36 +28,31 @@ public class ZoneCombatReport
 			model = ZoneCombat.parse(reader, params);
 		}
 		final ColdRisk.Params risk = new ColdRisk.Params(0.3, 90_000L, 600_000L, 60_000L, 3_600_000L);
-		final String[][] zones =
-		{
-			{ "Talking Island newbie grounds", "5" },
-			{ "Cruma Tower", "45" },
-			{ "Blazing Swamp", "72" },
-		};
-		System.out.println("zones known: " + model.zoneCount() + ", model on: " + model.enabled());
-		System.out.println("| zone | role | bot | flat kills/min | model kills/min | flat exp/hr | model exp/hr | flat deaths/hr | model deaths/hr |");
-		System.out.println("|---|---|---|---|---|---|---|---|---|");
+		model.setAggroRisk(1.0);
+		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
+		System.out.println("| zone | role | bot | kills/min old>new | deaths/hr old>new | exp/hr old (L*13) | exp/hr new | exp/hr new+ZoneExp |");
+		System.out.println("|---|---|---|---|---|---|---|---|");
 		for (String[] z : zones)
 		{
-			final String zone = z[0];
 			final int level = Integer.parseInt(z[1]);
 			final int grade = LivingSupplies.gradeFor(level);
-			for (int[] role : new int[][] { { TANK }, { MELEE }, { BOW }, { MAGE } })
+			for (int c : new int[] { TANK, MELEE, BOW, MAGE })
 			{
-				final String name = ZoneCombat.roleOf(role[0]).name().toLowerCase();
-				row(model, risk, zone, name, "fitted", role[0], level, grade, grade, 1.0, 0);
-				row(model, risk, zone, name, "1 grade behind", role[0], level, Math.max(0, grade - 1), Math.max(0, grade - 1), 1.0, 1);
-				row(model, risk, zone, name, "no skills", role[0], level, grade, grade, 0.0, 0);
+				final String name = ZoneCombat.roleOf(c).name().toLowerCase();
+				row(model, risk, z[0], name, "fitted", c, level, grade, 1.0, 0);
+				row(model, risk, z[0], name, "1 grade behind", c, level, Math.max(0, grade - 1), 1.0, 1);
+				row(model, risk, z[0], name, "no skills", c, level, grade, 0.0, 0);
 			}
 		}
 	}
 
-	private static void row(ZoneCombat model, ColdRisk.Params risk, String zone, String role, String bot, int classId, int level, int weapon, int armor, double skills, int tiersBehind)
+	private static void row(ZoneCombat model, ColdRisk.Params risk, String zone, String role, String bot, int classId, int level, int grade, double skills, int behind)
 	{
 		final double flatKills = 12.0;
-		final double kills = model.killsPerMinute(zone, classId, level, weapon, armor, skills);
-		final double flatDeaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - tiersBehind, 5, classId).deathsPerHour();
-		final double deaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - tiersBehind, 5, classId, model.deathFactor(zone, classId, level, armor)).deathsPerHour();
-		System.out.printf("| %s | %s | %s | %.1f | %.1f | %.0f | %.0f | %.2f | %.2f |%n", zone, role, bot, flatKills, kills, level * 13.0 * flatKills * 60, level * 13.0 * kills * 60, flatDeaths, deaths);
+		double kills = model.killsPerMinute(zone, classId, level, grade, grade, skills, 1.0);
+		kills = Math.max(0.3, Math.min(kills, model.respawnCap(zone, 4, 0.5)));   // 4 bots sharing the zone
+		final double flatDeaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, classId).deathsPerHour();
+		final double deaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, classId, model.deathFactor(zone, classId, level, grade)).deathsPerHour();
+		System.out.printf("| %s | %s | %s | %.1f > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", zone, role, bot, flatKills, kills, flatDeaths, deaths, level * 13.0 * flatKills * 60, level * 13.0 * kills * 60, model.expPerKill(zone) * kills * 60);
 	}
 }
