@@ -18,16 +18,45 @@ for sp in glob.glob(os.path.join(L.DATA, "spawns/**/*.xml"), recursive=True):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 zones_file = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "..", "dist", "game", "modules", "living-population", "data", "zones.xml")
+
+# What the engine does to a monster's datapack stats at runtime (checked against an in-game NPC window: a Satyr shows HP 6275 where the datapack says 1324):
+#  - its passive skills multiply HP, P.Atk, M.Atk, P.Def, M.Def (HP Increase 4408, Strong P./M. Atk 4410/4411, Strong P./M. Def 4412/4413, armor/weapon types 4414/4415)
+#  - HP x CON bonus; P.Atk x STR bonus x level mod; M.Atk x INT bonus^2 x level mod^2; P.Def x level mod; M.Def x MEN bonus x level mod (level mod = (level + 89) / 100)
+import stats_model as S
+MONSTER_PASSIVES = {4408: "maxHp", 4410: "pAtk", 4411: "mAtk", 4412: "pDef", 4413: "mDef", 4414: "pDef", 4415: "pAtk"}
+skill_tables = {}
+for p_ in glob.glob(os.path.join(L.DATA, "stats/skills/*.xml")):
+    for sk in ET.parse(p_).getroot().iter("skill"):
+        sid = int(sk.get("id"))
+        if sid in MONSTER_PASSIVES:
+            tables = {t.get("name"): t.text.split() for t in sk.iter("table")}
+            for mul in sk.iter("mul"):
+                if mul.get("stat") == MONSTER_PASSIVES[sid]:
+                    skill_tables[sid] = (mul.text.strip(), tables)
+
+
+def passive_mul(skill_list, stat):
+    out = 1.0
+    for sk in skill_list:
+        sid, lvl = int(sk.get("id")), int(sk.get("level"))
+        if sid in skill_tables and MONSTER_PASSIVES[sid] == stat:
+            ref, tables = skill_tables[sid]
+            vals = tables.get(ref)
+            out *= float(vals[min(lvl, len(vals)) - 1]) if vals else float(ref)
+    return out
+
 npcs = {}
 for p in glob.glob(os.path.join(L.DATA, "stats/npcs/*.xml")):
     for n in ET.parse(p).getroot().iter("npc"):
         st = n.find("stats"); a = st.find("attack") if st is not None else None; d = st.find("defence") if st is not None else None; v = st.find("vitals") if st is not None else None
         if a is None or d is None or v is None: continue
         acq = n.find("acquire"); ai = n.find("ai")
-        lm = (int(n.get("level")) + 89) / 100.0      # the engine multiplies every creature's P.Atk, M.Atk, P.Def and M.Def by (level + 89) / 100 (FuncPAtkMod / FuncPDefMod ...), NPCs included; the datapack holds the base values
-        npcs[int(n.get("id"))] = dict(name=n.get("name"), level=int(n.get("level")), type=n.get("type"), hp=float(v.get("hp")), mp=float(v.get("mp")),
-            patk=float(a.get("physical")) * lm, matk=float(a.get("magical")) * lm, aspd=float(a.get("attackSpeed")), crit=float(a.get("critical", 0)), acc=float(a.get("accuracy", 0)),
-            pdef=float(d.get("physical")) * lm, mdef=float(d.get("magical")) * lm, exp=float(acq.get("exp", 0)) if acq is not None else 0, sp=float(acq.get("sp", 0)) if acq is not None else 0,
+        lm = (int(n.get("level")) + 89) / 100.0      # level mod: the engine multiplies every creature's P.Atk, M.Atk, P.Def and M.Def by (level + 89) / 100, NPCs included
+        sl = list(n.iter("skill")); sl = [x for x in sl if x.get("id") and x.get("level")]
+        sb = lambda nm: S.bonus(nm, int(st.get(nm.lower())))
+        npcs[int(n.get("id"))] = dict(name=n.get("name"), level=int(n.get("level")), type=n.get("type"), hp=float(v.get("hp")) * passive_mul(sl, "maxHp") * sb("CON"), mp=float(v.get("mp")),
+            patk=float(a.get("physical")) * passive_mul(sl, "pAtk") * sb("STR") * lm, matk=float(a.get("magical")) * passive_mul(sl, "mAtk") * sb("INT") ** 2 * lm ** 2, aspd=float(a.get("attackSpeed")), crit=float(a.get("critical", 0)), acc=float(a.get("accuracy", 0)),
+            pdef=float(d.get("physical")) * passive_mul(sl, "pDef") * lm, mdef=float(d.get("magical")) * passive_mul(sl, "mDef") * sb("MEN") * lm, exp=float(acq.get("exp", 0)) if acq is not None else 0, sp=float(acq.get("sp", 0)) if acq is not None else 0,
             race=((n.findtext("race") or "").strip().upper()), aggro=(ai is not None and float(ai.get("aggroRange", 0) or 0) > 0 and ai.get("isAggressive") != "false"), run=float((st.find("speed/run") or ET.Element("x")).get("ground", 0) or 0))
 root = ET.parse(zones_file).getroot()
 rows = []
