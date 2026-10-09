@@ -723,13 +723,13 @@ public class LivingPopulationManager
 		{
 			return flat;
 		}
-		final int[] grades = ColdLife.gradesOf(bot, _gear, combat.tierStep());
+		final ZoneCombat.Stats stats = ColdLife.statsOf(bot, _gear, combat);
 		double skills = 1.0;
 		if (_travelConfig.skillTraining() && (bot.getSkills() != null))
 		{
 			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
 		}
-		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, grades[0], grades[1], skills, shotFraction);
+		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, stats, skills, shotFraction);
 	}
 
 	/**

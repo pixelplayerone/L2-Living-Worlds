@@ -529,7 +529,7 @@ public final class ColdLife
 		final int gearHave = (shop == null) ? bot.getGearTier() : 0;
 		final int gearWant = (shop == null) ? SupplyPlanner.tierCeiling(bot.getLevel(), context.supply()) : LivingGear.behind(gearOf(bot), bot.getLevel(), shop.items());
 		final ZoneCombat combat = context.combat();
-		final double zoneFactor = ((combat != null) && combat.knows(zone.name())) ? combat.deathFactor(zone.name(), bot.getClassId(), bot.getLevel(), gradesOf(bot, shop, combat.tierStep())[1]) : 0.0;
+		final double zoneFactor = ((combat != null) && combat.knows(zone.name())) ? combat.deathFactor(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : 0.0;
 		final ColdRisk.Danger danger = ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId(), zoneFactor);
 		if (context.random().nextDouble() >= ColdRisk.deathChance(danger.deathsPerHour(), elapsedMs))
 		{
@@ -1244,6 +1244,62 @@ public final class ColdLife
 		}
 		final int grade = ZoneCombat.gradeOfTier(bot.getGearTier(), tierStep);
 		return new int[] { grade, grade };
+	}
+
+	/**
+	 * What the bot's worn gear gives: the weapon's P.Atk (M.Atk for a mage), the P.Def of its armor and shield, the M.Def of its jewelry.
+	 * Empty slots count at their naked values (underwear 4; fighter chest 31, legs 18, head 12, gloves 8, feet 7; mystic chest 15, legs 8; jewelry 13, 9, 9, 5, 5);
+	 * a full-body chest covers the legs. Set bonuses and enchants are not counted. A bot without a gear record gets the curves of its grade.
+	 */
+	static ZoneCombat.Stats statsOf(ColdBot bot, GearShop shop, ZoneCombat combat)
+	{
+		if ((shop == null) || (bot.getGear() == null))
+		{
+			final int[] grades = gradesOf(bot, shop, combat.tierStep());
+			return combat.curveStats(ZoneCombat.roleOf(bot.getClassId()), grades[0], grades[1]);
+		}
+		final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
+		final LivingGear.Items items = shop.items();
+		final boolean mystic = LivingSupplies.isMystic(bot.getClassId());
+		final boolean mage = ZoneCombat.roleOf(bot.getClassId()) == ZoneCombat.Role.MAGE;
+		final LivingGear.Piece weapon = piece(gear, LivingGear.Slot.WEAPON, items);
+		final double attack = (weapon == null) ? 4.0 : (mage ? weapon.mAtk() : weapon.pAtk());
+		final LivingGear.Piece chest = piece(gear, LivingGear.Slot.CHEST, items);
+		double pDef = 4.0;
+		pDef += (chest != null) ? chest.pDef() : (mystic ? 15 : 31);
+		final boolean fullBody = (chest != null) && chest.fullBody();
+		final LivingGear.Piece legs = piece(gear, LivingGear.Slot.LEGS, items);
+		pDef += fullBody ? 0.0 : ((legs != null) ? legs.pDef() : (mystic ? 8 : 18));
+		pDef += slotDef(gear, LivingGear.Slot.HEAD, items, 12);
+		pDef += slotDef(gear, LivingGear.Slot.GLOVES, items, 8);
+		pDef += slotDef(gear, LivingGear.Slot.FEET, items, 7);
+		final LivingGear.Piece shield = piece(gear, LivingGear.Slot.SHIELD, items);
+		pDef += (shield != null) ? shield.pDef() : 0.0;
+		double mDef = 0.0;
+		mDef += jewel(gear, LivingGear.Slot.NECK, items, 13);
+		mDef += jewel(gear, LivingGear.Slot.EAR1, items, 9);
+		mDef += jewel(gear, LivingGear.Slot.EAR2, items, 9);
+		mDef += jewel(gear, LivingGear.Slot.RING1, items, 5);
+		mDef += jewel(gear, LivingGear.Slot.RING2, items, 5);
+		return new ZoneCombat.Stats(attack, pDef, mDef);
+	}
+
+	private static LivingGear.Piece piece(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, LivingGear.Items items)
+	{
+		final Integer id = gear.get(slot);
+		return ((id == null) || (id <= 0)) ? null : items.piece(id);
+	}
+
+	private static double slotDef(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, LivingGear.Items items, double naked)
+	{
+		final LivingGear.Piece piece = piece(gear, slot, items);
+		return (piece != null) ? piece.pDef() : naked;
+	}
+
+	private static double jewel(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, LivingGear.Items items, double naked)
+	{
+		final LivingGear.Piece piece = piece(gear, slot, items);
+		return (piece != null) ? piece.mDef() : naked;
 	}
 
 	static Map<LivingGear.Slot, Integer> gearOf(ColdBot bot)

@@ -30,6 +30,8 @@ public class ZoneCombatReport
 		final ColdRisk.Params risk = new ColdRisk.Params(0.3, 90_000L, 600_000L, 60_000L, 3_600_000L);
 		model.setAggroRisk(1.0);
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
+		levelAverages(model, risk);
+		System.out.println();
 		System.out.println("| zone | role | bot | kills/min old>new | deaths/hr old>new | exp/hr old (L*13) | exp/hr new | exp/hr new+ZoneExp |");
 		System.out.println("|---|---|---|---|---|---|---|---|");
 		for (String[] z : zones)
@@ -54,5 +56,41 @@ public class ZoneCombatReport
 		final double flatDeaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, classId).deathsPerHour();
 		final double deaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, classId, model.deathFactor(zone, classId, level, grade)).deathsPerHour();
 		System.out.printf("| %s | %s | %s | %.1f > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", zone, role, bot, flatKills, kills, flatDeaths, deaths, level * 13.0 * flatKills * 60, level * 13.0 * kills * 60, model.expPerKill(zone) * kills * 60);
+	}
+
+	/** Averages over the zones whose level range holds the level and over the four roles, a fitted bot (curve gear of its grade, all skills, shots), 4 bots per zone. */
+	private static void levelAverages(ZoneCombat model, ColdRisk.Params risk)
+	{
+		System.out.println("| level | zones | kills/min old > new | deaths/hr old > new | exp/hr old (L*13) | exp/hr new | exp/hr new + ZoneExp |");
+		System.out.println("|---|---|---|---|---|---|---|");
+		for (int level : new int[] { 1, 20, 40, 52, 61, 76, 80 })
+		{
+			final int grade = LivingSupplies.gradeFor(level);
+			double kills = 0, deaths = 0, zoneExp = 0, flatDeaths = 0;
+			int n = 0, zonesUsed = 0;
+			for (ZoneCombat.ZoneStats z : model.zones())
+			{
+				if ((level < z.minLevel()) || (level > z.maxLevel()))
+				{
+					continue;
+				}
+				zonesUsed++;
+				for (int c : new int[] { TANK, MELEE, BOW, MAGE })
+				{
+					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), c, level, grade, grade, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
+					kills += k;
+					zoneExp += k * z.expPerKill();
+					deaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5, 5, c, model.deathFactor(z.name(), c, level, grade)).deathsPerHour();
+					flatDeaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5, 5, c).deathsPerHour();
+					n++;
+				}
+			}
+			if (n == 0)
+			{
+				System.out.println("| " + level + " | 0 | no zone covers this level | | | | |");
+				continue;
+			}
+			System.out.printf("| %d | %d | 12.0 > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", level, zonesUsed, kills / n, flatDeaths / n, deaths / n, level * 13.0 * 12 * 60, level * 13.0 * (kills / n) * 60, (zoneExp / n) * 60);
+		}
 	}
 }

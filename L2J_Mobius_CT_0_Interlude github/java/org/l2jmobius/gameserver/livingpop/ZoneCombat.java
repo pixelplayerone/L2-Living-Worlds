@@ -86,6 +86,16 @@ public final class ZoneCombat
 		}
 	}
 
+	/**
+	 * What a bot's worn gear gives: the weapon's attack (P.Atk, or M.Atk for a mage), total P.Def of its armor and shield, total M.Def of its jewelry.
+	 * @param attack the weapon's P.Atk or M.Atk
+	 * @param pDef P.Def of armor and shield (empty slots at their naked values)
+	 * @param mDef M.Def of the jewelry (empty slots at their naked values)
+	 */
+	public record Stats(double attack, double pDef, double mDef)
+	{
+	}
+
 	private static final int GRADES = 6;
 	private static final int MAX_BUFF_LEVEL = 90;
 
@@ -393,6 +403,16 @@ public final class ZoneCombat
 	 */
 	public double killsPerMinute(String zone, int classId, int level, int weaponGrade, int armorGrade, double skillFraction, double shotFraction)
 	{
+		return killsPerMinute(zone, classId, level, curveStats(roleOf(classId), weaponGrade, armorGrade), skillFraction, shotFraction);
+	}
+
+	/**
+	 * Like the grade version, from the stats of the gear the bot actually wears.
+	 * @param stats its weapon attack and defence from worn items
+	 * @return kills per minute
+	 */
+	public double killsPerMinute(String zone, int classId, int level, Stats stats, double skillFraction, double shotFraction)
+	{
 		final Integer zi = knows(zone) ? _zoneIndex.get(zone) : null;
 		if (zi == null)
 		{
@@ -401,13 +421,26 @@ public final class ZoneCombat
 		final Role role = roleOf(classId);
 		final int skills = (int) Math.round(Math.max(0.0, Math.min(1.0, skillFraction)) * 10.0);
 		final int shots = (int) Math.round(Math.max(0.0, Math.min(1.0, shotFraction)) * 10.0);
-		final long key = (((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8L + clamp(weaponGrade)) * 8L + clamp(armorGrade)) * 16L + skills) * 11L + shots;
+		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
+		final long key = (((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 11L + (skills * 11L) + shots;
 		return _killCache.computeIfAbsent(key, k ->
 		{
-			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, clamp(weaponGrade), skills / 10.0) / buff(role, 0, level) / shotDamage(role, shots / 10.0);
+			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0) / buff(role, 0, level) / shotDamage(role, shots / 10.0);
 			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), 60.0 / (overhead + fightSeconds)));
 		});
+	}
+
+	/** @return the zones the model knows */
+	public List<ZoneStats> zones()
+	{
+		return java.util.Collections.unmodifiableList(_zones);
+	}
+
+	/** @return the stats of the best gear of these grades for a role (the curves): what a fitted bot of the grade has */
+	public Stats curveStats(Role role, int weaponGrade, int armorGrade)
+	{
+		return new Stats(curve(role == Role.MAGE ? "matk_mage" : (role == Role.BOW ? "patk_bow" : "patk_melee"), weaponGrade), curve(pDefCurve(role), armorGrade), curve(mDefCurve(role), armorGrade));
 	}
 
 	/**
@@ -419,18 +452,30 @@ public final class ZoneCombat
 	 */
 	public double deathFactor(String zone, int classId, int level, int armorGrade)
 	{
+		return deathFactor(zone, classId, level, curveStats(roleOf(classId), 0, armorGrade));
+	}
+
+	/**
+	 * Like the grade version, from the defence of the gear the bot actually wears.
+	 * @param stats its worn gear (only the defence is used)
+	 * @return the multiple of the base death rate
+	 */
+	public double deathFactor(String zone, int classId, int level, Stats stats)
+	{
 		final Integer zi = knows(zone) ? _zoneIndex.get(zone) : null;
 		if (zi == null)
 		{
 			return 1.0;
 		}
 		final Role role = roleOf(classId);
-		final long key = ((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8L + clamp(armorGrade);
+		final long pDef = Math.max(0, Math.min(8191, Math.round(stats.pDef())));
+		final long mDef = Math.max(0, Math.min(8191, Math.round(stats.mDef())));
+		final long key = ((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L) + pDef) * 8192L + mDef;
 		return _deathCache.computeIfAbsent(key, k ->
 		{
 			final double mean = _threatMedian[role.ordinal()];
 			final ZoneStats z = _zones.get(zi);
-			final double gear = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(z, role, clamp(armorGrade), buff(role, 1, level), buff(role, 2, level)) / mean));
+			final double gear = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(z, pDef, mDef, buff(role, 1, level), buff(role, 2, level)) / mean));
 			return gear * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0));
 		});
 	}
@@ -452,8 +497,8 @@ public final class ZoneCombat
 				final ZoneStats zone = _zones.get(i);
 				final int level = Math.max(1, zone.midLevel());
 				final int grade = LivingSupplies.gradeFor(level);
-				raw[i] = rawTimeToKill(zone, role, level, grade, 1.0);
-				threats[i] = threat(zone, role, grade, 1.0, 1.0);
+				raw[i] = rawTimeToKill(zone, role, level, curveStats(role, grade, grade).attack(), 1.0);
+				threats[i] = threat(zone, curveStats(role, grade, grade).pDef(), curveStats(role, grade, grade).mDef(), 1.0, 1.0);
 			}
 			// The median zone is the anchor, so a few extreme zones (newbie grounds, the highest levels) do not pull the baseline.
 			final double medianRaw = median(raw);
@@ -471,30 +516,37 @@ public final class ZoneCombat
 	}
 
 	/** Zone HP over the bot's damage rate against the zone's defence, in arbitrary units (calibration turns them into seconds). */
-	private double rawTimeToKill(ZoneStats zone, Role role, int level, int weaponGrade, double skillFraction)
+	private double rawTimeToKill(ZoneStats zone, Role role, int level, double weaponAttack, double skillFraction)
 	{
 		final double levelMod = (level + 89.0) / 100.0;
 		final double skill = _params.skillFloor() + ((1.0 - _params.skillFloor()) * skillFraction);
 		final double rate;
 		if (role == Role.MAGE)
 		{
-			rate = Math.sqrt(Math.max(1.0, curve("matk_mage", weaponGrade) * levelMod)) / Math.max(1.0, zone.mDef());
+			rate = Math.sqrt(Math.max(1.0, weaponAttack * levelMod)) / Math.max(1.0, zone.mDef());
 		}
 		else
 		{
-			final double attack = curve(role == Role.BOW ? "patk_bow" : "patk_melee", weaponGrade) * levelMod;
-			rate = attack / Math.max(1.0, zone.pDef());
+			rate = (weaponAttack * levelMod) / Math.max(1.0, zone.pDef());
 		}
 		return zone.hp() / Math.max(1e-9, rate * skill);
 	}
 
-	/** How hard the zone's monsters hit a bot of this role in armor of this grade: their attack over its defence. */
-	private double threat(ZoneStats zone, Role role, int armorGrade, double pDefBuff, double mDefBuff)
+	private static String pDefCurve(Role role)
 	{
-		final String pdef = (role == Role.TANK) ? "pdef_tank" : (role == Role.MELEE) ? "pdef_melee" : (role == Role.BOW) ? "pdef_light" : "pdef_robe";
-		final String mdef = (role == Role.MAGE) ? "mdef_robe" : (role == Role.BOW) ? "mdef_light" : "mdef_heavy";
-		final double physical = zone.pAtk() / Math.max(1.0, curve(pdef, armorGrade) * pDefBuff);
-		final double magical = zone.mAtk() / Math.max(1.0, curve(mdef, armorGrade) * mDefBuff);
+		return (role == Role.TANK) ? "pdef_tank" : (role == Role.MELEE) ? "pdef_melee" : (role == Role.BOW) ? "pdef_light" : "pdef_robe";
+	}
+
+	private static String mDefCurve(Role role)
+	{
+		return (role == Role.MAGE) ? "mdef_robe" : (role == Role.BOW) ? "mdef_light" : "mdef_heavy";
+	}
+
+	/** How hard the zone's monsters hit a bot with this P.Def and M.Def: their attack over its defence. */
+	private double threat(ZoneStats zone, double pDef, double mDef, double pDefBuff, double mDefBuff)
+	{
+		final double physical = zone.pAtk() / Math.max(1.0, pDef * pDefBuff);
+		final double magical = zone.mAtk() / Math.max(1.0, mDef * mDefBuff);
 		return Math.max(physical, magical);
 	}
 
