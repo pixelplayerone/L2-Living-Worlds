@@ -1225,10 +1225,6 @@ public final class ColdLife
 
 	/**
 	 * @param bot a bot
-	 * @return the gear it wears (empty when not recorded)
-	 */
-	/**
-	 * @param bot a bot
 	 * @param shop the gear shop, or null for bots that buy whole tiers
 	 * @param tierStep levels per whole gear tier
 	 * @return its weapon grade and its armor grade (0 no grade to 5 S)
@@ -1322,6 +1318,10 @@ public final class ColdLife
 		return (piece != null) ? piece.mDef() : naked;
 	}
 
+	/**
+	 * @param bot a bot
+	 * @return the gear it wears (empty when not recorded)
+	 */
 	static Map<LivingGear.Slot, Integer> gearOf(ColdBot bot)
 	{
 		final Map<LivingGear.Slot, Integer> gear = LivingGear.decode(bot.getGear());

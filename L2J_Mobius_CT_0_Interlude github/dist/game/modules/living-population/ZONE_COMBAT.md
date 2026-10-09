@@ -70,7 +70,7 @@ The full buffer party for every bot; off by default and ignored while `StartingB
 Per role, `BuffShareTank/Melee/Bow/Mage` (0 = unbuffed, 1 = the full buffer party): damage, P.Def and M.Def multipliers by level (`BUFF` rows, from the sim's buffer party: server caps, same-type buffs replace each other). The multiplier is blended by the share.
 
 ## Data and tooling (`tools/combat_sim`)
-`build_zone_monsters.py` (zone averages, respawns, aggression, exp), `build_curves.py` (gear curves), `build_buff_factors.py` (buff multipliers), `build_rotation_table.py` (rotation rows), `build_zone_combat.py` (writes `zone_combat.tsv`). Re-run them after changing the datapack or the sim. `tests/java/ZoneCombatReport.java` prints old-vs-new tables.
+`build_zone_monsters.py` (zone averages, respawns, aggression, exp), `build_curves.py` (gear curves), `build_buff_factors.py` (buff multipliers), `build_rotation_table.py` (rotation rows), `build_zone_combat.py` (writes `zone_combat.tsv`). Re-run them after changing the datapack or the sim; `tools/combat_sim/README.md` has the order and the quick path for a monster-only change (rebuilding `zone_combat.tsv` on the unchanged datapack reproduces it exactly). `tests/java/ZoneCombatReport.java` prints old-vs-new tables.
 
 ## Performance
 About 0.7 ms per pass for 2500 bots after the first pass: results are cached by zone, role, class, level, weapon, skills and shots.

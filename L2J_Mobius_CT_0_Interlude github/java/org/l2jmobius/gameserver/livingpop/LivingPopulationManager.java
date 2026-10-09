@@ -714,6 +714,8 @@ public class LivingPopulationManager
 			final double huntKills = botKillsPerMinute * (huntedMs / 60_000.0);
 			final ZoneCombat.PartyOutcome partyNow = partyChoice(combat, bot, progress.level(), perKillAt.applyAsDouble(progress.level()), botKillsPerMinute, now, expToNextLevel);
 			bot.setPartyDeathFactor((partyNow == null) ? 0.0 : partyNow.deathFactor());
+			// A solo bot spoils when its class does; in a party it is the party's damage dealer that spoils (a spoiler that is only a simulated member does not).
+			final boolean spoils = (partyNow != null) ? partyNow.spoils() : LivingSupplies.isSpoiler(bot.getClassId());
 			// In a party the kills are the party's, and each drop is split four ways: the bot gets a quarter of the adena and a quarter of the chance at each item.
 			// Shots and potions stay at the bot's own rate (it attacks the whole time).
 			final double lootScale = (partyNow == null) ? 1.0 : (capToZone(combat, bot, partyNow.killsPerMinute(), occupancy) * partyNow.lootShare() / Math.max(1e-9, botKillsPerMinute));
