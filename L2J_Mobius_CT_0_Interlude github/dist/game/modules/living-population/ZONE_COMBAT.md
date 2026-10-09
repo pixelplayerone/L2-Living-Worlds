@@ -18,7 +18,7 @@ A flat `ColdKillsPerMinute` (12), a flat `ColdDeathsPerHour` (0.3) and `level x 
 **Curves** (`CURVE` rows): the best +0 weapon attack and armor/jewelry defence of each grade (no grade, D 20, C 40, B 52, A 61, S 76).
 
 ## Kills per minute
-`kills/min = 60 / (overhead + fight seconds)`, overhead = 2.5 s per kill (finding the next monster, looting), clamped to `MinKillsPerMinute`..`MaxKillsPerMinute` (3..24).
+`kills/min = 60 / (overhead + fight seconds)`, overhead = 2.5 s per kill (finding the next monster, looting), capped at `MaxKillsPerMinute` (24), with no lower limit.
 
 Fight seconds, two methods:
 1. **Rotation (`ZoneRotationTtk`, default).** The sim's best single-target skill rotation for the bot's class line at its level (`ROT` rows, 28 third-class lines, 28 level breakpoints, damage per second over 5-120 s windows against the sim's dummy of P.Def 400 / M.Def 300). Damage per second is scaled to the zone's defence (400 / zone P.Def, or 300 / zone M.Def for mages), by the bot's weapon over the best weapon of its level's grade (square root for mages), and for skills it has not learned: their share of the rotation's damage is lost and auto-attacks remain (mages keep at least 10%). Fight seconds = zone HP / that damage per second, using the window nearest the result. A class takes the line of its own tree (`ROTCLASS`); a shared early class takes the first line that grows from it.

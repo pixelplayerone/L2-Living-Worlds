@@ -58,17 +58,16 @@ public final class ZoneCombat
 	 * @param baseKillsPerMinute the flat rate, and the average of a fitted bot over the zones
 	 * @param fightShare the share of one kill cycle (60 / base seconds) a fitted bot spends fighting; the rest is overhead
 	 * @param skillFloor damage multiplier of a bot with none of the skills its level allows (1.0 with all of them)
-	 * @param minKillsPerMinute lowest kill rate the model gives
 	 * @param maxKillsPerMinute highest kill rate the model gives
 	 * @param minDeathFactor lowest multiple of the base death rate
 	 * @param maxDeathFactor highest multiple of the base death rate
 	 * @param gearTierLevelStep levels per gear tier (a tier's grade is the grade of level tier x step), for bots that buy whole tiers
 	 */
-	public record Params(boolean enabled, double baseKillsPerMinute, double fightShare, double skillFloor, double minKillsPerMinute, double maxKillsPerMinute, double minDeathFactor, double maxDeathFactor, int gearTierLevelStep)
+	public record Params(boolean enabled, double baseKillsPerMinute, double fightShare, double skillFloor, double maxKillsPerMinute, double minDeathFactor, double maxDeathFactor, int gearTierLevelStep)
 	{
 		public static Params defaults()
 		{
-			return new Params(true, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10);
+			return new Params(true, 12.0, 0.5, 0.5, 24.0, 0.25, 4.0, 10);
 		}
 	}
 
@@ -190,7 +189,7 @@ public final class ZoneCombat
 	/** @return a model that does nothing: every lookup returns the flat rates */
 	public static ZoneCombat off()
 	{
-		return new ZoneCombat(new Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10), Map.of(), List.of(), Map.of());
+		return new ZoneCombat(new Params(false, 12.0, 0.5, 0.5, 24.0, 0.25, 4.0, 10), Map.of(), List.of(), Map.of());
 	}
 
 	/**
@@ -341,7 +340,7 @@ public final class ZoneCombat
 			}
 		}
 		final boolean usable = !zones.isEmpty() && curves.keySet().containsAll(List.of("patk_melee", "patk_bow", "matk_mage", "pdef_tank", "pdef_melee", "pdef_light", "pdef_robe", "mdef_heavy", "mdef_light", "mdef_robe"));
-		final Params use = usable ? params : new Params(false, params.baseKillsPerMinute(), params.fightShare(), params.skillFloor(), params.minKillsPerMinute(), params.maxKillsPerMinute(), params.minDeathFactor(), params.maxDeathFactor(), params.gearTierLevelStep());
+		final Params use = usable ? params : new Params(false, params.baseKillsPerMinute(), params.fightShare(), params.skillFloor(), params.maxKillsPerMinute(), params.minDeathFactor(), params.maxDeathFactor(), params.gearTierLevelStep());
 		final ZoneCombat model = new ZoneCombat(use, curves, zones, buffs);
 		model._rotations.putAll(rotations);
 		model._rotationsUndead.putAll(rotationsUndead);
@@ -665,7 +664,7 @@ public final class ZoneCombat
 			}
 		}
 		final double resetShare = Math.min(0.9, (events * p.baseDeathsPerHour() * p.resetSeconds()) / 3600.0);
-		kills = Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare)));
+		kills = Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare));
 		return new PartyOutcome(kills, deathFactor, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE, LivingSupplies.isSpoiler(classId) || LivingSupplies.isSpoiler(dpsClass));
 	}
 
@@ -1210,7 +1209,7 @@ public final class ZoneCombat
 		{
 		kills *= 1.0 - shield[0]; // time spent summoning again
 		}
-		return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills));
+		return Math.min(_params.maxKillsPerMinute(), kills);
 	}
 
 	/** @return the zones the model knows */

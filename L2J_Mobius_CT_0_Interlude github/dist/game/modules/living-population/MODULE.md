@@ -161,7 +161,7 @@ keeps it.
 | `ZoneExp` | Experience per kill from the zone's real monsters (times `RateXp`) instead of `ColdExpPerMobLevel x level`. Faster leveling at the same rate, which is the realistic pace. On by default. |
 | `RespawnLimit` / `RespawnUsableShare` | A zone only supplies so many monsters a minute; its bots share them, so crowded or sparse zones cap kills per minute. Needs `ZoneCombat`. |
 | `AggroPulls` / `AggroPullRisk` | Zones full of monsters that attack on sight are riskier (packs, pulls): the death rate rises by `AggroPullRisk` times the zone's aggressive share. |
-| `MinKillsPerMinute` / `MaxKillsPerMinute` / `MinDeathFactor` / `MaxDeathFactor` | Limits on the model's kill rate and on its death rate as a multiple of `ColdDeathsPerHour`. |
+| `MaxKillsPerMinute` / `MinDeathFactor` / `MaxDeathFactor` | Limits on the model's highest kill rate and on its death rate as a multiple of `ColdDeathsPerHour`. |
 | `RestEveryMinutes` / `RestSeconds` | Cold bots sit down to rest this long after this much hunting. |
 | `AvoidZoneMinutes` | After two deaths in one zone within this time, the bot avoids it this long and picks zones two levels lower. |
 | `ClassChanges` / `ClassQuestMinutes1` / `2` / `3` | Bots change class at 20, 40 and 76: take the quest from a class master of their race (by gatekeeper if their town has none), hunt that many minutes, then hand it in and change class. Each bot always takes the same branch. |

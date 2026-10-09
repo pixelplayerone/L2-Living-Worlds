@@ -131,7 +131,6 @@ public class LivingPopulationModule implements GameModule
 			config.killsPerMinute(), //
 			Math.max(0.05, Math.min(0.95, context.config().getDouble("ColdFightShare", 0.5))), //
 			Math.max(0.0, Math.min(1.0, context.config().getDouble("SkillDamageFloor", 0.5))), //
-			Math.max(0.1, context.config().getDouble("MinKillsPerMinute", 3.0)), //
 			Math.max(0.1, context.config().getDouble("MaxKillsPerMinute", 24.0)), //
 			Math.max(0.01, context.config().getDouble("MinDeathFactor", 0.25)), //
 			Math.max(0.01, context.config().getDouble("MaxDeathFactor", 4.0)), //

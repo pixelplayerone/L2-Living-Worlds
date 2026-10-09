@@ -101,7 +101,7 @@ public class LivingPopulationManager
 	private TravelConfig _travelConfig = TravelConfig.defaults();
 	private volatile ZoneCatalog _catalog = ZoneCatalog.empty();
 	private volatile ZoneCombat _combat = ZoneCombat.off(); // zone-based kill and death rates, or off for the flat ones
-	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10);
+	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 24.0, 0.25, 4.0, 10);
 	private static final double MIN_RESPAWN_RATE = 0.3; // kills per minute a bot always manages, whatever the zone's respawns
 	private volatile boolean _zoneExp; // experience per kill from the zone's real monsters, not level x ColdExpPerMobLevel
 	private volatile boolean _respawnLimit = true; // zone combat: a zone's respawns cap what its bots can kill
@@ -314,7 +314,7 @@ public class LivingPopulationManager
 		{
 			try (Reader reader = Files.newBufferedReader(Path.of(_combatFile), StandardCharsets.UTF_8))
 			{
-				_combat = ZoneCombat.parse(reader, new ZoneCombat.Params(true, Math.max(0.01, config.killsPerMinute()), _combatParams.fightShare(), _combatParams.skillFloor(), _combatParams.minKillsPerMinute(), _combatParams.maxKillsPerMinute(), _combatParams.minDeathFactor(), _combatParams.maxDeathFactor(), config.gearTierLevelStep()));
+				_combat = ZoneCombat.parse(reader, new ZoneCombat.Params(true, Math.max(0.01, config.killsPerMinute()), _combatParams.fightShare(), _combatParams.skillFloor(), _combatParams.maxKillsPerMinute(), _combatParams.minDeathFactor(), _combatParams.maxDeathFactor(), config.gearTierLevelStep()));
 				_combat.setBuffShares(_buffShares);
 				_combat.setShotDamage(_soulshotDamage, _spiritshotDamage);
 				_combat.setBlessedDamage(_blessedDamage);
