@@ -35,6 +35,8 @@ public class ZoneCombatReport
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
 		levelAverages(model, risk, args[1], args[2]);
 		System.out.println();
+		classTable(model, args[1], args[2]);
+		System.out.println();
 		rotationCompare(model);
 		model.setRotationTtk(true);
 		System.out.println();
@@ -125,6 +127,61 @@ public class ZoneCombatReport
 		}
 		System.out.println();
 		System.out.print(hours);
+	}
+
+	/** Solo against the virtual party for classes the four-role averages leave out: dagger, summoner, healer, and a melee and a tank for reference (fitted gear, ZoneExp, death exp loss). */
+	private static void classTable(ZoneCombat model, String lossXml, String expXml) throws Exception
+	{
+		final java.util.Map<Integer, Double> loss = readTable(lossXml, "val");
+		final java.util.Map<Integer, Double> total = readTable(expXml, "tolevel");
+		final Object[][] classes = { { "Dagger (Adventurer)", 93 }, { "Summoner (Arcana Lord)", 96 }, { "Healer (Cardinal)", 97 }, { "Melee (Duelist)", 88 }, { "Tank (Phoenix Knight)", 90 } };
+		System.out.println("| level | class | solo kills/min | solo deaths/hr | solo net exp/hr | party kills/min | party deaths/hr | party net exp/hr (a quarter) |");
+		System.out.println("|---|---|---|---|---|---|---|---|");
+		for (int level : new int[] { 20, 40, 61, 76 })
+		{
+			final int grade = LivingSupplies.gradeFor(level);
+			final double span = total.get(level + 1) - total.get(level);
+			final double lossPerDeath = (loss.get(level) / 100.0) * span;
+			for (Object[] c : classes)
+			{
+				final int id = (Integer) c[1];
+				double sk = 0, sd = 0, sn = 0, pk = 0, pd = 0, pn = 0;
+				int n = 0;
+				for (ZoneCombat.ZoneStats z : model.zones())
+				{
+					if ((level < z.minLevel()) || (level > z.maxLevel()))
+					{
+						continue;
+					}
+					final ZoneCombat.Stats st = model.curveStats(ZoneCombat.roleOf(id), grade, grade);
+					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), id, level, st, 1.0, 1.0, false, 4.0), model.respawnCap(z.name(), 4, 0.5)));
+					final double d = 0.3 * model.deathFactor(z.name(), id, level, st);
+					double ppk = 0, ppd = 0, ppn = 0;
+					for (int v = 0; v < 12; v++)
+					{
+						final ZoneCombat.PartyOutcome o = model.party(z.name(), id, level, st, 1.0, 1.0, false, v * 7);
+						if (o == null)
+						{
+							continue;
+						}
+						ppk += o.killsPerMinute() / 12;
+						ppd += 0.3 * o.deathFactor() / 12;
+						ppn += ((o.killsPerMinute() * 60.0 * z.expPerKill() * o.expShare()) - (0.3 * o.deathFactor() * lossPerDeath)) / 12;
+					}
+					sk += k;
+					sd += d;
+					sn += k * 60.0 * z.expPerKill() - d * lossPerDeath;
+					pk += ppk;
+					pd += ppd;
+					pn += ppn;
+					n++;
+				}
+				if (n > 0)
+				{
+					System.out.printf("| %d | %s | %.1f | %.2f | %.0f | %.1f | %.2f | %.0f |%n", level, c[0], sk / n, sd / n, sn / n, pk / n, pd / n, pn / n);
+				}
+			}
+		}
 	}
 
 	/** Same averages with gear a grade back: starter gear at 1, then top of the grade below the level's (S at 80). */

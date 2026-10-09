@@ -92,9 +92,15 @@ public final class ZoneCombat
 	 * @param attack the weapon's P.Atk or M.Atk
 	 * @param pDef P.Def of armor and shield (empty slots at their naked values)
 	 * @param mDef M.Def of the jewelry (empty slots at their naked values)
+	 * @param selfBuffs the share (0 to 1) of the class's damage and defence self buffs the bot has learned, or below 0 when unknown (its skill share is used)
 	 */
-	public record Stats(double attack, double pDef, double mDef)
+	public record Stats(double attack, double pDef, double mDef, double selfBuffs)
 	{
+		/** Stats whose self buffs follow the bot's skill share (it is not tracked which self buffs it has bought). */
+		public Stats(double attack, double pDef, double mDef)
+		{
+			this(attack, pDef, mDef, -1.0);
+		}
 	}
 
 	private static final int GRADES = 6;
@@ -114,8 +120,15 @@ public final class ZoneCombat
 	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotations = new HashMap<>(); // line -> level -> {auto dps, dps over 5, 15, 30, 45, 60, 90, 120 s} against the sim's dummy
 	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
+	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotSelf = new HashMap<>(); // line -> level -> {dps ratio over 5 .. 120 s with the self buffs, P.Def mul, M.Def mul}
+	private final Map<String, java.util.TreeMap<Integer, int[]>> _rotSelfIds = new HashMap<>(); // line -> level -> the self buff skill ids those ratios assume
+	private final Map<String, java.util.TreeMap<Integer, double[]>> _serv = new HashMap<>(); // summoner line -> level -> {servitor dps, HP, P.Def}
 	private static final int[] ROTATION_WINDOWS = { 5, 15, 30, 45, 60, 90, 120 };
 	private static final double SIM_PDEF = 400.0;
+	private static final double MOB_HITS_PER_SECOND = 0.5; // a monster's attacks on its target
+	private static final double SERVITOR_RESUMMON_SECONDS = 20.0;
+	private static final double SERVITOR_MAX_DEAD_SHARE = 0.6;
+	private static final double SERVITOR_BASE_EXPOSURE = 0.1; // monsters that still go for the summoner (area attacks, ranged, aggro on the master)
 	private static final double SIM_MDEF = 300.0;
 	private final Map<String, Map<Role, java.util.TreeMap<Integer, double[]>>> _rest = new HashMap<>(); // zone -> role -> level -> {cycle s, HP deficit per kill, HP sit regen per s, MP sit s per kill}
 	private volatile boolean _restOn; // sitting to refill HP and MP lowers the kill rate (the rest estimate)
@@ -158,6 +171,9 @@ public final class ZoneCombat
 		final Map<Role, double[][]> buffs = new java.util.EnumMap<>(Role.class);
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotations = new HashMap<>();
 		final Map<Integer, String> rotationLine = new HashMap<>();
+		final Map<String, java.util.TreeMap<Integer, double[]>> rotSelf = new HashMap<>();
+		final Map<String, java.util.TreeMap<Integer, int[]>> rotSelfIds = new HashMap<>();
+		final Map<String, java.util.TreeMap<Integer, double[]>> serv = new HashMap<>();
 		final Map<String, Map<Role, java.util.TreeMap<Integer, double[]>>> rest = new HashMap<>();
 		final Map<String, Map<Role, double[][]>> partyBuffs = new HashMap<>();
 		try (BufferedReader in = new BufferedReader(reader))
@@ -202,6 +218,22 @@ public final class ZoneCombat
 						}
 						rotations.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), values);
 					}
+					else if (f[0].equals("ROTSELF") && (f.length >= 12))
+					{
+						final double[] values = new double[ROTATION_WINDOWS.length + 2];
+						for (int i = 0; i < values.length; i++)
+						{
+							values[i] = Double.parseDouble(f[3 + i]);
+						}
+						final int level = Integer.parseInt(f[2]);
+						rotSelf.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, values);
+						final String idText = (f.length > 3 + values.length) ? f[3 + values.length] : "-";
+						rotSelfIds.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, idText.equals("-") ? new int[0] : java.util.Arrays.stream(idText.split(",")).mapToInt(Integer::parseInt).toArray());
+					}
+					else if (f[0].equals("SERV") && (f.length >= 6))
+					{
+						serv.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), new double[] { Double.parseDouble(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]) });
+					}
 					else if (f[0].equals("PBUFF") && (f.length >= 7))
 					{
 						final int level = Integer.parseInt(f[3]);
@@ -238,6 +270,9 @@ public final class ZoneCombat
 		final ZoneCombat model = new ZoneCombat(use, curves, zones, buffs);
 		model._rotations.putAll(rotations);
 		model._rotationLine.putAll(rotationLine);
+		model._rotSelf.putAll(rotSelf);
+		model._rotSelfIds.putAll(rotSelfIds);
+		model._serv.putAll(serv);
 		model._rest.putAll(rest);
 		model._partyBuffs.putAll(partyBuffs);
 		return model;
@@ -313,12 +348,13 @@ public final class ZoneCombat
 	 * @param resetSeconds how long the party takes to resurrect and get going after a death
 	 * @param healerMpFactor how much more MP a healer burns than a mage that attacks (healing as well), for its resting
 	 * @param baseDeathsPerHour the death rate a death factor of 1 means
+	 * @param gearPenalty stop-gap: party members are rarely in the best gear of their level, so their damage and defence are cut by this share (0.15 = 15%)
 	 */
-	public record PartyParams(boolean enabled, double expBonus, double healReduction, double healCoverage, double chainChance, double resetSeconds, double healerMpFactor, double baseDeathsPerHour)
+	public record PartyParams(boolean enabled, double expBonus, double healReduction, double healCoverage, double chainChance, double resetSeconds, double healerMpFactor, double baseDeathsPerHour, double gearPenalty)
 	{
 		public static PartyParams defaults()
 		{
-			return new PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3);
+			return new PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.15);
 		}
 	}
 
@@ -329,17 +365,21 @@ public final class ZoneCombat
 	 * @param expShare the share of a kill's experience the bot gets
 	 * @param slot 0 tank, 1 damage dealer, 2 buffer, 3 healer
 	 * @param buffer the buffer line giving the buffs
+	 * @param lootShare the share of each drop (adena, items) the bot gets: one over the party size
 	 */
-	public record PartyOutcome(double killsPerMinute, double deathFactor, double expShare, int slot, String buffer)
+	public record PartyOutcome(double killsPerMinute, double deathFactor, double expShare, int slot, String buffer, double lootShare)
 	{
 	}
 
+	/** Members in the virtual party: tank, damage dealer, buffer, healer. */
+	public static final int PARTY_SIZE = 4;
+
 	private static final Set<Integer> HEALERS = Set.of(15, 16, 97, 29, 30, 105, 42, 43, 112);
 	private static final Map<Integer, String> BUFFER_OF = Map.ofEntries(Map.entry(17, "hierophant"), Map.entry(98, "hierophant"), Map.entry(21, "sword_muse"), Map.entry(100, "sword_muse"), Map.entry(34, "spectral_dancer"), Map.entry(107, "spectral_dancer"), Map.entry(51, "dominator"), Map.entry(115, "dominator"), Map.entry(52, "doom_cryer"), Map.entry(116, "doom_cryer"));
-	private static final String[] BUFFERS = { "hierophant", "sword_muse", "spectral_dancer", "dominator", "doom_cryer", "evas_saint", "shillien_saint" };
+	private static final String[] BUFFERS = { "hierophant", "doom_cryer" }; // the two main buffers a party picks from at random (a bot that is itself a buffer brings its own line)
 	private final Map<String, Map<Role, double[][]>> _partyBuffs = new HashMap<>(); // buffer line -> role -> {damage, pDef, mDef} by level
 	private volatile PartyParams _partyParams = PartyParams.defaults();
-	private final Map<Long, PartyOutcome> _partyCache = new ConcurrentHashMap<>();
+	private final Map<List<Object>, PartyOutcome> _partyCache = new ConcurrentHashMap<>();
 
 	/** @return whether the class is a healer line (Cleric to Cardinal, the Oracles and Elders, Eva's and Shillien Saints) */
 	public static boolean isHealer(int classId)
@@ -403,8 +443,7 @@ public final class ZoneCombat
 		final int shots = (int) Math.round(Math.max(0.0, Math.min(1.0, shotFraction)) * 10.0);
 		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
 		final int skills = (int) Math.round(Math.max(0.0, Math.min(1.0, skillFraction)) * 10.0);
-		final long key = (((((((zi * 128L) + Math.min(127, level)) * 128L) + (classId & 127)) * 8192L + attack) * 8192L + Math.round(stats.pDef())) * 16L + skills) * 22L + (shots * 2L) + (blessed ? 1L : 0L);
-		final long full = (key * 64L) + (variant & 63);
+		final List<Object> full = List.of(zi, level, classId, attack, Math.round(stats.pDef()), Math.round(stats.selfBuffs() * 10.0), skills, shots, blessed, variant & 63);
 		return _partyCache.computeIfAbsent(full, k -> computeParty(zi, p, classId, role, level, stats, skills / 10.0, shots / 10.0, blessed, variant));
 	}
 
@@ -449,12 +488,13 @@ public final class ZoneCombat
 		final double dpsShots = (slot == 1) ? shotDamage(role, shotFraction, blessed) : 1.0;
 		final double tankBuff = partyBuff(buffer, Role.TANK, 0, level);
 		final double dpsBuff = partyBuff(buffer, dpsRole, 0, level);
+		final double gearCut = Math.max(0.0, 1.0 - p.gearPenalty());
 		double fight = 0.0;
 		for (int pass = 0; pass < 2; pass++)
 		{
 			final int w = (pass == 0) ? 0 : nearestWindow(fight);
-			final double dps = (rotationDps(z, Role.TANK, 90, level, tankStats.attack(), tankSkills, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, w) * dpsShots * dpsBuff);
-			fight = z.hp() / Math.max(1e-6, dps);
+			final double dps = (rotationDps(z, Role.TANK, 90, level, tankStats.attack(), tankSkills, 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff);
+			fight = z.hp() / Math.max(1e-6, dps * gearCut);
 		}
 		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
 		double kills = 60.0 / (overhead + fight);
@@ -462,7 +502,7 @@ public final class ZoneCombat
 		final double mean = _threatMedian[Role.TANK.ordinal()];
 		final double pBuff = partyBuff(buffer, Role.TANK, 1, level);
 		final double mBuff = partyBuff(buffer, Role.TANK, 2, level);
-		final double tankThreat = threat(z, tankStats.pDef(), tankStats.mDef(), pBuff, mBuff, hitChance(z, Role.TANK, level));
+		final double tankThreat = threat(z, tankStats.pDef() * gearCut, tankStats.mDef() * gearCut, pBuff, mBuff, hitChance(z, Role.TANK, level));
 		final double tankFactor = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), tankThreat / mean));
 		final double events = tankFactor * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0)) * p.healReduction(); // party deaths relative to the base rate
 		final double deathFactor = events * Math.pow(p.chainChance(), slot);
@@ -483,7 +523,7 @@ public final class ZoneCombat
 		}
 		final double resetShare = Math.min(0.9, (events * p.baseDeathsPerHour() * p.resetSeconds()) / 3600.0);
 		kills = Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare)));
-		return new PartyOutcome(kills, deathFactor, p.expBonus() / 4.0, slot, buffer);
+		return new PartyOutcome(kills, deathFactor, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE);
 	}
 
 	private double[] restRow(String zone, Role role, int level)
@@ -509,19 +549,19 @@ public final class ZoneCombat
 	 * The rotation is the sim's best at the level (its best gear), scaled by the bot's weapon over the best weapon of its grade;
 	 * skills the bot has not learned are skipped (their share of the rotation's damage is lost, auto-attacks stay).
 	 */
-	private double rotationFightSeconds(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction)
+	private double rotationFightSeconds(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare)
 	{
 		double seconds = 0.0;
 		for (int pass = 0; pass < 2; pass++)
 		{
 			final int w = (pass == 0) ? 0 : nearestWindow(seconds);
-			seconds = zone.hp() / Math.max(1e-6, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, w));
+			seconds = zone.hp() / Math.max(1e-6, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, w));
 		}
 		return seconds;
 	}
 
 	/** Damage per second of the class's rotation against the zone's defence over a window (0 to 6), scaled by the weapon and the skills it has. */
-	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, int window)
+	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, int window)
 	{
 		final java.util.TreeMap<Integer, double[]> table = _rotations.get(_rotationLine.get(classId));
 		if (table == null)
@@ -536,7 +576,59 @@ public final class ZoneCombat
 		final double gear = (role == Role.MAGE) ? Math.sqrt(ratio) : ratio;
 		final double skills = (role == Role.MAGE) ? Math.max(0.1, skillFraction) : Math.max(0.0, Math.min(1.0, skillFraction));
 		final double auto = Math.min(r[0], r[1 + window]);
-		return (auto + ((r[1 + window] - auto) * skills)) * scale * gear;
+		double dps = (auto + ((r[1 + window] - auto) * skills)) * scale * gear;
+		// Self buffs the class has learned (free and permanent): the share it has bought of the ratio the sim measured with them all on.
+		final java.util.Map.Entry<Integer, double[]> self = selfEntry(_rotationLine.get(classId), level);
+		if (self != null)
+		{
+			dps *= 1.0 + (Math.max(1.0, self.getValue()[window]) - 1.0) * (selfShare < 0 ? Math.max(0.0, Math.min(1.0, skillFraction)) : Math.min(1.0, selfShare));
+		}
+		// A summoner's servitor fights beside it (its auto-attacks and skill, scaled to the zone's defence like the rotation).
+		final double[] pet = servitor(classId, level);
+		if (pet != null)
+		{
+			dps += pet[0] * (SIM_PDEF / Math.max(1.0, zone.pDef())) * Math.max(0.1, Math.max(0.0, Math.min(1.0, skillFraction)));
+		}
+		return dps;
+	}
+
+	private java.util.Map.Entry<Integer, double[]> selfEntry(String line, int level)
+	{
+		final java.util.TreeMap<Integer, double[]> table = (line == null) ? null : _rotSelf.get(line);
+		return (table == null) ? null : table.floorEntry(level);
+	}
+
+	/** @return the servitor's {dps, HP, P.Def} for a summoner class at a level, or null for any other class (or before the first summon) */
+	private double[] servitor(int classId, int level)
+	{
+		final java.util.TreeMap<Integer, double[]> table = _serv.get(_rotationLine.get(classId));
+		final java.util.Map.Entry<Integer, double[]> entry = (table == null) ? null : table.floorEntry(level);
+		return (entry == null) ? null : entry.getValue();
+	}
+
+	/**
+	 * @param classId a class id
+	 * @param level the level
+	 * @return the damage and defence self buff skill ids the class's rotation data assumes at that level (empty when it has none)
+	 */
+	public int[] selfBuffIds(int classId, int level)
+	{
+		final java.util.TreeMap<Integer, int[]> table = _rotSelfIds.get(_rotationLine.get(classId));
+		final java.util.Map.Entry<Integer, int[]> entry = (table == null) ? null : table.floorEntry(level);
+		return (entry == null) ? new int[0] : entry.getValue();
+	}
+
+	/**
+	 * The share of a monster's fights the summoner is not shielded from. Monsters hit the servitor first (its HP drops before the summoner's); when it dies the summoner is
+	 * exposed until it summons again.
+	 * @return {share of time without the servitor, the summoner's exposure to damage (0 to 1)}
+	 */
+	private double[] servitorShield(ZoneStats zone, double[] pet, double fightSeconds, double killsPerMinute)
+	{
+		final double damagePerFight = fightSeconds * MOB_HITS_PER_SECOND * 70.0 * zone.pAtk() / Math.max(1.0, pet[2]);
+		final double servitorDeathsPerHour = killsPerMinute * 60.0 * damagePerFight / Math.max(1.0, pet[1]);
+		final double dead = Math.min(SERVITOR_MAX_DEAD_SHARE, servitorDeathsPerHour * SERVITOR_RESUMMON_SECONDS / 3600.0);
+		return new double[] { dead, Math.min(1.0, SERVITOR_BASE_EXPOSURE + dead) };
 	}
 
 	private static int nearestWindow(double seconds)
@@ -807,15 +899,21 @@ public final class ZoneCombat
 		final int shots = (int) Math.round(Math.max(0.0, Math.min(1.0, shotFraction)) * 10.0);
 		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
 		final boolean rotation = _rotationTtk && hasRotation(classId);
-		final long key = (((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 22L + (skills * 22L) + (shots * 2L) + ((blessed && (role == Role.MAGE)) ? 1L : 0L)) * 128L + (rotation ? (classId & 127) + 0L : 0L)) * 256L + Math.min(255L, Math.round(potionsPerHour * 10.0));
+		final long selfIdx = (stats.selfBuffs() < 0) ? 11L : Math.round(Math.min(1.0, stats.selfBuffs()) * 10.0);
+		final long key = ((((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 22L + (skills * 22L) + (shots * 2L) + ((blessed && (role == Role.MAGE)) ? 1L : 0L)) * 128L + (rotation ? (classId & 127) + 0L : 0L)) * 256L + Math.min(255L, Math.round(potionsPerHour * 10.0))) * 12L + selfIdx;
 		return _killCache.computeIfAbsent(key, k ->
 		{
-			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
+			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0, stats.selfBuffs()) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
 			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
 			double kills = 60.0 / (overhead + fightSeconds);
 			if (_restOn)
 			{
 				kills *= restFactor(_zones.get(zi).name(), role, level, kills, potionsPerHour);
+			}
+			final double[] pet = rotation ? servitor(classId, level) : null;
+			if (pet != null)
+			{
+				kills *= 1.0 - servitorShield(_zones.get(zi), pet, fightSeconds, kills)[0]; // time spent summoning again
 			}
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills));
 		});
@@ -860,12 +958,25 @@ public final class ZoneCombat
 		final Role role = roleOf(classId);
 		final long pDef = Math.max(0, Math.min(8191, Math.round(stats.pDef())));
 		final long mDef = Math.max(0, Math.min(8191, Math.round(stats.mDef())));
-		final long key = ((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L) + pDef) * 8192L + mDef;
+		final long selfIdx = (stats.selfBuffs() < 0) ? 11L : Math.round(Math.min(1.0, stats.selfBuffs()) * 10.0);
+		final long key = (((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L) + pDef) * 8192L + mDef) * 12L * 128L + (selfIdx * 128L) + (classId & 127);
 		return _deathCache.computeIfAbsent(key, k ->
 		{
 			final double mean = _threatMedian[role.ordinal()];
 			final ZoneStats z = _zones.get(zi);
-			final double gear = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(z, pDef, mDef, buff(role, 1, level), buff(role, 2, level), hitChance(z, role, level)) / mean));
+			// Self buffs that change defence (Majesty, Iron Will, Rage's penalty ...), in proportion to the share the bot has learned.
+			final java.util.Map.Entry<Integer, double[]> self = _rotationTtk ? selfEntry(_rotationLine.get(classId), level) : null;
+			final double share = (stats.selfBuffs() < 0) ? 1.0 : Math.min(1.0, stats.selfBuffs());
+			final double selfP = (self == null) ? 1.0 : (1.0 + ((self.getValue()[ROTATION_WINDOWS.length] - 1.0) * share));
+			final double selfM = (self == null) ? 1.0 : (1.0 + ((self.getValue()[ROTATION_WINDOWS.length + 1] - 1.0) * share));
+			double gear = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(z, pDef, mDef, buff(role, 1, level) * selfP, buff(role, 2, level) * selfM, hitChance(z, role, level)) / mean));
+			final double[] pet = (_rotationTtk && hasRotation(classId)) ? servitor(classId, level) : null;
+			if (pet != null)
+			{
+				// The servitor takes the hits first: the summoner is only exposed while it is down (plus a base share of attacks that still reach the master).
+				final double fight = rotationFightSeconds(z, role, classId, level, curve(role == Role.MAGE ? "matk_mage" : "patk_melee", LivingSupplies.gradeFor(level)), 1.0, 1.0);
+				gear *= servitorShield(z, pet, fight, _params.baseKillsPerMinute() * 0.6)[1];
+			}
 			return gear * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0));
 		});
 	}

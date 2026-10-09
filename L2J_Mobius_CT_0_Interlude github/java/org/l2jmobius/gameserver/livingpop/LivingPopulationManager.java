@@ -279,7 +279,7 @@ public class LivingPopulationManager
 				_combat.setBlessedDamage(_blessedDamage);
 				_combat.setRotationTtk(_rotationTtk);
 				_combat.setRest(_zoneRest);
-				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healerMpFactor(), _partyParams.baseDeathsPerHour()));
+				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healerMpFactor(), _partyParams.baseDeathsPerHour(), _partyParams.gearPenalty()));
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);
 				if (!_combat.enabled())
@@ -690,6 +690,9 @@ public class LivingPopulationManager
 			final double huntKills = botKillsPerMinute * (huntedMs / 60_000.0);
 			final ZoneCombat.PartyOutcome partyNow = partyChoice(combat, bot, progress.level(), perKillAt.applyAsDouble(progress.level()), botKillsPerMinute, now, expToNextLevel);
 			bot.setPartyDeathFactor((partyNow == null) ? 0.0 : partyNow.deathFactor());
+			// In a party the kills are the party's, and each drop is split four ways: the bot gets a quarter of the adena and a quarter of the chance at each item.
+			// Shots and potions stay at the bot's own rate (it attacks the whole time).
+			final double lootScale = (partyNow == null) ? 1.0 : (capToZone(combat, bot, partyNow.killsPerMinute(), occupancy) * partyNow.lootShare() / Math.max(1e-9, botKillsPerMinute));
 			final long huntExp = (experience.getExpForLevel(progress.level()) + progress.expIntoLevel()) - (experience.getExpForLevel(bot.getLevel()) + bot.getExpIntoLevel());
 			long huntAdena = 0L;
 			final List<DecisionLog.Event> events = new ArrayList<>();
@@ -719,11 +722,11 @@ public class LivingPopulationManager
 				// A mystic fires spiritshots, at its own rate per kill. A bot's own kill rate (zone combat) replaces the flat one.
 				final ColdEconomy.Params shotParams = LivingSupplies.isMystic(bot.getClassId()) ? economyParams.withSoulshotsPerKill(_travelConfig.spiritshotsPerKill()) : economyParams;
 				final ColdEconomy.Params botEconomy = combat.enabled() ? shotParams.withKillsPerMinute(botKillsPerMinute) : shotParams;
-				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, botEconomy, (yield == null) ? -1.0 : yield.adena(), events);
+				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, botEconomy, (yield == null) ? -1.0 : (yield.adena() * lootScale), events);
 				huntAdena = Math.max(0L, after.adena() - before.adena());
 				if ((yield != null) && (huntedMs > 0))
 				{
-					final double kills = botKillsPerMinute * (huntedMs / 60_000.0);
+					final double kills = botKillsPerMinute * lootScale * (huntedMs / 60_000.0);
 					final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
 					bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
 					huntAdena += lootValue;
@@ -734,7 +737,7 @@ public class LivingPopulationManager
 					final Map<Integer, Double> chances = zoneGear(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId()));
 					if (!chances.isEmpty())
 					{
-						final double kills = botKillsPerMinute * (huntedMs / 60_000.0);
+						final double kills = botKillsPerMinute * lootScale * (huntedMs / 60_000.0);
 						final long found = ColdLife.findDrops(bot, LivingGear.roll(chances, kills, _random), life, events);
 						bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + found));
 						huntAdena += found;

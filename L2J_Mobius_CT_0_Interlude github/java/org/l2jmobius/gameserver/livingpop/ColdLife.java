@@ -1281,7 +1281,27 @@ public final class ColdLife
 		mDef += jewel(gear, LivingGear.Slot.EAR2, items, 9);
 		mDef += jewel(gear, LivingGear.Slot.RING1, items, 5);
 		mDef += jewel(gear, LivingGear.Slot.RING2, items, 5);
-		return new ZoneCombat.Stats(attack, pDef, mDef);
+		return new ZoneCombat.Stats(attack, pDef, mDef, selfBuffShare(bot, combat));
+	}
+
+	/** The share of the class's damage and defence self buffs the bot has bought, or -1 when its skills are not tracked or the class has none to compare. */
+	private static double selfBuffShare(ColdBot bot, ZoneCombat combat)
+	{
+		final int[] ids = combat.selfBuffIds(bot.getClassId(), bot.getLevel());
+		if ((ids.length == 0) || (bot.getSkills() == null))
+		{
+			return -1.0;
+		}
+		final Map<Integer, Integer> known = SkillPlanner.decode(bot.getSkills());
+		int have = 0;
+		for (int id : ids)
+		{
+			if (known.containsKey(id))
+			{
+				have++;
+			}
+		}
+		return (double) have / ids.length;
 	}
 
 	private static LivingGear.Piece piece(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, LivingGear.Items items)
