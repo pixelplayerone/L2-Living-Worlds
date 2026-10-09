@@ -668,7 +668,7 @@ public final class ZoneCombat
 		{
 			return plain;
 		}
-		final double against = rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, undeadTable);
+		final double against = Math.max(plain, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, undeadTable)); // never slower than the plain rotation (Phoenix Knight's is no better)
 		return 1.0 / (((1.0 - undead) / Math.max(1e-9, plain)) + (undead / Math.max(1e-9, against))); // kills take the time of their own kind: average the seconds, not the damage
 	}
 

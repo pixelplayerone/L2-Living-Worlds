@@ -107,4 +107,6 @@ Healers cannot level alone (their rotation is weak), and at the highest levels a
 
 ## Undead zones
 
-Zones record the share of their monsters that are undead (`ZUNDEAD`, 19 zones have some, 7 are half or more). The healer lines (Cardinal, Hierophant, Eva's Saint, Shillien Saint) and Phoenix Knight (the party's reference tank) have a second rotation against undead (`ROTU`: Turn Undead style skills, about 3x a Cardinal's damage at level 40). A line with one uses it for the undead share of the kills and the plain rotation for the rest, averaging the seconds per kill. Other lines, and zones without undead, are unchanged.
+Zones record the share of their monsters that are undead (`ZUNDEAD`, 19 zones have some, 7 are half or more). The healer lines (Cardinal, Hierophant, Eva's Saint, Shillien Saint) and Phoenix Knight (its undead rotation is no faster, so it is unaffected) have a second rotation against undead (`ROTU`: Turn Undead style skills, about 3x a Cardinal's damage at level 40). A line with one uses it for the undead share of the kills and the plain rotation for the rest, averaging the seconds per kill. Other lines, and zones without undead, are unchanged.
+
+The undead rotation is only used where it is faster than the plain one, so Phoenix Knight (whose undead rotation is equal or slower) is effectively unchanged; the healers gain.

@@ -858,6 +858,9 @@ public class LivingPopulationTest
 			final double undeadHalf = halfUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
 			final double undeadFull = allUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
 			check("undead rotation: a zone of undead uses the line's undead rotation, a mixed zone in between, a zone without undead the plain one", (undeadNone < undeadHalf) && (undeadHalf < undeadFull));
+			final ZoneCombat worse = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROTU\tduelist\t40\t0\t10\t10\t10\t10\t10\t10\t10\nZUNDEAD\tRot\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			worse.setRotationTtk(true);
+			check("undead rotation: used only when it is faster than the plain one", Math.abs(worse.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - undeadNone) < 1e-9);
 			check("undead rotation: a line without one is unchanged", Math.abs(allUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0) - noUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0)) < 1e-9);
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
