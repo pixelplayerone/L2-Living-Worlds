@@ -38,6 +38,9 @@ A zone only spawns `sum(count / respawnDelay)` monsters a minute. A bot's kills 
 ## Experience
 `exp/min = exp per kill x kills/min x RateXp x population pressure`. Exp per kill is the zone's real average (`ZoneExp`, default) or `level x ColdExpPerMobLevel`. With `ExpLevelGap`, a bot earns nothing when the zone's average monster is `MonsterExpMaxLevelDifference` (11) or more levels from it (the server rule). There is no reduction for smaller gaps.
 
+### Experience lost on death
+A cold death costs the server's own penalty: the percentage in `experienceLoss.xml` (10% at level 1, about 7.6% at 20, 5.1% at 40, 4% at 52-61, 2.5% at 76, 1% at 80) of the experience span of the bot's level, capped at 10% of it, and never below the start of its level. The table is read from the server's `ExperienceLossData` at the first tick (`ColdRisk.setExpLossTable`); without it a straight-line estimate (6.5% minus 0.07% per level) is used. The 20% chance of the temporary Death Penalty debuff and the server's loss-reduction stats are not modeled. Deaths come from the death rate above, so the net experience of a zone is its gain minus deaths per hour times this loss.
+
 ## Buffs (`BuffedLeveling`)
 Per role, `BuffShareTank/Melee/Bow/Mage` (0 = unbuffed, 1 = the full buffer party): damage, P.Def and M.Def multipliers by level (`BUFF` rows, from the sim's buffer party: server caps, same-type buffs replace each other). The multiplier is blended by the share.
 
@@ -52,5 +55,5 @@ About 0.7 ms per pass for 2500 bots after the first pass: results are cached by 
 - HP/MP resting, potions, crits, multi-pulls, monster skills, evasion, set bonuses and enchants are not modeled. The base rates absorb resting.
 - Rotations assume infinite MP and the sim's best gear; a bot is scaled by its weapon only, and skipped skills are estimated by share, not re-simulated.
 - Dagger lines (Adventurer, Wind Rider, Ghost Hunter) have no rotation row and use the relative model; early shared classes take the first line that grows from them.
-- Deaths in the highest zones can reach 2 per hour; tune `MaxDeathFactor` and `AggroPullRisk` if that is too harsh.
+- Deaths in the highest zones can reach 2 per hour. At level 76 that costs about 1.9 x 2.5% x 220M = 10M experience an hour against about 5.7M gained (`ZoneExp`), so a bot there would not level. Tune `MaxDeathFactor` and `AggroPullRisk`, or lower the high-level death rate, before relying on those levels.
 - Zone averages hide spread (named or champion monsters); there is no experience reduction for hunting well below the bot's level.

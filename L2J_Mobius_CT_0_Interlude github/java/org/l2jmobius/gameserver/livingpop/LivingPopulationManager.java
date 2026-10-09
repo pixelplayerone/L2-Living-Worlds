@@ -109,6 +109,7 @@ public class LivingPopulationManager
 	private volatile double _soulshotDamage = 2.0; // zone combat: damage with soulshots over without
 	private volatile double _spiritshotDamage = Math.sqrt(2.0);
 	private volatile double _blessedDamage = 2.0; // zone combat: damage with blessed spiritshots over without
+	private boolean _lossTableLoaded; // the server's death experience loss table was handed to ColdRisk
 	private volatile boolean _rotationTtk = true; // zone combat: time to kill from the sim rotations (real seconds)
 	private volatile double _blessedShare; // share of mages that fire blessed spiritshots (until buying decides it per bot)
 	private volatile double[] _buffShares = new double[4]; // buffed leveling: share of the full buffer party, per role
@@ -550,6 +551,24 @@ public class LivingPopulationManager
 		// Follow the server and model real hunting: honor its XP rate, use its real experience table for the per-level
 		// requirement, and earn experience per kill. A cold bot is assumed to clear level-appropriate mobs, so its
 		// experience per minute is (level * expPerMobLevel) * killsPerMinute * server XP rate. Read once per tick.
+		if (!_lossTableLoaded)
+		{
+			_lossTableLoaded = true;
+			try
+			{
+				final org.l2jmobius.gameserver.data.xml.ExperienceLossData loss = org.l2jmobius.gameserver.data.xml.ExperienceLossData.getInstance();
+				final double[] table = new double[ExperienceData.getInstance().getMaxLevel() + 1];
+				for (int level = 1; level < table.length; level++)
+				{
+					table[level] = loss.getPercentLost(level);
+				}
+				ColdRisk.setExpLossTable(table); // cold deaths cost what a real death costs
+			}
+			catch (RuntimeException e)
+			{
+				// keep the estimate
+			}
+		}
 		final ExperienceData experience = ExperienceData.getInstance();
 		final double rate = Math.max(0.01, RatesConfig.RATE_XP);
 		final int maxLevel = Math.min(_config.maxLevel(), experience.getMaxLevel());

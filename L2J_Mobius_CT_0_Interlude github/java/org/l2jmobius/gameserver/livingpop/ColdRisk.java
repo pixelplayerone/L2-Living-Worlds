@@ -212,12 +212,28 @@ public final class ColdRisk
 		return 1.0 - Math.exp(-Math.max(0.0, deathsPerHour) * (Math.max(0L, elapsedMs) / 3_600_000.0));
 	}
 
+	/** The server's experience loss per level (percent of the level's experience span), or null for the built-in estimate. */
+	private static volatile double[] _expLossTable;
+
+	/**
+	 * @param percentByLevel the server's loss in percent of a level's experience, indexed by level (0 unused); null returns to the estimate
+	 */
+	public static void setExpLossTable(double[] percentByLevel)
+	{
+		_expLossTable = (percentByLevel == null) ? null : percentByLevel.clone();
+	}
+
 	/**
 	 * @param level the level it died at
-	 * @return the share of the level's experience it loses, in percent
+	 * @return the share of the level's experience it loses, in percent: the server's table when it was loaded (capped at the server's 10%), else a straight-line estimate
 	 */
 	public static double expLossPercent(int level)
 	{
+		final double[] table = _expLossTable;
+		if ((table != null) && (table.length > 1))
+		{
+			return Math.max(0.0, Math.min(10.0, table[Math.max(1, Math.min(level, table.length - 1))]));
+		}
 		return Math.max(0.0, 6.5 - (0.07 * level));
 	}
 
