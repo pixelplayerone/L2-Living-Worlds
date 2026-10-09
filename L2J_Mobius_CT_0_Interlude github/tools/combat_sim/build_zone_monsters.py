@@ -21,6 +21,7 @@ zones_file = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", ".."
 
 # What the engine does to a monster's datapack stats at runtime (checked against an in-game NPC window: a Satyr shows HP 6275 where the datapack says 1324):
 #  - its passive skills multiply HP, P.Atk, M.Atk, P.Def, M.Def (HP Increase 4408, Strong P./M. Atk 4410/4411, Strong P./M. Def 4412/4413, armor/weapon types 4414/4415)
+#  - attack speed x DEX bonus (the Satyr window: 253 x 1.1 = 278);
 #  - HP x CON bonus; P.Atk x STR bonus x level mod; M.Atk x INT bonus^2 x level mod^2; P.Def x level mod; M.Def x MEN bonus x level mod (level mod = (level + 89) / 100)
 import stats_model as S
 MONSTER_PASSIVES = {4408: "maxHp", 4410: "pAtk", 4411: "mAtk", 4412: "pDef", 4413: "mDef", 4414: "pDef", 4415: "pAtk"}
@@ -55,7 +56,7 @@ for p in glob.glob(os.path.join(L.DATA, "stats/npcs/*.xml")):
         sl = list(n.iter("skill")); sl = [x for x in sl if x.get("id") and x.get("level")]
         sb = lambda nm: S.bonus(nm, int(st.get(nm.lower())))
         npcs[int(n.get("id"))] = dict(name=n.get("name"), level=int(n.get("level")), type=n.get("type"), hp=float(v.get("hp")) * passive_mul(sl, "maxHp") * sb("CON"), mp=float(v.get("mp")),
-            patk=float(a.get("physical")) * passive_mul(sl, "pAtk") * sb("STR") * lm, matk=float(a.get("magical")) * passive_mul(sl, "mAtk") * sb("INT") ** 2 * lm ** 2, aspd=float(a.get("attackSpeed")), crit=float(a.get("critical", 0)), acc=float(a.get("accuracy", 0)),
+            patk=float(a.get("physical")) * passive_mul(sl, "pAtk") * sb("STR") * lm, matk=float(a.get("magical")) * passive_mul(sl, "mAtk") * sb("INT") ** 2 * lm ** 2, aspd=float(a.get("attackSpeed")) * sb("DEX"), crit=float(a.get("critical", 0)), acc=float(a.get("accuracy", 0)),
             pdef=float(d.get("physical")) * passive_mul(sl, "pDef") * lm, mdef=float(d.get("magical")) * passive_mul(sl, "mDef") * sb("MEN") * lm, exp=float(acq.get("exp", 0)) if acq is not None else 0, sp=float(acq.get("sp", 0)) if acq is not None else 0,
             race=((n.findtext("race") or "").strip().upper()), aggro=(ai is not None and float(ai.get("aggroRange", 0) or 0) > 0 and ai.get("isAggressive") != "false"), run=float((st.find("speed/run") or ET.Element("x")).get("ground", 0) or 0))
 root = ET.parse(zones_file).getroot()
