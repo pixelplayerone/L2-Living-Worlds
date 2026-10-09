@@ -762,6 +762,21 @@ public class LivingPopulationTest
 			check("rotation ttk: 100 dps (x 400/400) kills a 400 HP monster in 4 s, plus 2.5 s of overhead", Math.abs(full - (60.0 / 6.5)) < 0.05);
 			check("rotation ttk: skipping all skills falls back to the auto-attack rate", Math.abs(none - (60.0 / (400.0 / 10.0 + 2.5))) < 0.05 || none <= full);
 			check("rotation ttk: a worse weapon kills slower", rot.killsPerMinute("Rot", 88, 40, new ZoneCombat.Stats(fit.attack() / 2, fit.pDef(), fit.mDef()), 1.0, 1.0) < full);
+			
+			final String restData = rotData.replace("ROT\tduelist", "REST\tRot\tmelee\t40\t6.5\t40\t10\t0\nROT\tduelist");
+			final ZoneCombat rested = ZoneCombat.parse(new java.io.StringReader(restData), ZoneCombat.Params.defaults());
+			rested.setRotationTtk(true);
+			final double standing = rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			rested.setRest(true);
+			final double sitting = rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double withPotions = rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0, false, 120.0);
+			check("rest: sitting to refill HP costs kills", sitting < standing);
+			check("rest: potions heal some of the HP so the bot sits less", withPotions > sitting);
+			check("rest: a zone with no rest data is untouched", Math.abs(rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - sitting) < 1e-9);
+			final ZoneCombat dodge = ZoneCombat.parse(new java.io.StringReader(rotData.replace("\t0\t100\n", "\t0\t100\t30\n")), ZoneCombat.Params.defaults());
+			final double noEvasion = dodge.deathFactor("Rot", 9, 40, dodge.curveStats(ZoneCombat.Role.BOW, 2, 2));
+			dodge.setEvasion(true);
+			check("evasion: archers dodge more than mages (a lower death factor)", dodge.deathFactor("Rot", 9, 40, dodge.curveStats(ZoneCombat.Role.BOW, 2, 2)) <= dodge.deathFactor("Rot", 10, 40, dodge.curveStats(ZoneCombat.Role.MAGE, 2, 2)) * 1.0001);
 			rot.setRotationTtk(false);
 			check("rotation ttk: off uses the relative model", Math.abs(rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - full) > 1e-9);
 		}

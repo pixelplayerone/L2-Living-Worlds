@@ -29,11 +29,17 @@ Modifiers applied to both: buffs (`BuffedLeveling`, below) divide the fight time
 ### Shots (`ShotsMatter`)
 Soulshots x2 damage (`SoulshotDamage`), plain spiritshots x1.41 for mages (`SpiritshotDamage`, M.Atk x2 and damage grows with its square root), blessed spiritshots x2.0 (`BlessedSpiritshotDamage`, M.Atk x4) for the share of mages in `BlessedSpiritshotShare` (picked by bot id; purchasing is not changed). Applied for the share of time the bot has stock (`stock / (kills/min x shots per kill x minutes)`); not before `SoulshotMilestoneLevel` or with the economy off. Calibration assumes plain shots.
 
+### Resting and potions (`ZoneRest`)
+A bot sits when its HP falls to 10% or its MP to 5% and stands up when both are full. Per zone, role and level (`REST` rows from `tools/combat_sim/rest_estimate.py`: the sim's HP, MP, regen and rotation MP use, the zone monsters hitting one at a time at 85%) the estimate gives the kill cycle, the HP lost per kill beyond standing regen, the sitting HP regen and the sitting time to refill MP. Kills are multiplied by `cycle / (cycle + max(HP sit, MP sit))`. Potions: a bot with potions in stock drinks `ColdPotionsPerHour` x its class factor healing potions (Lesser 120 HP below level 20, Healing 360 HP), which heal part of the HP lost per kill so it sits less. Potions are still not used up in cold hunting. The estimate uses the sim's best gear for the role, fighters mix skills with auto-attacks to what their MP regen sustains, mages cast then sit; it is rough and tends to be pessimistic in absolute terms.
+
 ### Zone supply (`RespawnLimit`)
 A zone only spawns `sum(count / respawnDelay)` monsters a minute. A bot's kills are capped at `that x RespawnUsableShare (0.5) / max(1, bots in the zone)`, never below 0.3 kills/min.
 
 ## Deaths per hour
 `0.3 x gearFactor x aggroFactor`, with `gearFactor = clamp(threat / median threat, MinDeathFactor, MaxDeathFactor)` (0.25..4) and `threat = max(zone P.Atk / bot P.Def, zone M.Atk / bot M.Def)`. The median threat is the fitted bot's in the median zone, so a fitted bot averages 0.3. `aggroFactor = 1 + AggroPullRisk x aggressive share` (`AggroPulls`; a monster is aggressive when it has an aggro range and does not set `isAggressive=false`, the server default). The old "gear behind" step in `ColdRisk` is replaced by the gear factor.
+
+### Evasion (`ZoneEvasion`)
+A monster hits with `80% + 2 x (accuracy - evasion)`, clamped to 20-98% (the server's formula). Monster accuracy = 6 x sqrt(30) + monster level + its template bonus (`accuracy` in the ZONE rows); bot evasion = level + 6 x sqrt(DEX) with a typical DEX per role (bow 40, melee 33, tank 30, mage 25). Only the physical part of the death rate is scaled, in calibration and per bot, so archers die less than mages in the same zone. Gear and skill evasion bonuses are not counted.
 
 ## Experience
 `exp/min = exp per kill x kills/min x RateXp x population pressure`. Exp per kill is the zone's real average (`ZoneExp`, default) or `level x ColdExpPerMobLevel`. With `ExpLevelGap`, a bot earns nothing when the zone's average monster is `MonsterExpMaxLevelDifference` (11) or more levels from it (the server rule). There is no reduction for smaller gaps.
@@ -52,7 +58,8 @@ About 0.7 ms per pass for 2500 bots after the first pass: results are cached by 
 
 ## Known limits
 - Not validated against hot-bot measurements; late-level numbers are predictions.
-- HP/MP resting, potions, crits, multi-pulls, monster skills, evasion, set bonuses and enchants are not modeled. The base rates absorb resting.
+- Crits are in the rotation damage (expected crit damage) but not in the relative model. Multi-pulls, monster skills, self-heals, set bonuses and enchants are not modeled; potion healing and evasion are rough.
+- Healers (Cardinal and the like) use their line's attack rotation, which is weak, and get no credit for healing themselves, so they kill slower than other mages and die as often as them.
 - Rotations assume infinite MP and the sim's best gear; a bot is scaled by its weapon only, and skipped skills are estimated by share, not re-simulated.
 - Dagger lines (Adventurer, Wind Rider, Ghost Hunter) have no rotation row and use the relative model; early shared classes take the first line that grows from them.
 - **Late-level deaths (left open on purpose; needs party behavior for cold bots).** A solo bot in the highest zones (about level 76-80) dies roughly 2 times an hour in this model, and each death costs 2.5% of a level. At level 76 that is about 1.9 x 2.5% x 220M = 10M experience an hour against about 5.7M gained (`ZoneExp`), so a solo cold bot there would not level. This is not tuned away: it is the gap that cold-sim party behavior (buffers, healers, shared fights, a full buffer party raises damage x2.4-3.6 and P.Def x1.5-1.8 at those levels; see `BuffedLeveling`) is meant to close. Until that exists, either treat late levels as unfinished, or lower `MaxDeathFactor` / `AggroPullRisk`, or set the `BuffShare*` settings above 0.

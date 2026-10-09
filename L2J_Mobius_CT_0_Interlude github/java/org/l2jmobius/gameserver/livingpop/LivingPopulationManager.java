@@ -110,6 +110,8 @@ public class LivingPopulationManager
 	private volatile double _spiritshotDamage = Math.sqrt(2.0);
 	private volatile double _blessedDamage = 2.0; // zone combat: damage with blessed spiritshots over without
 	private boolean _lossTableLoaded; // the server's death experience loss table was handed to ColdRisk
+	private volatile boolean _zoneRest = true; // zone combat: sitting to refill HP and MP lowers kills (potions cover some HP)
+	private volatile boolean _zoneEvasion = true; // zone combat: monsters miss a bot with evasion
 	private volatile boolean _rotationTtk = true; // zone combat: time to kill from the sim rotations (real seconds)
 	private volatile double _blessedShare; // share of mages that fire blessed spiritshots (until buying decides it per bot)
 	private volatile double[] _buffShares = new double[4]; // buffed leveling: share of the full buffer party, per role
@@ -160,6 +162,12 @@ public class LivingPopulationManager
 		_respawnLimit = respawnLimit;
 		_respawnShare = respawnShare;
 		_aggroRisk = aggroRisk;
+	}
+
+	public void setRestAndEvasion(boolean rest, boolean evasion)
+	{
+		_zoneRest = rest;
+		_zoneEvasion = evasion;
 	}
 
 	public void setRotationTtk(boolean on)
@@ -256,6 +264,8 @@ public class LivingPopulationManager
 				_combat.setShotDamage(_soulshotDamage, _spiritshotDamage);
 				_combat.setBlessedDamage(_blessedDamage);
 				_combat.setRotationTtk(_rotationTtk);
+				_combat.setRest(_zoneRest);
+				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);
 				if (!_combat.enabled())
 				{
@@ -770,7 +780,7 @@ public class LivingPopulationManager
 		{
 			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
 		}
-		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, stats, skills, shotFraction, usesBlessed(bot));
+		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, stats, skills, shotFraction, usesBlessed(bot), (bot.getPotions() > 0) ? (_travelConfig.potionsPerHour() * LivingSupplies.potionUseFactor(bot.getClassId())) : 0.0);
 	}
 
 	/**

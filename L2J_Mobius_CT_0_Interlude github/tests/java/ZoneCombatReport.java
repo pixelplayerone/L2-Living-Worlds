@@ -30,8 +30,10 @@ public class ZoneCombatReport
 		final ColdRisk.Params risk = new ColdRisk.Params(0.3, 90_000L, 600_000L, 60_000L, 3_600_000L);
 		model.setAggroRisk(1.0);
 		model.setRotationTtk(true);
+		model.setRest(true);
+		model.setEvasion(true);
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
-		levelAverages(model, risk);
+		levelAverages(model, risk, args[1], args[2]);
 		System.out.println();
 		rotationCompare(model);
 		model.setRotationTtk(true);
@@ -64,11 +66,25 @@ public class ZoneCombatReport
 		System.out.printf("| %s | %s | %s | %.1f > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", zone, role, bot, flatKills, kills, flatDeaths, deaths, level * 13.0 * flatKills * 60, level * 13.0 * kills * 60, model.expPerKill(zone) * kills * 60);
 	}
 
-	/** Averages over the zones whose level range holds the level and over the four roles, a fitted bot (curve gear of its grade, all skills, shots), 4 bots per zone. */
-	private static void levelAverages(ZoneCombat model, ColdRisk.Params risk)
+	private static java.util.Map<Integer, Double> readTable(String path, String attr) throws Exception
 	{
-		System.out.println("| level | zones | kills/min old > new | deaths/hr old > new | exp/hr old (L*13) | exp/hr new | exp/hr new + ZoneExp |");
-		System.out.println("|---|---|---|---|---|---|---|");
+		final java.util.Map<Integer, Double> out = new java.util.HashMap<>();
+		final java.util.regex.Matcher m = java.util.regex.Pattern.compile("level=\"(\\d+)\"[^>]*?" + attr + "=\"([\\d.]+)\"").matcher(Files.readString(Path.of(path)));
+		while (m.find())
+		{
+			out.put(Integer.parseInt(m.group(1)), Double.parseDouble(m.group(2)));
+		}
+		return out;
+	}
+
+	/** Averages over the zones whose level range holds the level and over the four roles, a fitted bot (curve gear of its grade, all skills, shots, potions), 4 bots per zone. */
+	private static void levelAverages(ZoneCombat model, ColdRisk.Params risk, String lossXml, String expXml) throws Exception
+	{
+		final java.util.Map<Integer, Double> loss = readTable(lossXml, "val");
+		final java.util.Map<Integer, Double> total = readTable(expXml, "tolevel");
+		System.out.println("| level | zones | kills/min old > new | deaths/hr old > new | exp/hr old (L*13) | exp/hr new | exp/hr new + ZoneExp | net after death loss |");
+		System.out.println("|---|---|---|---|---|---|---|---|");
+		final StringBuilder hours = new StringBuilder("| level | exp needed | flat | ZoneExp | ZoneExp net of deaths |\n|---|---|---|---|---|\n");
 		for (int level : new int[] { 1, 20, 40, 52, 61, 76, 80 })
 		{
 			final int grade = LivingSupplies.gradeFor(level);
@@ -83,21 +99,32 @@ public class ZoneCombatReport
 				zonesUsed++;
 				for (int c : new int[] { TANK, MELEE, BOW, MAGE })
 				{
-					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), c, level, grade, grade, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
+					final ZoneCombat.Stats st = model.curveStats(ZoneCombat.roleOf(c), grade, grade);
+					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), c, level, st, 1.0, 1.0, false, 4.0), model.respawnCap(z.name(), 4, 0.5)));
 					kills += k;
 					zoneExp += k * z.expPerKill();
-					deaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5, 5, c, model.deathFactor(z.name(), c, level, grade)).deathsPerHour();
+					deaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5, 5, c, model.deathFactor(z.name(), c, level, st)).deathsPerHour();
 					flatDeaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5, 5, c).deathsPerHour();
 					n++;
 				}
 			}
 			if (n == 0)
 			{
-				System.out.println("| " + level + " | 0 | no zone covers this level | | | | |");
+				System.out.println("| " + level + " | 0 | no zone covers this level | | | | | |");
 				continue;
 			}
-			System.out.printf("| %d | %d | 12.0 > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", level, zonesUsed, kills / n, flatDeaths / n, deaths / n, level * 13.0 * 12 * 60, level * 13.0 * (kills / n) * 60, (zoneExp / n) * 60);
+			final double span = (level >= 80) ? 0 : (total.get(level + 1) - total.get(level));
+			final double zoneHr = (zoneExp / n) * 60;
+			final double lost = (deaths / n) * (loss.get(level) / 100.0) * span;
+			final double net = zoneHr - lost;
+			System.out.printf("| %d | %d | 12.0 > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f | %.0f |%n", level, zonesUsed, kills / n, flatDeaths / n, deaths / n, level * 13.0 * 12 * 60, level * 13.0 * (kills / n) * 60, zoneHr, net);
+			if (span > 0)
+			{
+				hours.append(String.format("| %d | %.0f | %.1f h | %.1f h | %s |%n", level, span, span / (level * 13.0 * 12 * 60), span / zoneHr, (net <= 0) ? "never" : String.format("%.1f h", span / net)));
+			}
 		}
+		System.out.println();
+		System.out.print(hours);
 	}
 
 	/** Same averages with gear a grade back: starter gear at 1, then top of the grade below the level's (S at 80). */
