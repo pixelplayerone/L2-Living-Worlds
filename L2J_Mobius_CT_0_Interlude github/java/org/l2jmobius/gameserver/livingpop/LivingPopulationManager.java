@@ -101,6 +101,8 @@ public class LivingPopulationManager
 	private volatile ZoneCatalog _catalog = ZoneCatalog.empty();
 	private volatile ZoneCombat _combat = ZoneCombat.off(); // zone-based kill and death rates, or off for the flat ones
 	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10);
+	private volatile double _soulshotDamage = 2.0; // zone combat: damage with soulshots over without
+	private volatile double _spiritshotDamage = Math.sqrt(2.0);
 	private volatile double[] _buffShares = new double[4]; // buffed leveling: share of the full buffer party, per role
 	private volatile boolean _combatRates = true; // kill and death rates from the zone model
 	private volatile boolean _expGap = true; // no hunting experience when outleveled for the zone, like the server
@@ -143,6 +145,12 @@ public class LivingPopulationManager
 	 * @param buffShares per role (tank, melee, bow, mage) the share of the buffer party's buffs the bots have while leveling, 0 to 1 (null or zeros = unbuffed)
 	 * @param expLevelGap whether hunting gives no experience when the bot is {@code MonsterExpMaxLevelDifference} or more levels away from the zone's monsters (uses the same data file)
 	 */
+	public void setShotDamage(double soulshot, double spiritshot)
+	{
+		_soulshotDamage = soulshot;
+		_spiritshotDamage = spiritshot;
+	}
+
 	public void setZoneCombat(ZoneCombat.Params params, String dataFile, boolean expLevelGap, double[] buffShares)
 	{
 		_buffShares = (buffShares == null) ? new double[4] : buffShares.clone();
@@ -211,6 +219,7 @@ public class LivingPopulationManager
 			{
 				_combat = ZoneCombat.parse(reader, new ZoneCombat.Params(true, Math.max(0.01, config.killsPerMinute()), _combatParams.fightShare(), _combatParams.skillFloor(), _combatParams.minKillsPerMinute(), _combatParams.maxKillsPerMinute(), _combatParams.minDeathFactor(), _combatParams.maxDeathFactor(), config.gearTierLevelStep()));
 				_combat.setBuffShares(_buffShares);
+				_combat.setShotDamage(_soulshotDamage, _spiritshotDamage);
 				if (!_combat.enabled())
 				{
 					LOGGER.warning("LivingPopulation: " + _combatFile + " has no usable zone data; cold bots keep the flat kill and death rates.");
@@ -576,12 +585,12 @@ public class LivingPopulationManager
 				{
 					return 0L;
 				}
-				final double base = Math.max(0.0, level * expPerKillUnitPerRate * killsPerMinuteOf(combat, bot, level, flatKillsPerMinute));
+				final double base = Math.max(0.0, level * expPerKillUnitPerRate * ratePerMinute(combat, bot, level, flatKillsPerMinute, huntedMs, economyParams));
 				return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
 			};
 			final ColdProgression.Progress progress = ColdProgression.resolve(bot.getLevel(), bot.getExpIntoLevel(), huntedMs, maxLevel, expToNextLevel, expPerMinuteForLevel);
 			// The rate at the level it ends the span on drives the span's kills, adena, soulshots and drops (a span is short).
-			final double botKillsPerMinute = killsPerMinuteOf(combat, bot, progress.level(), flatKillsPerMinute);
+			final double botKillsPerMinute = ratePerMinute(combat, bot, progress.level(), flatKillsPerMinute, huntedMs, economyParams);
 			// Kills at the modeled kill rate (a monitor counter), and the experience this span added (it earns SP).
 			final double huntKills = botKillsPerMinute * (huntedMs / 60_000.0);
 			final long huntExp = (experience.getExpForLevel(progress.level()) + progress.expIntoLevel()) - (experience.getExpForLevel(bot.getLevel()) + bot.getExpIntoLevel());
@@ -670,9 +679,21 @@ public class LivingPopulationManager
 	 * @param bot a bot (its zone, class, gear and skills)
 	 * @param level the level to rate it at
 	 * @param flat the flat rate to fall back on
+	 * @param shotFraction the share of the time it has its soulshots (spiritshots for a mystic)
 	 * @return the bot's kills per minute in its zone
 	 */
-	private double killsPerMinuteOf(ZoneCombat combat, ColdBot bot, int level, double flat)
+	private double ratePerMinute(ZoneCombat combat, ColdBot bot, int level, double flat, long huntedMs, ColdEconomy.Params economyParams)
+	{
+		final double full = killsPerMinuteOf(combat, bot, level, flat, 1.0);
+		if (!combat.knows(bot.getZone()))
+		{
+			return full;
+		}
+		final double shots = shotFractionOf(bot, level, full, huntedMs, economyParams);
+		return (shots >= 1.0) ? full : killsPerMinuteOf(combat, bot, level, flat, shots);
+	}
+
+	private double killsPerMinuteOf(ZoneCombat combat, ColdBot bot, int level, double flat, double shotFraction)
 	{
 		if (!combat.knows(bot.getZone()))
 		{
@@ -684,7 +705,38 @@ public class LivingPopulationManager
 		{
 			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
 		}
-		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, grades[0], grades[1], skills);
+		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, grades[0], grades[1], skills, shotFraction);
+	}
+
+	/**
+	 * Whether the bot has the shots for the damage bonus. Its stock lasts as long as its kills use them up; a span longer
+	 * than that is part shot, part not. Below the level shots are first handed out, or with the economy off, nothing is tracked
+	 * and it counts as shot (what the calibration assumes).
+	 * @param bot the bot
+	 * @param level its level
+	 * @param fullKillsPerMinute its kill rate with shots
+	 * @param huntedMs the hunting time of the span
+	 * @param economyParams the economy tuning, or null when it is off
+	 * @return the share of the span it fires shots, 0 to 1
+	 */
+	private double shotFractionOf(ColdBot bot, int level, double fullKillsPerMinute, long huntedMs, ColdEconomy.Params economyParams)
+	{
+		if ((economyParams == null) || (level < economyParams.soulshotMilestoneLevel()))
+		{
+			return 1.0;
+		}
+		final double perKill = LivingSupplies.isMystic(bot.getClassId()) ? _travelConfig.spiritshotsPerKill() : economyParams.soulshotsPerKill();
+		final double perMinute = fullKillsPerMinute * Math.max(0.0, perKill);
+		final double minutes = huntedMs / 60_000.0;
+		if (perMinute <= 0.0)
+		{
+			return 1.0;
+		}
+		if (minutes <= 0.0)
+		{
+			return (bot.getSoulshots() > 0) ? 1.0 : 0.0;
+		}
+		return Math.max(0.0, Math.min(1.0, (bot.getSoulshots() / perMinute) / minutes));
 	}
 
 	/** Bots in or heading to each zone, counted once per resolver tick for zone capacity. */

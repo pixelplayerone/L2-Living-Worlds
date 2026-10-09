@@ -90,6 +90,8 @@ public final class ZoneCombat
 	private final double[] _killScale = new double[Role.values().length]; // seconds of fighting per unit of raw time-to-kill
 	private final double[] _threatMedian = new double[Role.values().length];
 	private final Map<Role, double[][]> _buffs = new java.util.EnumMap<>(Role.class); // role -> {damage, pDef, mDef} multipliers by level, full buffer party
+	private volatile double _soulshotDamage = 2.0; // damage with soulshots over without (auto-attack: P.Atk x2)
+	private volatile double _spiritshotDamage = Math.sqrt(2.0); // damage with spiritshots over without (M.Atk x2, damage grows with its square root)
 	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
 	private final Map<Long, Double> _killCache = new ConcurrentHashMap<>();
 	private final Map<Long, Double> _deathCache = new ConcurrentHashMap<>();
@@ -254,6 +256,18 @@ public final class ZoneCombat
 		_deathCache.clear();
 	}
 
+	/**
+	 * Sets how much the shots add. The calibration assumes shots, so a bot without them does that much less damage.
+	 * @param soulshot damage with soulshots over without, for physical roles (at least 1)
+	 * @param spiritshot damage with spiritshots over without, for mages (at least 1)
+	 */
+	public void setShotDamage(double soulshot, double spiritshot)
+	{
+		_soulshotDamage = Math.max(1.0, soulshot);
+		_spiritshotDamage = Math.max(1.0, spiritshot);
+		_killCache.clear();
+	}
+
 	/** @return levels per gear tier */
 	public int tierStep()
 	{
@@ -317,6 +331,16 @@ public final class ZoneCombat
 	 */
 	public double killsPerMinute(String zone, int classId, int level, int weaponGrade, int armorGrade, double skillFraction)
 	{
+		return killsPerMinute(zone, classId, level, weaponGrade, armorGrade, skillFraction, 1.0);
+	}
+
+	/**
+	 * Like {@link #killsPerMinute(String, int, int, int, int, double)} with the share of the time the bot has its shots.
+	 * @param shotFraction the share of the span it fires soulshots (spiritshots for a mage), 0 to 1; 1 is what the calibration assumes
+	 * @return kills per minute
+	 */
+	public double killsPerMinute(String zone, int classId, int level, int weaponGrade, int armorGrade, double skillFraction, double shotFraction)
+	{
 		final Integer zi = knows(zone) ? _zoneIndex.get(zone) : null;
 		if (zi == null)
 		{
@@ -324,10 +348,11 @@ public final class ZoneCombat
 		}
 		final Role role = roleOf(classId);
 		final int skills = (int) Math.round(Math.max(0.0, Math.min(1.0, skillFraction)) * 10.0);
-		final long key = ((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8L + clamp(weaponGrade)) * 8L + clamp(armorGrade)) * 16L + skills;
+		final int shots = (int) Math.round(Math.max(0.0, Math.min(1.0, shotFraction)) * 10.0);
+		final long key = (((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8L + clamp(weaponGrade)) * 8L + clamp(armorGrade)) * 16L + skills) * 11L + shots;
 		return _killCache.computeIfAbsent(key, k ->
 		{
-			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, clamp(weaponGrade), skills / 10.0) / buff(role, 0, level);
+			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, clamp(weaponGrade), skills / 10.0) / buff(role, 0, level) / shotDamage(role, shots / 10.0);
 			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), 60.0 / (overhead + fightSeconds)));
 		});
@@ -417,6 +442,13 @@ public final class ZoneCombat
 		final double physical = zone.pAtk() / Math.max(1.0, curve(pdef, armorGrade) * pDefBuff);
 		final double magical = zone.mAtk() / Math.max(1.0, curve(mdef, armorGrade) * mDefBuff);
 		return Math.max(physical, magical);
+	}
+
+	/** @return damage relative to a fully shot bot: 1 with shots all the time, down to 1 / (the shots' bonus) with none */
+	private double shotDamage(Role role, double fraction)
+	{
+		final double bonus = (role == Role.MAGE) ? _spiritshotDamage : _soulshotDamage;
+		return fraction + ((1.0 - fraction) / bonus);
 	}
 
 	/** @return the blended buff multiplier (kind 0 damage, 1 P.Def, 2 M.Def) for a role at a level: 1 with no share or no data */

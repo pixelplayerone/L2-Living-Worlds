@@ -148,6 +148,11 @@ public class LivingPopulationModule implements GameModule
 					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareMage", 1.0)))
 				}
 				: new double[4]);
+		// Shots: a bot without its soulshots (spiritshots for a mystic) does less damage. 1.0 turns a shot's bonus off.
+		final boolean shotsMatter = context.config().getBoolean("ShotsMatter", true);
+		LivingPopulationManager.getInstance().setShotDamage( //
+			shotsMatter ? Math.max(1.0, context.config().getDouble("SoulshotDamage", 2.0)) : 1.0, //
+			shotsMatter ? Math.max(1.0, context.config().getDouble("SpiritshotDamage", 1.41)) : 1.0);
 		LivingPopulationManager.getInstance().start(config, travel);
 		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
 		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());

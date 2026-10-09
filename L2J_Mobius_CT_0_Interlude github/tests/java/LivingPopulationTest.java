@@ -741,6 +741,15 @@ public class LivingPopulationTest
 		check("buffs: a level without a row has no effect", Math.abs(buffed.killsPerMinute("Mid", 2, 41, 2, 2, 1.0) - model.killsPerMinute("Mid", 2, 41, 2, 2, 1.0)) < 1e-9);
 		buffed.setBuffShares(null);
 		check("buffs: shares cleared returns to the baseline", Math.abs(buffed.killsPerMinute("Mid", 2, 40, 2, 2, 1.0) - unbuffedKills) < 1e-9);
+		final double noShots = model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0);
+		final double halfShots = model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.5);
+		check("shots: a bot with none kills slower", noShots < fitted);
+		check("shots: half the time sits between", (halfShots < fitted) && (halfShots > noShots));
+		check("shots: all the time is the calibrated rate", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 1.0) - fitted) < 1e-9);
+		check("shots: a mage loses less than a fighter (spiritshots add the square root)", (model.killsPerMinute("Mid", 10, 40, 2, 2, 1.0, 0.0) / model.killsPerMinute("Mid", 10, 40, 2, 2, 1.0, 1.0)) > (noShots / fitted));
+		model.setShotDamage(1.0, 1.0);
+		check("shots: a bonus of 1 turns the check off", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0) - fitted) < 1e-9);
+		model.setShotDamage(2.0, Math.sqrt(2.0));
 		check("zone combat: economy params keep everything but the kill rate", econ().withKillsPerMinute(7.0).killsPerMinute() == 7.0 && econ().withKillsPerMinute(7.0).adenaPerMobLevel() == 5.0);
 	}
 
