@@ -43,7 +43,7 @@ package org.l2jmobius.gameserver.livingpop;
  * @param handoffActivationRadius how close (game units, planar) a real player must be to a cold bot for it to go hot
  * @param handoffDeactivationRadius the farther radius a player must leave before a hot bot is eligible to cool (hysteresis; must be >= activation)
  * @param handoffCooldownGraceMs how long no real player may be within the deactivation radius before a hot bot cools back
- * @param handoffMaxHotBots the ceiling on how many bots may be hot at once
+ * @param handoffMaxHotBots the ceiling on how many bots may be hot at once (0 or less: the population size)
  * @param economyEnabled whether the Phase 4 cold goal/needs economy advances (adena, soulshots, gear tier, goals)
  * @param adenaPerMobLevel adena a level-appropriate kill yields, per mob level
  * @param soulshotMilestoneLevel the level at which the one-time newbie soulshot reward is granted
@@ -59,16 +59,50 @@ package org.l2jmobius.gameserver.livingpop;
  * @param gearUpgradeCost base adena cost of a tier upgrade
  * @param snapshotIntervalMs how often the monitoring JSON snapshot is written, in milliseconds
  * @param snapshotFile the path the monitoring JSON snapshot is written to, relative to the server working directory
- * @param birthBatch how many new bots are born per wave while the population grows (0 or less: all at once)
+ * @param birthBatch the fewest new bots born per wave while the population grows (0 or less: all at once); larger
+ *            populations get bigger waves, see {@link #birthWave}
  * @param birthIntervalMs the time between waves of new bots, in milliseconds
  * @param levelGoal the level the director pulls the population toward (0 or less: the online players' level)
  */
 public record LivingPopulationConfig(boolean enabled, int populationSize, long resolveIntervalMs, int resolveBatch, double expPerMobLevel, double killsPerMinute, int maxLevel, boolean directorEnabled, int directorBandRadius, double directorMaxCatchUp, double directorSlowdown, double directorCatchUpSlope, boolean handoffEnabled, long handoffIntervalMs, double handoffActivationRadius, double handoffDeactivationRadius, long handoffCooldownGraceMs, int handoffMaxHotBots, boolean economyEnabled, double adenaPerMobLevel, int soulshotMilestoneLevel, long soulshotMilestoneGrant, double soulshotsPerKill, long soulshotRestockThreshold, long soulshotRestockBatch, int soulshotCost, long potionRestockThreshold, long potionRestockBatch, int potionCost, int gearTierLevelStep, long gearUpgradeCost, long snapshotIntervalMs, String snapshotFile, int birthBatch, long birthIntervalMs, int levelGoal)
 {
+	/** Waves of new bots grow with the population so that every bot is born within about this long. */
+	public static final long BIRTH_SPREAD_MS = 3L * 60L * 60L * 1000L;
+
+	/**
+	 * How many bots one wave of births creates. The configured batch is the floor; a large population gets bigger waves
+	 * so that the whole population still arrives within about {@link #BIRTH_SPREAD_MS} instead of a day or more.
+	 * @param batch the configured batch (0 or less: everything missing at once)
+	 * @param intervalMs the time between waves, in milliseconds
+	 * @param target the population size aimed for
+	 * @param missing how many bots are still missing
+	 * @return the number of bots to create now (never more than missing)
+	 */
+	public static int birthWave(int batch, long intervalMs, int target, int missing)
+	{
+		if (missing <= 0)
+		{
+			return 0;
+		}
+		if (batch <= 0)
+		{
+			return missing;
+		}
+		final long waves = Math.max(1L, BIRTH_SPREAD_MS / Math.max(1L, intervalMs));
+		final long scaled = (Math.max(0L, target) + waves - 1L) / waves;
+		return (int) Math.min(missing, Math.max(batch, scaled));
+	}
+
+	/** @return how many bots may be hot at once: the configured ceiling, or the population size when it is 0 or less */
+	public int effectiveMaxHotBots()
+	{
+		return (handoffMaxHotBots > 0) ? handoffMaxHotBots : Math.max(0, populationSize);
+	}
+
 	/** A conservative default used when the module ships with no ini present. */
 	public static LivingPopulationConfig defaults()
 	{
-		return new LivingPopulationConfig(false, 100, 30_000L, 64, 13.0, 12.0, 80, true, 2, 1.35, 0.85, 0.06, true, 5_000L, 3000.0, 4000.0, 30_000L, 40, true, 5.0, 6, 1000L, 6.0, 500L, 1000L, 12, 100L, 500L, 60, 10, 50_000L, 5_000L, "log/LivingPopulation.json", 10, 1_200_000L, 0);
+		return new LivingPopulationConfig(false, 100, 30_000L, 64, 13.0, 12.0, 80, true, 2, 1.35, 0.85, 0.06, true, 5_000L, 3000.0, 4000.0, 30_000L, 0, true, 5.0, 6, 1000L, 6.0, 500L, 1000L, 12, 100L, 500L, 60, 10, 50_000L, 5_000L, "log/LivingPopulation.json", 10, 1_200_000L, 0);
 	}
 
 	/** @return the director tuning as a {@link PopulationDirector.Params} */
@@ -80,7 +114,7 @@ public record LivingPopulationConfig(boolean enabled, int populationSize, long r
 	/** @return the handoff tuning as a {@link HandoffPolicy.Params} (deactivation is clamped to at least activation) */
 	public HandoffPolicy.Params handoffParams()
 	{
-		return new HandoffPolicy.Params(handoffActivationRadius, Math.max(handoffActivationRadius, handoffDeactivationRadius), handoffCooldownGraceMs, handoffMaxHotBots);
+		return new HandoffPolicy.Params(handoffActivationRadius, Math.max(handoffActivationRadius, handoffDeactivationRadius), handoffCooldownGraceMs, effectiveMaxHotBots());
 	}
 
 	/** @return the economy tuning as a {@link ColdEconomy.Params} (shares the exp model's killsPerMinute) */

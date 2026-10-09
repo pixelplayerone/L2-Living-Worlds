@@ -773,7 +773,7 @@ const PANELS = [
       {key:"DirectorLevelGoal", label:"Level goal", type:"int", default:"0", isNew:true, help:"The level the director steers toward. 0 = follow the online players' level; any other number is a fixed goal."},
       {key:"MaxLevel", label:"Max level", type:"int", default:"80", help:"Bots never level past this."},
       {key:"ColdKillsPerMinute", label:"Kills per minute", type:"float", default:"12", help:"How fast an unseen bot hunts. Higher = the whole population levels faster."},
-      {key:"HandoffMaxHotBots", label:"Max live bots", type:"int", default:"40", help:"How many bots may be real characters in the world at once (the ones near you). They share the server's 200 phantom limit."},
+      {key:"HandoffMaxHotBots", label:"Max live bots", type:"int", default:"0", help:"How many bots may be real characters in the world at once (the ones near you). 0 = the same as the number of bots. They also count toward the server's phantom limit (PhantomMaxCount)."},
       {key:"HandoffActivationRadius", label:"Live distance", type:"int", default:"3000", help:"How close (game units) you must be for a bot to become a real character you can see."},
       {key:"TravelEnabled", label:"Travel and towns", type:"bool", default:"True", help:"Bots pick hunting grounds for their level, go to town to shop and sell, and walk or teleport between them."},
       {key:"AfkChancePercent", label:"AFK chance in town (%)", type:"int", default:"15", help:"Chance a bot takes a break after its town errands."},

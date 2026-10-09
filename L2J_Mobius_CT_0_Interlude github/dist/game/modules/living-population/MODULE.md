@@ -10,7 +10,8 @@ module is enabled.
   starting location, like a real new player. New bots spread evenly over the nine starting classes (fighters and
   mystics of every race, the Dwarf fighter) and get a random name no character uses. Bots from older versions
   named Human000 and so on are renamed on the next start, their characters too. A growing population is born in
-  waves (`BirthBatch` bots every `BirthIntervalMinutes`), so levels spread out over time.
+  waves (at least `BirthBatch` bots every `BirthIntervalMinutes`, bigger waves for a large population so all arrive
+  within about three hours), so levels spread out over time.
 - Advances the population cheaply over time (the "cold" state): bots gain experience and level up as if
   hunting, with no actor spawned in the world.
 - Keeps the world peered to the online players (Phase 2 director): bots below the players' median level catch
@@ -105,7 +106,7 @@ keeps it.
 |---|---|
 | `Enabled` | Master on/off switch (default `True`). |
 | `PopulationSize` | Target number of bots (default 100). Raising it adds bots on the next start; lowering it removes none. |
-| `BirthBatch` | New bots born per wave while the population grows (0 = all at once). Default 10. |
+| `BirthBatch` | Fewest new bots born per wave while the population grows (0 = all at once). Default 10. A large population gets bigger waves so all bots arrive within about three hours. |
 | `BirthIntervalMinutes` | Minutes between waves of new bots. Default 20. |
 | `DirectorLevelGoal` | Level the director pulls the population toward; 0 follows the online players. Default 0. |
 | `ColdResolveIntervalSeconds` | How often the resolver advances due bots. |
@@ -118,7 +119,7 @@ keeps it.
 | `HandoffActivationRadius` | How close a player must be for a cold bot to go hot. |
 | `HandoffDeactivationRadius` | Wider radius a player must leave before a hot bot may cool (hysteresis). |
 | `HandoffCooldownGraceSeconds` | How long no player may be near before a hot bot cools back. |
-| `HandoffMaxHotBots` | Ceiling on simultaneously hot bots. |
+| `HandoffMaxHotBots` | Ceiling on simultaneously hot bots (default 0 = same as `PopulationSize`). They also count toward `PhantomMaxCount`. |
 | `EconomyEnabled` | Phase 4 master switch for the goals/needs economy. |
 | `AdenaPerMobLevel` | Adena a level-appropriate kill yields, per mob level (used when `DropIncome` is off or a zone lists no monsters). |
 | `SoulshotMilestoneLevel` / `SoulshotMilestoneGrant` | Level of the one-time newbie soulshot reward and how many it grants. |
@@ -138,7 +139,7 @@ keeps it.
 | `EscapeCastSeconds` / `ErrandStopSeconds` | Scroll of Escape cast time, and time spent at each town NPC. |
 | `AfkChancePercent` / `AfkMinMinutes` / `AfkMaxMinutes` | Chance and length of an AFK break per town visit. |
 | `ColdPotionsPerHour` | Potions a cold melee bot drinks per hour of hunting; tanks drink half again as many, casters, archers and healers half as many. |
-| `ZoneCapacity` | Bots per zone before it counts as full (0 = no limit). A bot already there moves on only once it is a quarter over. |
+| `ZoneCapacity` | Bots per zone before it counts as full (0 = no limit). A bot already there moves on only once it is a quarter over. When every zone that fits is full, a bot goes to the least crowded one instead of waiting or walking. |
 | `RetrySeconds` | How long a bot with no way on waits in town before trying again (at least 30). A bot too poor for a gatekeeper walks to the nearest fitting zone instead. |
 | `WalkToTownWithin` | A town closer than this is walked to even with a Scroll of Escape. |
 | `DropIncome` | Cold kills pay from the zone monsters' real drop lists at this server's rates: adena, plus loot sold at half price on the next town visit. |

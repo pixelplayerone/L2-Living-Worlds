@@ -862,7 +862,7 @@ const PANELS = [
       {key:"FakePlayerRecruitEnchantMax", label:"Highest enchant", type:"int", default:"3", unit:"+", short:"Highest enchant an enchanted phantom rolls.",
        help:"Highest enchant an enchanted phantom rolls."},
       {heading:"Limits"},
-      {key:"PhantomMaxCount", label:"Most phantoms at once", type:"int", default:"200", unit:"phantoms", short:"Living Population bots near you count too.",
+      {key:"PhantomMaxCount", label:"Most phantoms at once", type:"int", default:"5000", unit:"phantoms", short:"Living Population bots near you count too.",
        help:"How many phantoms can be in the world at the same time: field hunters, party recruits, support buddies, friends, Olympiad nobles and Living Population bots near you. Each is a full character, much heavier than a town bot, so a higher number costs memory and CPU. When it is reached no new phantom appears: a party order waits until there is room, and a Living Population bot stays in the background simulation. Town bots don't count."},
       {heading:"Hunting"},
       {key:"PhantomAutoHuntingZones", label:"Auto generated hunting zones", type:"bool", default:"True", short:"Adds the generated zones on top of your own.",
@@ -953,7 +953,7 @@ const PANELS = [
       {key:"Enabled", master:true, label:"Run the simulation", type:"bool", default:"True", short:"Master switch for the whole Living Population.", help:"Master switch for the whole Living Population. Restart required."},
       {heading:"Population"},
       {key:"PopulationSize", label:"Number of bots", type:"int", default:"100", unit:"bots", short:"Raising it adds bots in waves.", help:"How many bots the world holds. Raising it adds bots in waves (below). Lowering it here removes none: use Reduce in the monitor's Overview to remove bots."},
-      {key:"BirthBatch", parent:"PopulationSize", label:"New bots per wave", type:"int", default:"10", unit:"bots", short:"Born at level 1. 0: all at once.", help:"While the population is below the number of bots, this many are born at a time, at level 1 in their starting village. 0 = all at once."},
+      {key:"BirthBatch", parent:"PopulationSize", label:"New bots per wave", type:"int", default:"10", unit:"bots", short:"Born at level 1. 0: all at once.", help:"While the population is below the number of bots, at least this many are born at a time, at level 1 in their starting village. A large population gets bigger waves so every bot arrives within about three hours. 0 = all at once."},
       {key:"BirthIntervalMinutes", parent:"PopulationSize", label:"Time between waves", type:"int", default:"20", unit:"min", short:"Spreads levels out, like new players joining.", help:"Time between waves of new bots. Waves spread the levels out, like new players joining over time."},
       {heading:"Leveling"},
       {key:"DirectorEnabled", label:"Level director", type:"bool", default:"True", short:"Bots below the goal level faster, above it slower.", help:"Steer bot leveling toward a target level: bots below it level faster, bots above it slower."},
@@ -962,7 +962,7 @@ const PANELS = [
       {key:"ColdKillsPerMinute", label:"Kills per minute", type:"float", default:"12", unit:"/min", short:"How fast an unseen bot hunts.", help:"How fast an unseen bot hunts. Higher = the whole population levels faster."},
       {key:"ColdDeathsPerHour", label:"Deaths per hour", type:"float", default:"0.3", unit:"/hour", short:"How often an unseen bot dies while hunting.", help:"How often an unseen bot dies while hunting (it loses experience and recovers in town)."},
       {heading:"Near you"},
-      {key:"HandoffMaxHotBots", label:"Max live bots", type:"int", default:"40", unit:"bots", short:"Shares the server's 200 phantom limit.", help:"How many bots may be real characters in the world at once (the ones near you). They share the server's 200 phantom limit."},
+      {key:"HandoffMaxHotBots", label:"Max live bots", type:"int", default:"0", unit:"bots", short:"0: same as the number of bots.", help:"How many bots may be real characters in the world at once (the ones near you). 0 = the same as the number of bots, so every bot near you can be live. They also count toward the phantom limit on the Phantoms page."},
       {key:"HandoffActivationRadius", label:"Live distance", type:"int", default:"3000", unit:"units", short:"How close a bot must be to become visible.", help:"How close (game units) you must be for a bot to become a real character you can see."},
       {heading:"Daily life"},
       {key:"TravelEnabled", label:"Travel and towns", type:"bool", default:"True", short:"Hunting grounds by level, shopping in town.", help:"Bots pick hunting grounds for their level, go to town to shop and sell, and walk or teleport between them."},
@@ -2371,7 +2371,7 @@ function ovRender(){
   if (state.files[O]) card("olympiad", "olymp", "Phantom Olympiad", [["Status", onOff(O,"PhantomOlympiadEnabled")], ["Roster", v(O,"PhantomOlympiadRosterSize") + " nobles"],
     ["Levels", v(O,"PhantomOlympiadMinLevel") + " to " + v(O,"PhantomOlympiadMaxLevel")]]);
   if (state.files[LP_MODULE_FILE]) card("livingpop", "live", "Living Population", [["Status", onOff(LP_MODULE_FILE,"Enabled")], ["Bots", v(LP_MODULE_FILE,"PopulationSize")],
-    ["Max live near you", v(LP_MODULE_FILE,"HandoffMaxHotBots")]]);
+    ["Max live near you", (parseInt(v(LP_MODULE_FILE,"HandoffMaxHotBots"), 10) > 0) ? v(LP_MODULE_FILE,"HandoffMaxHotBots") : "same as bots"]]);
   if (state.files[N]) card("raids", "raid", "Raid Bosses", [["Attack", v(N,"RaidPAttackMultiplier") + "% / " + v(N,"RaidMAttackMultiplier") + "%"],
     ["Defense", v(N,"RaidPDefenceMultiplier") + "% / " + v(N,"RaidMDefenceMultiplier") + "%"], ["Regen", v(N,"RaidHpRegenMultiplier") + "% / " + v(N,"RaidMpRegenMultiplier") + "%"]]);
   const tools = [["__ps","style","Playstyles","How each class fights"],["__bc","clan","Bot Clans","Clans, alliances, crests"],
