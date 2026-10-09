@@ -688,6 +688,14 @@ public class LivingPopulationTest
 			throw new RuntimeException(e);
 		}
 		check("zone combat: parsed zones", model.enabled() && (model.zoneCount() == 5));
+		final ZoneCombat.Stats shotStats = model.curveStats(ZoneCombat.roleOf(2), 2, 2);
+		check("shots per kill: off by default (negative = use the flat setting)", model.shotsPerKill("Mid", 2, 40, shotStats, 1.0, false) < 0.0);
+		model.setShotModel(true, 1.4, 2.4, 2.2);
+		final double meleeShots = model.shotsPerKill("Mid", 2, 40, shotStats, 1.0, false);
+		check("shots per kill: at least one hit's shots (C grade melee fires 3 per attack)", (meleeShots >= 3.0) && (Math.abs((meleeShots / 3.0) - Math.rint(meleeShots / 3.0)) < 1e-9));
+		check("shots per kill: unknown zone falls back to the flat setting", model.shotsPerKill("Nowhere", 2, 40, shotStats, 1.0, false) < 0.0);
+		check("potions: no habit, no potions", model.potionsPerHour("Mid", 2, 40, shotStats, 1.0, 0.0) == 0.0);
+		check("potions: never more than the habit", model.potionsPerHour("Mid", 2, 40, shotStats, 1.0, 4.0) <= 4.0);
 		check("zone combat: off model returns the flat rate", ZoneCombat.off().killsPerMinute("Mid", 2, 40, 2, 2, 1.0) == 12.0);
 		check("zone combat: unknown zone returns the flat rate", model.killsPerMinute("Nowhere", 2, 40, 2, 2, 1.0) == 12.0);
 		check("zone combat: unknown zone death factor is 1", model.deathFactor("Nowhere", 2, 40, 2) == 1.0);

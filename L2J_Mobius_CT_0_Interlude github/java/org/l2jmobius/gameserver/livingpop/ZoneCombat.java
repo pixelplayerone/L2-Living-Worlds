@@ -132,6 +132,8 @@ public final class ZoneCombat
 	private final Map<List<Object>, Boolean> _healCache = new ConcurrentHashMap<>();
 	private volatile boolean _selfHealOn; // mystic-line bots heal themselves with the heals they have learned, and summoners heal the servitor (HEAL rows)
 	private final Map<String, java.util.TreeMap<Integer, List<double[]>>> _heals = new HashMap<>(); // line -> level -> heals {skill id, power, mana, cast s, reuse s}
+	private volatile boolean _shotsFromHits; // shots a kill uses from its hits (fight time over the attack interval, times the weapon's shots per attack) instead of a flat count
+	private volatile double[] _hitInterval = { 1.4, 2.4, 2.2 }; // seconds between a bot's attacks: melee (tanks too), bow, mage (one cast)
 	private volatile double _rangedWalk = 1.0; // share of the walk between monsters that archers and casters keep
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _serv = new HashMap<>(); // summoner line -> level -> {servitor dps, HP, P.Def}
 	private static final int[] ROTATION_WINDOWS = { 5, 15, 30, 45, 60, 90, 120 };
@@ -1445,6 +1447,88 @@ public final class ZoneCombat
 		final double[] x = a.floorEntry(level).getValue();
 		final double[] y = b.floorEntry(level).getValue();
 		return new double[] { (x[0] + y[0]) / 2.0, (x[1] + y[1]) / 2.0, (x[2] + y[2]) / 2.0, (x[3] + y[3]) / 2.0 };
+	}
+
+	/** Shots one attack (a cast for a mage) fires, by weapon grade (none, D, C, B, A, S): the datapack's median of weapons with that grade. */
+	private static final double[] SHOTS_MELEE = { 2, 2, 3, 1, 1, 1 };
+	private static final double[] SHOTS_BOW = { 6, 6, 8, 3, 2, 1 };
+	private static final double[] SHOTS_MAGE = { 2, 2, 3, 1, 1, 1 };
+
+	/**
+	 * @param on whether a kill's shots follow its hits (see {@link #shotsPerKill}); off keeps the flat per-kill setting
+	 * @param meleeInterval seconds between a melee bot's attacks
+	 * @param bowInterval seconds between an archer's shots
+	 * @param castInterval seconds between a mage's casts
+	 */
+	public void setShotModel(boolean on, double meleeInterval, double bowInterval, double castInterval)
+	{
+		_shotsFromHits = on;
+		_hitInterval = new double[] { Math.max(0.2, meleeInterval), Math.max(0.2, bowInterval), Math.max(0.2, castInterval) };
+	}
+
+	/** @return whether shots per kill come from the hits it takes to kill */
+	public boolean shotModel()
+	{
+		return _shotsFromHits;
+	}
+
+	/**
+	 * Shots a kill uses: the hits it takes (the fight, with shots on, over the time between attacks) times the shots the weapon fires per attack.
+	 * @param zone the zone
+	 * @param classId the class
+	 * @param level the level (it fixes the weapon grade)
+	 * @param stats its gear stats
+	 * @param skillFraction the share of its skills learned
+	 * @param blessed true for blessed spiritshots (a mage's fight is shorter)
+	 * @return shots per kill, or a negative number when the model is off or the zone is unknown (use the flat setting)
+	 */
+	public double shotsPerKill(String zone, int classId, int level, Stats stats, double skillFraction, boolean blessed)
+	{
+		final Integer zi = (_shotsFromHits && knows(zone)) ? _zoneIndex.get(zone) : null;
+		if (zi == null)
+		{
+			return -1.0;
+		}
+		final Role role = roleOf(classId);
+		final int skills = (int) Math.round(Math.max(0.0, Math.min(1.0, skillFraction)) * 10.0);
+		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
+		final boolean rotation = _rotationTtk && hasRotation(classId);
+		final double selfBuffs = stats.selfBuffs();
+		final double fight = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0, selfBuffs) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, 1.0, blessed);
+		final boolean mage = role == Role.MAGE;
+		final double interval = mage ? _hitInterval[2] : (role == Role.BOW) ? _hitInterval[1] : _hitInterval[0];
+		final double[] table = mage ? SHOTS_MAGE : (role == Role.BOW) ? SHOTS_BOW : SHOTS_MELEE;
+		return Math.max(1.0, Math.ceil(fight / interval)) * table[LivingSupplies.gradeFor(level)];
+	}
+
+	/**
+	 * Potions a cold bot actually drinks an hour: the most it carries the habit of ({@code maxPerHour}), cut to what its zone gives it a use for.
+	 * A potion only pays when HP is what makes the bot sit (a mana-bound caster or a bot that does not sit gains nothing), and it never drinks more than the HP it loses.
+	 * @return potions per hour, or {@code maxPerHour} when the zone model does not know the zone
+	 */
+	public double potionsPerHour(String zone, int classId, int level, Stats stats, double skillFraction, double maxPerHour)
+	{
+		final Integer zi = (_restOn && knows(zone)) ? _zoneIndex.get(zone) : null;
+		if ((zi == null) || (maxPerHour <= 0.0))
+		{
+			return Math.max(0.0, maxPerHour);
+		}
+		final double with = killsPerMinute(zone, classId, level, stats, skillFraction, 1.0, false, maxPerHour);
+		final double without = killsPerMinute(zone, classId, level, stats, skillFraction, 1.0, false, 0.0);
+		if (with <= (without * 1.0005))
+		{
+			return 0.0; // sitting for mana (or not sitting at all): a potion buys nothing
+		}
+		final Role role = roleOf(classId);
+		final Map<Role, java.util.TreeMap<Integer, double[]>> byRole = _rest.get(zone);
+		final java.util.TreeMap<Integer, double[]> table = (byRole == null) ? null : byRole.get(role);
+		if ((table == null) || table.isEmpty())
+		{
+			return maxPerHour;
+		}
+		final double[] r = ((table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry()).getValue();
+		final double lostPerHour = with * 60.0 * r[1];
+		return Math.min(maxPerHour, lostPerHour / ((level < 20) ? POTION_HEAL_LESSER : POTION_HEAL));
 	}
 
 	/** @param factor the share of the walk and targeting time between monsters that ranged classes (archers and mages) keep: 0.5 halves it, 1 turns it off */

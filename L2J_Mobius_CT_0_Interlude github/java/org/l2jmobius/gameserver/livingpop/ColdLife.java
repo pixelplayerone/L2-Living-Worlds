@@ -344,7 +344,13 @@ public final class ColdLife
 	private static void hunt(ColdBot bot, long now, long elapsedMs, Context context, List<DecisionLog.Event> events)
 	{
 		// Drink potions as if taking real damage while hunting. Fractional rates are rolled so the average is right.
-		final double expected = (Math.max(0L, elapsedMs) / 3_600_000.0) * context.travel().potionsPerHour() * LivingSupplies.potionUseFactor(bot.getClassId());
+		double perHour = context.travel().potionsPerHour() * LivingSupplies.potionUseFactor(bot.getClassId());
+		final ZoneCombat model = context.combat();
+		if ((model != null) && model.knows(bot.getZone()) && (bot.getPotions() > 0))
+		{
+			perHour = model.potionsPerHour(bot.getZone(), bot.getClassId(), bot.getLevel(), statsOf(bot, context.gear(), model), 1.0, perHour); // only what its hunting gives a use for
+		}
+		final double expected = (Math.max(0L, elapsedMs) / 3_600_000.0) * perHour;
 		long drunk = (long) Math.floor(expected);
 		if (context.random().nextDouble() < (expected - drunk))
 		{
@@ -1253,6 +1259,20 @@ public final class ColdLife
 	 * Empty slots count at their naked values (underwear 4; fighter chest 31, legs 18, head 12, gloves 8, feet 7; mystic chest 15, legs 8; jewelry 13, 9, 9, 5, 5);
 	 * a full-body chest covers the legs. Set bonuses and enchants are not counted. A bot without a gear record gets the curves of its grade.
 	 */
+	/**
+	 * @param skills the share of its skills it has learned
+	 * @param blessed whether it fires blessed spiritshots
+	 * @return the shots a kill of its zone takes it at its level, from its hits per kill; negative when the zone model does not give it
+	 */
+	static double shotsPerKill(ColdBot bot, GearShop shop, ZoneCombat combat, double skills, boolean blessed)
+	{
+		if ((combat == null) || !combat.shotModel() || !combat.knows(bot.getZone()))
+		{
+			return -1.0;
+		}
+		return combat.shotsPerKill(bot.getZone(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat), skills, blessed);
+	}
+
 	static ZoneCombat.Stats statsOf(ColdBot bot, GearShop shop, ZoneCombat combat)
 	{
 		if ((shop == null) || (bot.getGear() == null))
@@ -1349,6 +1369,11 @@ public final class ColdLife
 	private static SupplyPlanner.Params supplyFor(ColdBot bot, Context context)
 	{
 		final SupplyPlanner.Params supply = context.supply().withPotionStock(LivingSupplies.potionStockFor(bot.getClassId(), context.supply().potionStock()));
+		final double hits = shotsPerKill(bot, context.gear(), context.combat(), 1.0, false); // its hits per kill, when the zone model has them
+		if (hits > 0.0)
+		{
+			return supply.withSoulshotsPerKill(hits);
+		}
 		return LivingSupplies.isMystic(bot.getClassId()) ? supply.withSoulshotsPerKill(context.travel().spiritshotsPerKill()) : supply;
 	}
 

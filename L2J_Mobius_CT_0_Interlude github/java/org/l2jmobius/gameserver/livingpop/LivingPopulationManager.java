@@ -172,6 +172,7 @@ public class LivingPopulationManager
 
 	private volatile boolean _startingBuffs = true;
 	private volatile double _rangedWalk = 0.5;
+	private volatile double[] _shotModel = { 0.0, 1.4, 2.4, 2.2 };
 	private volatile boolean _selfHeal = true;
 
 	public void setParty(boolean on, double chance, boolean healers, ZoneCombat.PartyParams params)
@@ -201,6 +202,12 @@ public class LivingPopulationManager
 	public void setRangedWalk(double factor)
 	{
 		_rangedWalk = factor;
+	}
+
+	/** @param on whether a kill's shots follow its hits; the seconds between attacks of melee, archers and mage casts */
+	public void setShotModel(boolean on, double meleeInterval, double bowInterval, double castInterval)
+	{
+		_shotModel = new double[] { on ? 1.0 : 0.0, meleeInterval, bowInterval, castInterval };
 	}
 
 	/** @param on whether mages, healers and summoners heal themselves (and summoners their servitor) with the heals they have learned */
@@ -301,6 +308,7 @@ public class LivingPopulationManager
 				_combat.setRest(_zoneRest);
 				_combat.setStartingBuffs(_startingBuffs);
 				_combat.setRangedWalk(_rangedWalk);
+				_combat.setShotModel(_shotModel[0] > 0.0, _shotModel[1], _shotModel[2], _shotModel[3]);
 				_combat.setSelfHeal(_selfHeal);
 				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour(), _partyParams.gearPenalty()));
 				_combat.setEvasion(_zoneEvasion);
@@ -746,7 +754,7 @@ public class LivingPopulationManager
 				// A kill pays from the zone monsters' real drop lists when the catalog has them: adena now, loot sold in town.
 				final DropYield.Yield yield = _travelConfig.dropIncome() ? zoneYield(bot.getZone(), progress.level(), spoils) : null;
 				// A mystic fires spiritshots, at its own rate per kill. A bot's own kill rate (zone combat) replaces the flat one.
-				final ColdEconomy.Params shotParams = LivingSupplies.isMystic(bot.getClassId()) ? economyParams.withSoulshotsPerKill(_travelConfig.spiritshotsPerKill()) : economyParams;
+				final ColdEconomy.Params shotParams = economyParams.withSoulshotsPerKill(shotsPerKillOf(combat, bot, progress.level(), economyParams));
 				final ColdEconomy.Params botEconomy = combat.enabled() ? shotParams.withKillsPerMinute(botKillsPerMinute) : shotParams;
 				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, botEconomy, (yield == null) ? -1.0 : (yield.adena() * lootScale), events);
 				huntAdena = Math.max(0L, after.adena() - before.adena());
@@ -876,6 +884,25 @@ public class LivingPopulationManager
 		return rate;
 	}
 
+	/** @return the shots a kill takes this bot: its hits per kill in the zone model, or the flat setting (mystics have their own) when that is off or the zone unknown */
+	private double shotsPerKillOf(ZoneCombat combat, ColdBot bot, int level, ColdEconomy.Params economyParams)
+	{
+		if ((combat != null) && combat.shotModel() && combat.knows(bot.getZone()))
+		{
+			double skills = 1.0;
+			if (_travelConfig.skillTraining() && (bot.getSkills() != null))
+			{
+				skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
+			}
+			final double perKill = combat.shotsPerKill(bot.getZone(), bot.getClassId(), level, ColdLife.statsOf(bot, _gear, combat), skills, usesBlessed(bot));
+			if (perKill > 0.0)
+			{
+				return perKill;
+			}
+		}
+		return LivingSupplies.isMystic(bot.getClassId()) ? _travelConfig.spiritshotsPerKill() : economyParams.soulshotsPerKill();
+	}
+
 	private double killsPerMinuteOf(ZoneCombat combat, ColdBot bot, int level, double flat, double shotFraction)
 	{
 		if (!combat.knows(bot.getZone()))
@@ -908,7 +935,7 @@ public class LivingPopulationManager
 		{
 			return 1.0;
 		}
-		final double perKill = LivingSupplies.isMystic(bot.getClassId()) ? _travelConfig.spiritshotsPerKill() : economyParams.soulshotsPerKill();
+		final double perKill = shotsPerKillOf(_combat, bot, level, economyParams);
 		final double perMinute = fullKillsPerMinute * Math.max(0.0, perKill);
 		final double minutes = huntedMs / 60_000.0;
 		if (perMinute <= 0.0)
