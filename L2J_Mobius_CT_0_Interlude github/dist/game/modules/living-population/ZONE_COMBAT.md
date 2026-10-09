@@ -161,3 +161,21 @@ These are the smaller choices, written down so the reason survives. Almost all a
 ## Old mechanisms the zone model replaces
 - *Fixed rests.* `RestEveryMinutes` / `RestSeconds` made every bot sit for a fixed time, which also took that time out of hunting. Where the rest estimate has rows for the zone (`ZoneRest`), sitting is already inside the kill rate, so the fixed rests are skipped there (they still apply without zone data).
 - *Class death guess.* `ColdRisk` multiplied the death rate by 0.75 for tanks and 1.25 for light classes. The zone factor already uses the role's defence and evasion, so the guess is applied only when there is no zone factor.
+
+## Late-level deaths: solo against party (and what is not validated)
+The solo death rate climbs with level in this model, and the late-level numbers have not been checked against hot bots. From `tests/java/ZoneCombatReport.java` at level 76 (best gear of the grade, three S-grade zones):
+
+| Class | Solo kills/min | Solo deaths/hr | Party kills/min | Party deaths/hr |
+|---|---|---|---|---|
+| Dagger (Adventurer) | 4.7 | 1.53 | 12.4 | 0.12 |
+| Melee (Duelist) | 5.1 | 1.53 | 16.0 | 0.12 |
+| Tank (Phoenix Knight) | 4.6 | 1.25 | 16.2 | 0.41 |
+| Healer (Cardinal) | 2.8 | 0.57 | 24.0 | 0.01 |
+| Summoner (Arcana Lord) | 3.9 | 0.14 | 18.8 | 0.12 |
+
+The average solo bot dies about 1.3 times an hour at level 76 (0.32 with the flat model) and, with the server's experience loss, its net experience there goes negative. A reviewer comparing with hot bots saw about 0.3 deaths an hour at level 76 against 1.9 here.
+
+How the party model covers it: the cold party (tank, damage dealer, buffer, healer) is a stand-in for how players actually hunt at these levels. A party takes the mobs on its tank, which the healer heals, so deaths drop to 0.01-0.41 an hour, near the hot figure, and kills per minute rise. A bot only takes a party where it beats hunting alone after the experience each death costs (healers always party), so at level 76 most fighters choose one. Only the bots that stay solo (`PartyChance` is 0.5, so about half of the visits roll solo) see the high solo rate.
+
+What remains unvalidated: both columns. The solo rate is high because the zone factor compares the grade's best gear (no enchants or set bonuses beyond what is listed, a limited set of buffs) with S-grade monsters; hot bots with real gear, enchants and buffer support may die less. There is no hot-bot data in the repository to calibrate against, so no scale was fitted. To tune it, compare hot deaths per hour by level with `ZoneCombatReport` and move `MaxDeathFactor` / `ColdDeathsPerHour`, or add a late-level scale.
+
