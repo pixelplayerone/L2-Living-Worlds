@@ -32,6 +32,8 @@ public class ZoneCombatReport
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
 		levelAverages(model, risk);
 		System.out.println();
+		levelAveragesBack(model, risk);
+		System.out.println();
 		System.out.println("| zone | role | bot | kills/min old>new | deaths/hr old>new | exp/hr old (L*13) | exp/hr new | exp/hr new+ZoneExp |");
 		System.out.println("|---|---|---|---|---|---|---|---|");
 		for (String[] z : zones)
@@ -92,5 +94,53 @@ public class ZoneCombatReport
 			}
 			System.out.printf("| %d | %d | 12.0 > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", level, zonesUsed, kills / n, flatDeaths / n, deaths / n, level * 13.0 * 12 * 60, level * 13.0 * (kills / n) * 60, (zoneExp / n) * 60);
 		}
+	}
+
+	/** Same averages with gear a grade back: starter gear at 1, then top of the grade below the level's (S at 80). */
+	static void levelAveragesBack(ZoneCombat model, ColdRisk.Params risk)
+	{
+		System.out.println("| level | gear | zones | kills/min old > new | deaths/hr old > new | exp/hr old (L*13) | exp/hr new | exp/hr new + ZoneExp |");
+		System.out.println("|---|---|---|---|---|---|---|---|");
+		final int[] levels = { 1, 20, 40, 52, 61, 76, 80 };
+		final int[] grades = { -1, 0, 1, 2, 3, 4, 5 };
+		final String[] names = { "starter", "top NG", "top D", "top C", "top B", "top A", "top S" };
+		for (int li = 0; li < levels.length; li++)
+		{
+			final int level = levels[li];
+			final int behind = (li == 0 || li == 6) ? 0 : 1;
+			double kills = 0, deaths = 0, zoneExp = 0, flatDeaths = 0;
+			int n = 0, zonesUsed = 0;
+			for (ZoneCombat.ZoneStats z : model.zones())
+			{
+				if ((level < z.minLevel()) || (level > z.maxLevel()))
+				{
+					continue;
+				}
+				zonesUsed++;
+				for (int c : new int[] { TANK, MELEE, BOW, MAGE })
+				{
+					final ZoneCombat.Role role = ZoneCombat.roleOf(c);
+					final ZoneCombat.Stats st = (grades[li] >= 0) ? model.curveStats(role, grades[li], grades[li]) : starter(role);
+					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), c, level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
+					kills += k;
+					zoneExp += k * z.expPerKill();
+					deaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, c, model.deathFactor(z.name(), c, level, st)).deathsPerHour();
+					flatDeaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, c).deathsPerHour();
+					n++;
+				}
+			}
+			System.out.printf("| %d | %s | %d | 12.0 > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", level, names[li], zonesUsed, kills / n, flatDeaths / n, deaths / n, level * 13.0 * 12 * 60, level * 13.0 * (kills / n) * 60, (zoneExp / n) * 60);
+		}
+	}
+
+	/** Starting gear: Short Sword P.Atk 8 / Short Bow 16 / Apprentice's Rod M.Atk 8, naked armor values (fighter 84 with the starter shirt and pants, mystic 54), naked jewelry 41. */
+	private static ZoneCombat.Stats starter(ZoneCombat.Role role)
+	{
+		return switch (role)
+		{
+			case MAGE -> new ZoneCombat.Stats(8, 54, 41);
+			case BOW -> new ZoneCombat.Stats(16, 84, 41);
+			default -> new ZoneCombat.Stats(8, 84, 41);
+		};
 	}
 }
