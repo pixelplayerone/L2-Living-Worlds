@@ -150,7 +150,7 @@ public class Q00223_TestOfTheChampion extends Quest
 			{
 				st.setCond(12, true);
 				takeItems(player, MOUEN_ORDER_1, 1);
-				takeItems(player, ROAD_RATMAN_HEAD, 1);
+				takeItems(player, ROAD_RATMAN_HEAD, -1);
 				giveItems(player, MOUEN_ORDER_2, 1);
 				break;
 			}
@@ -493,7 +493,7 @@ public class Q00223_TestOfTheChampion extends Quest
 			{
 				if (st.isCond(12) && (getQuestItemsCount(player, LETO_LIZARDMAN_FANG) < 100) && (getRandom(1000000) < (500000 + (100000 * (npcId - 20577)))))
 				{
-					giveItems(player, ROAD_RATMAN_HEAD, 1);
+					giveItems(player, LETO_LIZARDMAN_FANG, 1);
 					if (getQuestItemsCount(player, LETO_LIZARDMAN_FANG) >= 100)
 					{
 						st.setCond(13, true);
