@@ -274,6 +274,7 @@
 		<skill id="48"  name="Thunder Storm" use="AOE"     when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
+		<skill id="347" name="Earthquake" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="78" />
 		<skill id="361" name="Shock Blast"  use="ROTATION" when="MP_ABOVE" mpAbove="20" />
 		<skill id="100" name="Stun Attack"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="255" name="Power Smash"  use="ROTATION" when="MP_ABOVE" mpAbove="35" maxLevel="45" />
@@ -342,6 +343,7 @@
 		<skill id="312" name="Vicious Stance"   use="STANCE"   when="ALWAYS" />
 		<skill id="445" name="Mirage"           use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="35" />
 		<skill id="111" name="Ultimate Evasion" use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="40" />
+		<skill id="409" name="Critical Blow" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="55" />
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="11"  name="Trick"            use="CONTROL"  when="PVP,FOCUS_ON_ME" />
 		<skill id="12"  name="Switch"           use="CONTROL"  when="PVP,FOCUS_ON_ME" />
@@ -358,6 +360,7 @@
 		<skill id="312" name="Vicious Stance"   use="STANCE"   when="ALWAYS" />
 		<skill id="446" name="Dodge"            use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="25" />
 		<skill id="111" name="Ultimate Evasion" use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="40" />
+		<skill id="321" name="Blinding Blow" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="66" />
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="12"  name="Switch"           use="CONTROL"  when="PVP,FOCUS_ON_ME" />
 		<skill id="263" name="Deadly Blow"      use="ROTATION" when="ALWAYS" />
@@ -372,6 +375,7 @@
 		<skill id="111" name="Ultimate Evasion" use="OPENER"   when="PVP" />
 		<skill id="312" name="Vicious Stance"   use="STANCE"   when="ALWAYS" />
 		<skill id="111" name="Ultimate Evasion" use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="40" />
+		<skill id="321" name="Blinding Blow" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="66" />
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="11"  name="Trick"            use="CONTROL"  when="PVP,FOCUS_ON_ME" />
 		<skill id="122" name="Hex"              use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
@@ -432,6 +436,12 @@
 		<skill id="1296" name="Rain of Fire"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1171" name="Blazing Circle"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="69" />
 		<skill id="1181" name="Flame Strike"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
+		<skill id="1292" name="Elemental Assault" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="72" />
+		<skill id="1289" name="Inferno" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="70" />
+		<skill id="1288" name="Aura Symphony" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="68" />
+		<skill id="1417" name="Aura Flash" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="58" />
+		<skill id="1231" name="Aura Flare" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="40" />
+		<skill id="1172" name="Aura Burn" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="20" />
 		<skill id="1230" name="Prominence"        use="ROTATION" when="ALWAYS" />
 		<skill id="1160" name="Slow"              use="CONTROL"  when="DEBUFF_MISSING,DURABLE_TARGET" paceMs="8000" />
 		<skill id="1220" name="Blaze"             use="ROTATION" when="MP_ABOVE" mpAbove="35" maxLevel="45" />
@@ -445,6 +455,9 @@
 		<skill id="1263" name="Curse Gloom"       use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1064" name="Silence"           use="CONTROL"  when="DEBUFF_MISSING,DURABLE_TARGET" paceMs="10000" />
 		<skill id="1170" name="Anchor"            use="CONTROL"  when="DURABLE_TARGET" paceMs="15000" />
+		<skill id="1155" name="Corpse Burst" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="48" />
+		<skill id="1172" name="Aura Burn" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="20" />
+		<skill id="1274" name="Energy Bolt" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="20" />
 		<skill id="1148" name="Death Spike"       use="ROTATION" when="ALWAYS" />
 		<skill id="1234" name="Vampiric Claw"     use="ROTATION" when="ALWAYS" />
 		<skill id="1083" name="Surrender To Fire" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" maxLevel="45" />
@@ -458,6 +471,12 @@
 		<skill id="1071" name="Surrender To Water" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1174" name="Frost Wall"         use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1181" name="Flame Strike"       use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
+		<skill id="1293" name="Elemental Symphony" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="72" />
+		<skill id="1290" name="Blizzard" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="70" />
+		<skill id="1288" name="Aura Symphony" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="68" />
+		<skill id="1417" name="Aura Flash" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="58" />
+		<skill id="1231" name="Aura Flare" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="40" />
+		<skill id="1172" name="Aura Burn" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="20" />
 		<skill id="1235" name="Hydro Blast"        use="ROTATION" when="ALWAYS" />
 		<skill id="1237" name="Ice Dagger"         use="ROTATION" when="MP_ABOVE" mpAbove="35" maxLevel="69" />
 		<skill id="1175" name="Aqua Swirl"         use="ROTATION" when="MP_ABOVE" mpAbove="35" maxLevel="45" />
@@ -505,6 +524,12 @@
 		<skill id="1074" name="Surrender To Wind" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1176" name="Tempest"           use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1181" name="Flame Strike"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
+		<skill id="1294" name="Elemental Storm" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="72" />
+		<skill id="1291" name="Demon Wind" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="70" />
+		<skill id="1288" name="Aura Symphony" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="68" />
+		<skill id="1417" name="Aura Flash" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="58" />
+		<skill id="1148" name="Death Spike" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="44" />
+		<skill id="1172" name="Aura Burn" use="ROTATION" when="MP_ABOVE" mpAbove="35" minLevel="20" />
 		<skill id="1239" name="Hurricane"         use="ROTATION" when="ALWAYS" />
 		<skill id="1064" name="Silence"           use="CONTROL"  when="DEBUFF_MISSING,DURABLE_TARGET" paceMs="10000" />
 		<skill id="1160" name="Slow"              use="CONTROL"  when="DEBUFF_MISSING,DURABLE_TARGET" paceMs="8000" />
@@ -533,6 +558,7 @@
 		<skill id="347" name="Earthquake"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
+		<skill id="362" name="Armor Crush" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="77" />
 		<skill id="315" name="Crush of Doom" use="ROTATION" when="ALWAYS" />
 		<skill id="190" name="Fatal Strike" use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="100" name="Stun Attack"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
@@ -548,6 +574,9 @@
 		<skill id="420" name="Zealot"             use="LIMIT"    when="HEALER_READY,DURABLE_TARGET" />
 		<skill id="35"  name="Force Storm"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="3" chargesAtLeast="2" />
 		<skill id="17"  name="Force Burst"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="2" chargesAtLeast="2" maxLevel="69" />
+		<skill id="81" name="Punch of Doom" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="55" />
+		<skill id="280" name="Burning Fist" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="40" />
+		<skill id="281" name="Soul Breaker" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="40" />
 		<skill id="284" name="Hurricane Assault"  use="ROTATION" when="CHARGES" chargesAtLeast="2" />
 		<skill id="50"  name="Focused Force"      use="ROTATION" when="CHARGES_BELOW" chargesBelow="5" />
 		<skill id="346" name="Raging Force"       use="ROTATION" when="CHARGES_BELOW" chargesBelow="7" />
@@ -574,6 +603,7 @@
 		<skill id="347" name="Earthquake"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
+			<skill id="362" name="Armor Crush" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="77" />
 	</playstyle>
 
 	<!-- Warsmith line: hammer control + armor pressure; golems deferred with the other summons. Same weapons
