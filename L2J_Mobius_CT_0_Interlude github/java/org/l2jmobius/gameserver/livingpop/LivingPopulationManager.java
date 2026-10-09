@@ -173,6 +173,7 @@ public class LivingPopulationManager
 	private volatile double _rangedWalk = 0.5;
 	private volatile int _rotationWindow = 60;
 	private volatile double[] _hpDeaths = { 0.0, 2.0 };
+	private volatile int _restMonsters = 2;
 	private volatile double[] _extraMonsters = { 0.15, 0.075, 0.04, 0.02, 0.01 };
 	private volatile double[] _shotModel = { 0.0, 1.4, 2.4, 2.2 };
 	private volatile boolean _selfHeal = true;
@@ -207,6 +208,11 @@ public class LivingPopulationManager
 
 	/** @param on whether a kill's shots follow its hits; the seconds between attacks of melee, archers and mage casts */
 	/** @param on whether cold deaths come from the HP model; how many standard deviations above an average fight's damage a bot keeps in HP before it sits */
+	public void setRestMonsters(int monsters)
+	{
+		_restMonsters = monsters;
+	}
+
 	public void setExtraMonsters(double[] chances)
 	{
 		_extraMonsters = chances.clone();
@@ -332,6 +338,7 @@ public class LivingPopulationManager
 				_combat.setSelfHeal(_selfHeal);
 				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour()));
 				_combat.setExtraMonsters(_extraMonsters);
+				_combat.setRestMonsters(_restMonsters);
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);
 				if (!_combat.enabled())

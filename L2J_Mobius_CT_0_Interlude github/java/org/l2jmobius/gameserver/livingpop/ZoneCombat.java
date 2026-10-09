@@ -147,6 +147,7 @@ public final class ZoneCombat
 	private volatile boolean _selfHealOn; // mystic-line bots heal themselves with the heals they have learned, and summoners heal the servitor (HEAL rows)
 	private final Map<String, java.util.TreeMap<Integer, List<double[]>>> _heals = new HashMap<>(); // line -> level -> heals {skill id, power, mana, cast s, reuse s}
 	private volatile boolean _hpDeaths; // deaths from the HP model (fight damage against the HP a bot starts a fight with) instead of the flat rate times the gear threat
+	private volatile int _restMonsters = 2; // how many monsters at once a bot keeps HP for before it pulls (it sits below that)
 	private volatile double _restSigmas = 1.5; // a bot sits when its HP falls below an average fight's damage plus this many standard deviations of it
 	private volatile double _deathBase = 0.3; // the cold death rate per hour the factor is a multiple of
 	private volatile int _rotationWindow = -1; // index of the fixed rotation window (-1 = nearest the fight's length)
@@ -1517,6 +1518,14 @@ public final class ZoneCombat
 	 * @param sigmas how many standard deviations above the average fight's damage it keeps in HP before it sits (0 = exactly the damage one average monster does)
 	 * @param baseDeathsPerHour the cold death rate per hour that {@link #deathFactor} is a multiple of
 	 */
+	/** @param monsters how many monsters at once a bot keeps HP for before it pulls (1 = just the one it pulls; 2 = also a second joining) */
+	public void setRestMonsters(int monsters)
+	{
+		_restMonsters = Math.max(1, Math.min(6, monsters));
+		_deathCache.clear();
+		_rateCache.clear();
+	}
+
 	public void setHpDeaths(boolean on, double sigmas, double baseDeathsPerHour)
 	{
 		_hpDeaths = on;
@@ -1693,7 +1702,8 @@ public final class ZoneCombat
 		final double taken = 1.0 - healCoverage;
 		final double standing = r[2] * 1.1 / 1.5; // the rest row holds the sitting regen (standing x 1.5 / 1.1)
 		final double loss = Math.max(0.0, (mean * averageWeight * taken) - (standing * (fight + 2.5)));
-		final double sitBelow = Math.min(pool * 0.9, (mean * taken) + (_restSigmas * sigma));
+		final double planned = _restMonsters * (_restMonsters + 1) / 2.0; // n monsters do n(n+1)/2 times one monster's damage
+		final double sitBelow = Math.min(pool * 0.9, (mean * planned * taken) + (_restSigmas * sigma * Math.sqrt(planned)));
 		double hp = pool;
 		double sum = 0.0;
 		int fights = 0;
