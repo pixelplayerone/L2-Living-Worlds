@@ -25,6 +25,7 @@
 # ---- current release -------------------------------------------------------
 # This release also changes game/modules/living-population/data/zones.xml (islands, so living bots
 # never walk across the water). It is already listed in the Living Population block below.
+game/data/scripts/quests/Q00223_TestOfTheChampion/Q00223_TestOfTheChampion.java
 game/data/html/admin/rates.htm
 game/data/scripts/handlers/chat/commands/admin/AdminRates.java
 game/data/scripts/handlers/chat/commands/admin/AdminReload.java
