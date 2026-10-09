@@ -57,7 +57,7 @@ Solo bots hunt buffed, but never with the full buffer party (while this is on, `
   - Wind Walk for Beginners (8-24): run speed +33 on a base of 120.
   - Left out: Concentration (interrupts) and the Life Cubic.
 - **Level 26 and up: a Hierophant or a Doom Cryer** at the bot's level before it went out (the average of the two lines' multipliers, `PBUFF` rows): damage, P.Def, M.Def. Nothing below level 8.
-- **Speed.** Run-speed buffs shorten the 2.5 s of walking and targeting between monsters by the same factor: Wind Walk (x1.275) at 8-24, and the best run-speed self buff the class has learned (Dash +40, Sprint +20, Sonic Move +40; x1.17-1.33), in proportion to the share the bot has bought. The bigger of the two applies. Attack and cast speed are in the damage multipliers above.
+- **Speed.** Run-speed buffs shorten the 2.5 s of walking and targeting between monsters by the same factor: Wind Walk (x1.275) at 8-24, and the best run-speed self buff the class has learned, in proportion to the share the bot has bought. Timed ones count for their uptime: Dash lasts 15 s per 80 s and Sonic Move 15 s per 60 s, so they add a fraction of their speed (Sagittarius about x1.06, Duelist about x1.14), while Sprint lasts 20 min and counts in full (about x1.28 at its top level). The bigger of the two applies. Attack and cast speed are in the damage multipliers above.
 - **Servitors** carry the same buffs: their damage is added to the summoner's before the bot's buff multiplier is applied, and their P.Def and HP use the fighter set's defence buffs.
 - These multipliers are computed from the bot's level each time, not stored, so a level-up changes them at once and nothing stale is kept. Self buffs (above) are on top.
 
