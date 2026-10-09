@@ -529,7 +529,7 @@ public final class ColdLife
 		final int gearHave = (shop == null) ? bot.getGearTier() : 0;
 		final int gearWant = (shop == null) ? SupplyPlanner.tierCeiling(bot.getLevel(), context.supply()) : LivingGear.behind(gearOf(bot), bot.getLevel(), shop.items());
 		final ZoneCombat combat = context.combat();
-		final double zoneFactor = ((combat != null) && combat.knows(zone.name())) ? combat.deathFactor(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : 0.0;
+		final double zoneFactor = (bot.getPartyDeathFactor() > 0.0) ? bot.getPartyDeathFactor() : ((combat != null) && combat.knows(zone.name())) ? combat.deathFactor(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : 0.0;
 		final ColdRisk.Danger danger = ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId(), zoneFactor);
 		if (context.random().nextDouble() >= ColdRisk.deathChance(danger.deathsPerHour(), elapsedMs))
 		{

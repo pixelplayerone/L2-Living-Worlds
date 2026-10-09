@@ -750,7 +750,7 @@ public class LivingPopulationTest
 		model.setShotDamage(1.0, 1.0);
 		check("shots: a bonus of 1 turns the check off", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0) - fitted) < 1e-9);
 		model.setShotDamage(2.0, Math.sqrt(2.0));
-		final String rotData = "CURVE\tpatk_melee\t10\t20\t30\t40\t50\t60\nCURVE\tpatk_bow\t10\t20\t30\t40\t50\t60\nCURVE\tmatk_mage\t10\t20\t30\t40\t50\t60\n" + "CURVE\tpdef_tank\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_melee\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_light\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_robe\t100\t120\t140\t160\t180\t200\n" + "CURVE\tmdef_heavy\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_light\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_robe\t50\t60\t70\t80\t90\t100\n" + "ZONE\tRot\t38\t42\t40\t400\t400\t300\t50\t50\t10\t5\t0\t100\n" + "ROT\tduelist\t40\t10\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t88\tduelist\n";
+		final String rotData = "CURVE\tpatk_melee\t10\t20\t30\t40\t50\t60\nCURVE\tpatk_bow\t10\t20\t30\t40\t50\t60\nCURVE\tmatk_mage\t10\t20\t30\t40\t50\t60\n" + "CURVE\tpdef_tank\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_melee\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_light\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_robe\t100\t120\t140\t160\t180\t200\n" + "CURVE\tmdef_heavy\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_light\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_robe\t50\t60\t70\t80\t90\t100\n" + "ZONE\tRot\t38\t42\t40\t400\t400\t300\t50\t50\t10\t5\t0\t100\n" + "ROT\tphoenix knight\t40\t10\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t90\tphoenix knight\nROT\tarchmage\t40\t0\t150\t150\t150\t150\t150\t150\t150\nROTCLASS\t94\tarchmage\nROT\tduelist\t40\t10\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t88\tduelist\n";
 		try
 		{
 			final ZoneCombat rot = ZoneCombat.parse(new java.io.StringReader(rotData), ZoneCombat.Params.defaults());
@@ -777,6 +777,17 @@ public class LivingPopulationTest
 			final double noEvasion = dodge.deathFactor("Rot", 9, 40, dodge.curveStats(ZoneCombat.Role.BOW, 2, 2));
 			dodge.setEvasion(true);
 			check("evasion: archers dodge more than mages (a lower death factor)", dodge.deathFactor("Rot", 9, 40, dodge.curveStats(ZoneCombat.Role.BOW, 2, 2)) <= dodge.deathFactor("Rot", 10, 40, dodge.curveStats(ZoneCombat.Role.MAGE, 2, 2)) * 1.0001);
+			rot.setRotationTtk(true);
+			final ZoneCombat.Stats mage = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
+			final ZoneCombat.PartyOutcome healerParty = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3);
+			final ZoneCombat.PartyOutcome tankParty = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3);
+			check("party: a healer gets a party outcome with a quarter of the experience", (healerParty != null) && (healerParty.slot() == 3) && Math.abs(healerParty.expShare() - 0.25) < 1e-9);
+			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
+			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
+			check("party: the party is cheaper to die in than going alone", tankParty.deathFactor() < rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)));
+			rot.setParty(new ZoneCombat.PartyParams(false, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3));
+			check("party: off gives no outcome", rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3) == null);
+			rot.setParty(ZoneCombat.PartyParams.defaults());
 			rot.setRotationTtk(false);
 			check("rotation ttk: off uses the relative model", Math.abs(rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - full) > 1e-9);
 		}

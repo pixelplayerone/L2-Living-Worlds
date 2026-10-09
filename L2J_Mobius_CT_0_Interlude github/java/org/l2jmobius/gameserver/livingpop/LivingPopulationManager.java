@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
@@ -110,6 +111,11 @@ public class LivingPopulationManager
 	private volatile double _spiritshotDamage = Math.sqrt(2.0);
 	private volatile double _blessedDamage = 2.0; // zone combat: damage with blessed spiritshots over without
 	private boolean _lossTableLoaded; // the server's death experience loss table was handed to ColdRisk
+	private volatile boolean _partyOn = true; // zone combat: bots may hunt in a virtual party (tank, damage dealer, buffer, healer)
+	private volatile double _partyChance = 0.5; // share of bot visits that roll a party
+	private volatile boolean _partyHealers = true; // healers always hunt in the party
+	private volatile ZoneCombat.PartyParams _partyParams = ZoneCombat.PartyParams.defaults();
+	private static final long PARTY_WINDOW_MS = 4L * 3_600_000L; // a bot keeps its roll (party or alone, who is in it) for this long in a zone
 	private volatile boolean _zoneRest = true; // zone combat: sitting to refill HP and MP lowers kills (potions cover some HP)
 	private volatile boolean _zoneEvasion = true; // zone combat: monsters miss a bot with evasion
 	private volatile boolean _rotationTtk = true; // zone combat: time to kill from the sim rotations (real seconds)
@@ -162,6 +168,14 @@ public class LivingPopulationManager
 		_respawnLimit = respawnLimit;
 		_respawnShare = respawnShare;
 		_aggroRisk = aggroRisk;
+	}
+
+	public void setParty(boolean on, double chance, boolean healers, ZoneCombat.PartyParams params)
+	{
+		_partyOn = on;
+		_partyChance = Math.max(0.0, Math.min(1.0, chance));
+		_partyHealers = healers;
+		_partyParams = params;
 	}
 
 	public void setRestAndEvasion(boolean rest, boolean evasion)
@@ -265,6 +279,7 @@ public class LivingPopulationManager
 				_combat.setBlessedDamage(_blessedDamage);
 				_combat.setRotationTtk(_rotationTtk);
 				_combat.setRest(_zoneRest);
+				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healerMpFactor(), _partyParams.baseDeathsPerHour()));
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);
 				if (!_combat.enabled())
@@ -644,17 +659,28 @@ public class LivingPopulationManager
 			// With travel on, experience, adena and soulshot use accrue only while hunting (not while traveling or in town).
 			final long huntedMs = (!travel || ColdLife.isHunting(bot.getActivity())) ? elapsed : 0L;
 			// This bot's own kill rate: its stats against the average monster of the zone it hunts (the flat rate when the model is off).
-			final IntToLongFunction expPerMinuteForLevel = level ->
+			final java.util.function.IntToDoubleFunction perKillAt = level ->
 			{
 				// Like the server, a kill pays no experience when the bot is too many levels away from the zone's monsters.
 				if (_expGap && ZoneCombat.outleveled(level, gapData.mobLevel(bot.getZone()), maxLevelGap))
 				{
-					return 0L;
+					return 0.0;
 				}
 				// Experience per kill: the zone's real average (option), else a representative level x ColdExpPerMobLevel.
 				final double zoneExp = _zoneExp ? gapData.expPerKill(bot.getZone()) : -1.0;
-				final double perKill = (zoneExp > 0.0) ? (zoneExp * rate) : (level * expPerKillUnitPerRate);
-				final double base = Math.max(0.0, perKill * ratePerMinute(combat, bot, level, flatKillsPerMinute, huntedMs, economyParams, occupancy));
+				return (zoneExp > 0.0) ? (zoneExp * rate) : (level * expPerKillUnitPerRate);
+			};
+			final IntToLongFunction expPerMinuteForLevel = level ->
+			{
+				final double perKill = perKillAt.applyAsDouble(level);
+				if (perKill <= 0.0)
+				{
+					return 0L;
+				}
+				final double soloRate = ratePerMinute(combat, bot, level, flatKillsPerMinute, huntedMs, economyParams, occupancy);
+				final ZoneCombat.PartyOutcome party = partyChoice(combat, bot, level, perKill, soloRate, now, expToNextLevel);
+				final double kills = (party == null) ? soloRate : capToZone(combat, bot, party.killsPerMinute(), occupancy);
+				final double base = Math.max(0.0, perKill * kills * ((party == null) ? 1.0 : party.expShare()));
 				return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
 			};
 			final ColdProgression.Progress progress = ColdProgression.resolve(bot.getLevel(), bot.getExpIntoLevel(), huntedMs, maxLevel, expToNextLevel, expPerMinuteForLevel);
@@ -662,6 +688,8 @@ public class LivingPopulationManager
 			final double botKillsPerMinute = ratePerMinute(combat, bot, progress.level(), flatKillsPerMinute, huntedMs, economyParams, occupancy);
 			// Kills at the modeled kill rate (a monitor counter), and the experience this span added (it earns SP).
 			final double huntKills = botKillsPerMinute * (huntedMs / 60_000.0);
+			final ZoneCombat.PartyOutcome partyNow = partyChoice(combat, bot, progress.level(), perKillAt.applyAsDouble(progress.level()), botKillsPerMinute, now, expToNextLevel);
+			bot.setPartyDeathFactor((partyNow == null) ? 0.0 : partyNow.deathFactor());
 			final long huntExp = (experience.getExpForLevel(progress.level()) + progress.expIntoLevel()) - (experience.getExpForLevel(bot.getLevel()) + bot.getExpIntoLevel());
 			long huntAdena = 0L;
 			final List<DecisionLog.Event> events = new ArrayList<>();
@@ -741,6 +769,57 @@ public class LivingPopulationManager
 			resolved++;
 		}
 		_resolveCursor = index; // resume here next tick so the budget rotates across the whole population
+	}
+
+	/** The zone's respawns cap what a bot (or a party) kills; the same cap as for a bot alone. */
+	private double capToZone(ZoneCombat combat, ColdBot bot, double rate, Map<String, Integer> occupancy)
+	{
+		if (_respawnLimit && (occupancy != null))
+		{
+			return Math.min(rate, Math.max(MIN_RESPAWN_RATE, combat.respawnCap(bot.getZone(), occupancy.getOrDefault(bot.getZone(), 1), _respawnShare)));
+		}
+		return rate;
+	}
+
+	/**
+	 * Whether the bot hunts in its virtual party now: healers always (option), others by a roll that holds for a few hours in a zone, and only
+	 * where the party beats going alone after the experience each death costs. Loot and shots are not touched (still at the solo rate).
+	 * @param perKill experience a kill pays (0 to use only the death-free comparison: then healers only and rolled bots take the party)
+	 * @return the party's outcome, or null for hunting alone
+	 */
+	private ZoneCombat.PartyOutcome partyChoice(ZoneCombat combat, ColdBot bot, int level, double perKill, double soloKills, long now, IntToLongFunction expToNextLevel)
+	{
+		if (!_partyOn || !combat.enabled() || !combat.knows(bot.getZone()))
+		{
+			return null;
+		}
+		final boolean healer = _partyHealers && ZoneCombat.isHealer(bot.getClassId());
+		final int hash = Objects.hash(bot.getId(), bot.getZone(), now / PARTY_WINDOW_MS) & 0x7fffffff;
+		final boolean rolled = ((hash % 1000) / 1000.0) < _partyChance;
+		if (!healer && !rolled)
+		{
+			return null;
+		}
+		final ZoneCombat.Stats stats = ColdLife.statsOf(bot, _gear, combat);
+		double skills = 1.0;
+		if (_travelConfig.skillTraining() && (bot.getSkills() != null))
+		{
+			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
+		}
+		final ZoneCombat.PartyOutcome outcome = combat.party(bot.getZone(), bot.getClassId(), level, stats, skills, 1.0, usesBlessed(bot), hash / 1000);
+		if ((outcome == null) || healer)
+		{
+			return outcome;
+		}
+		if (perKill <= 0.0)
+		{
+			return null; // no experience here to compare (or only the death rate was asked for): stay alone
+		}
+		final double base = _partyParams.baseDeathsPerHour();
+		final double loss = (ColdRisk.expLossPercent(level) / 100.0) * Math.max(1L, expToNextLevel.applyAsLong(level));
+		final double soloNet = (perKill * soloKills * 60.0) - (base * combat.deathFactor(bot.getZone(), bot.getClassId(), level, stats) * loss);
+		final double partyNet = (perKill * outcome.expShare() * outcome.killsPerMinute() * 60.0) - (base * outcome.deathFactor() * loss);
+		return (partyNet > soloNet) ? outcome : null;
 	}
 
 	/**

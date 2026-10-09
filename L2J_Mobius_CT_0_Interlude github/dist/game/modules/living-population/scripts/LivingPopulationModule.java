@@ -153,6 +153,11 @@ public class LivingPopulationModule implements GameModule
 		LivingPopulationManager.getInstance().setShotDamage( //
 			shotsMatter ? Math.max(1.0, context.config().getDouble("SoulshotDamage", 2.0)) : 1.0, //
 			shotsMatter ? Math.max(1.0, context.config().getDouble("SpiritshotDamage", 1.41)) : 1.0);
+		LivingPopulationManager.getInstance().setParty( //
+			context.config().getBoolean("ColdParty", true), //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChance", 0.5))), //
+			context.config().getBoolean("PartyHealers", true), //
+			new ZoneCombat.PartyParams(true, Math.max(0.0, context.config().getDouble("PartyExpBonus", 1.0)), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealReduction", 0.2))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealCoverage", 0.75))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChainChance", 0.3))), Math.max(0.0, context.config().getDouble("PartyResetSeconds", 45.0)), Math.max(0.0, context.config().getDouble("PartyHealerMpFactor", 1.5)), Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3))));
 		LivingPopulationManager.getInstance().setRestAndEvasion(context.config().getBoolean("ZoneRest", true), context.config().getBoolean("ZoneEvasion", true));
 		LivingPopulationManager.getInstance().setRotationTtk(context.config().getBoolean("ZoneRotationTtk", true));
 		LivingPopulationManager.getInstance().setBlessedSpiritshots( //

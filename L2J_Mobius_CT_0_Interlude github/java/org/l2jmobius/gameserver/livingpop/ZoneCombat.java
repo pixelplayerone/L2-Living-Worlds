@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -158,6 +159,7 @@ public final class ZoneCombat
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotations = new HashMap<>();
 		final Map<Integer, String> rotationLine = new HashMap<>();
 		final Map<String, Map<Role, java.util.TreeMap<Integer, double[]>>> rest = new HashMap<>();
+		final Map<String, Map<Role, double[][]>> partyBuffs = new HashMap<>();
 		try (BufferedReader in = new BufferedReader(reader))
 		{
 			String line;
@@ -200,6 +202,17 @@ public final class ZoneCombat
 						}
 						rotations.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), values);
 					}
+					else if (f[0].equals("PBUFF") && (f.length >= 7))
+					{
+						final int level = Integer.parseInt(f[3]);
+						if ((level >= 0) && (level <= MAX_BUFF_LEVEL))
+						{
+							final double[][] table = partyBuffs.computeIfAbsent(f[1], k -> new java.util.EnumMap<>(Role.class)).computeIfAbsent(Role.valueOf(f[2].toUpperCase(java.util.Locale.ROOT)), k -> new double[3][MAX_BUFF_LEVEL + 1]);
+							table[0][level] = Double.parseDouble(f[4]);
+							table[1][level] = Double.parseDouble(f[5]);
+							table[2][level] = Double.parseDouble(f[6]);
+						}
+					}
 					else if (f[0].equals("REST") && (f.length >= 8))
 					{
 						rest.computeIfAbsent(f[1], k -> new java.util.EnumMap<>(Role.class)).computeIfAbsent(Role.valueOf(f[2].toUpperCase(java.util.Locale.ROOT)), k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[3]), new double[] { Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]) });
@@ -226,6 +239,7 @@ public final class ZoneCombat
 		model._rotations.putAll(rotations);
 		model._rotationLine.putAll(rotationLine);
 		model._rest.putAll(rest);
+		model._partyBuffs.putAll(partyBuffs);
 		return model;
 	}
 
@@ -289,6 +303,200 @@ public final class ZoneCombat
 		return r[0] / (r[0] + sit);
 	}
 
+	/**
+	 * The rough party model: a virtual party of a tank, a damage dealer, a buffer and a healer, of which the bot is one (by its class).
+	 * @param enabled whether bots may party
+	 * @param expBonus the party's experience bonus; the bot gets expBonus / 4 of a kill's experience (1.0 = a quarter; the server gives 1.30 for 4)
+	 * @param healReduction how much of the solo tank death rate remains with a healer behind it (0.2 = a fifth)
+	 * @param healCoverage the share of the tank's HP loss the healer heals (so the tank sits less)
+	 * @param chainChance when a member dies, the chance the next in line (tank, damage dealer, buffer, healer) dies before the mob does
+	 * @param resetSeconds how long the party takes to resurrect and get going after a death
+	 * @param healerMpFactor how much more MP a healer burns than a mage that attacks (healing as well), for its resting
+	 * @param baseDeathsPerHour the death rate a death factor of 1 means
+	 */
+	public record PartyParams(boolean enabled, double expBonus, double healReduction, double healCoverage, double chainChance, double resetSeconds, double healerMpFactor, double baseDeathsPerHour)
+	{
+		public static PartyParams defaults()
+		{
+			return new PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3);
+		}
+	}
+
+	/**
+	 * What a bot gets from hunting in the virtual party.
+	 * @param killsPerMinute the party's kills per minute (after resting and resets)
+	 * @param deathFactor the bot's death rate relative to the base rate (the zone factor)
+	 * @param expShare the share of a kill's experience the bot gets
+	 * @param slot 0 tank, 1 damage dealer, 2 buffer, 3 healer
+	 * @param buffer the buffer line giving the buffs
+	 */
+	public record PartyOutcome(double killsPerMinute, double deathFactor, double expShare, int slot, String buffer)
+	{
+	}
+
+	private static final Set<Integer> HEALERS = Set.of(15, 16, 97, 29, 30, 105, 42, 43, 112);
+	private static final Map<Integer, String> BUFFER_OF = Map.ofEntries(Map.entry(17, "hierophant"), Map.entry(98, "hierophant"), Map.entry(21, "sword_muse"), Map.entry(100, "sword_muse"), Map.entry(34, "spectral_dancer"), Map.entry(107, "spectral_dancer"), Map.entry(51, "dominator"), Map.entry(115, "dominator"), Map.entry(52, "doom_cryer"), Map.entry(116, "doom_cryer"));
+	private static final String[] BUFFERS = { "hierophant", "sword_muse", "spectral_dancer", "dominator", "doom_cryer", "evas_saint", "shillien_saint" };
+	private final Map<String, Map<Role, double[][]>> _partyBuffs = new HashMap<>(); // buffer line -> role -> {damage, pDef, mDef} by level
+	private volatile PartyParams _partyParams = PartyParams.defaults();
+	private final Map<Long, PartyOutcome> _partyCache = new ConcurrentHashMap<>();
+
+	/** @return whether the class is a healer line (Cleric to Cardinal, the Oracles and Elders, Eva's and Shillien Saints) */
+	public static boolean isHealer(int classId)
+	{
+		return HEALERS.contains(classId);
+	}
+
+	/** @param params the party tuning */
+	public void setParty(PartyParams params)
+	{
+		_partyParams = params;
+		_partyCache.clear();
+	}
+
+	/** @return the party tuning */
+	public PartyParams partyParams()
+	{
+		return _partyParams;
+	}
+
+	private static int slotOf(int classId)
+	{
+		if (isHealer(classId))
+		{
+			return 3;
+		}
+		if (BUFFER_OF.containsKey(classId))
+		{
+			return 2;
+		}
+		return (roleOf(classId) == Role.TANK) ? 0 : 1;
+	}
+
+	private double partyBuff(String buffer, Role role, int kind, int level)
+	{
+		final double[][] table = (_partyBuffs.get(buffer) == null) ? null : _partyBuffs.get(buffer).get(role);
+		if (table == null)
+		{
+			return 1.0;
+		}
+		final double v = table[kind][Math.max(0, Math.min(MAX_BUFF_LEVEL, level))];
+		return (v <= 0.0) ? 1.0 : v;
+	}
+
+	/**
+	 * The bot hunting in a virtual party in its zone: the party's kill rate, the bot's death factor and its share of the experience.
+	 * The tank takes the hits and is healed; when it dies the next in line takes over until the mob is dead, and a death costs the whole
+	 * party a reset. Experience and loot are the bot's quarter.
+	 * @param variant picks the buffer and the damage dealer a party has when the bot is not one (any non-negative number)
+	 * @return null when the zone or data is missing or parties are off
+	 */
+	public PartyOutcome party(String zone, int classId, int level, Stats stats, double skillFraction, double shotFraction, boolean blessed, int variant)
+	{
+		final PartyParams p = _partyParams;
+		final Integer zi = knows(zone) ? _zoneIndex.get(zone) : null;
+		if ((zi == null) || !p.enabled() || !_params.enabled())
+		{
+			return null;
+		}
+		final Role role = roleOf(classId);
+		final int shots = (int) Math.round(Math.max(0.0, Math.min(1.0, shotFraction)) * 10.0);
+		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
+		final int skills = (int) Math.round(Math.max(0.0, Math.min(1.0, skillFraction)) * 10.0);
+		final long key = (((((((zi * 128L) + Math.min(127, level)) * 128L) + (classId & 127)) * 8192L + attack) * 8192L + Math.round(stats.pDef())) * 16L + skills) * 22L + (shots * 2L) + (blessed ? 1L : 0L);
+		final long full = (key * 64L) + (variant & 63);
+		return _partyCache.computeIfAbsent(full, k -> computeParty(zi, p, classId, role, level, stats, skills / 10.0, shots / 10.0, blessed, variant));
+	}
+
+	private PartyOutcome computeParty(int zi, PartyParams p, int classId, Role role, int level, Stats stats, double skillFraction, double shotFraction, boolean blessed, int variant)
+	{
+		final ZoneStats z = _zones.get(zi);
+		final int grade = LivingSupplies.gradeFor(level);
+		final int slot = slotOf(classId);
+		final String buffer = ((slot == 2) && BUFFER_OF.containsKey(classId)) ? BUFFER_OF.get(classId) : BUFFERS[Math.floorMod(variant, BUFFERS.length)];
+		// The tank: the bot's own when it is one, else a reference Phoenix Knight in the bot's grade of gear.
+		final boolean botTank = slot == 0;
+		final Stats tankStats = botTank ? stats : curveStats(Role.TANK, grade, grade);
+		final double tankSkills = botTank ? skillFraction : 1.0;
+		// The damage dealer: the bot's own, the healer's mage that wears its gear, or a reference one chosen by the variant.
+		final int dpsClass;
+		final Role dpsRole;
+		final Stats dpsStats;
+		final double dpsSkills;
+		if (slot == 1)
+		{
+			dpsClass = classId;
+			dpsRole = role;
+			dpsStats = stats;
+			dpsSkills = skillFraction;
+		}
+		else if (slot == 3)
+		{
+			dpsClass = 94;
+			dpsRole = Role.MAGE;
+			dpsStats = stats;
+			dpsSkills = 1.0;
+		}
+		else
+		{
+			final int pick = Math.floorMod(variant / BUFFERS.length, 3);
+			dpsClass = (pick == 0) ? 88 : (pick == 1) ? 92 : 94;
+			dpsRole = roleOf(dpsClass);
+			dpsStats = curveStats(dpsRole, grade, grade);
+			dpsSkills = 1.0;
+		}
+		final double tankShots = botTank ? shotDamage(Role.TANK, shotFraction, false) : 1.0;
+		final double dpsShots = (slot == 1) ? shotDamage(role, shotFraction, blessed) : 1.0;
+		final double tankBuff = partyBuff(buffer, Role.TANK, 0, level);
+		final double dpsBuff = partyBuff(buffer, dpsRole, 0, level);
+		double fight = 0.0;
+		for (int pass = 0; pass < 2; pass++)
+		{
+			final int w = (pass == 0) ? 0 : nearestWindow(fight);
+			final double dps = (rotationDps(z, Role.TANK, 90, level, tankStats.attack(), tankSkills, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, w) * dpsShots * dpsBuff);
+			fight = z.hp() / Math.max(1e-6, dps);
+		}
+		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
+		double kills = 60.0 / (overhead + fight);
+		// Deaths: the mobs hit the tank, and the healer behind it cuts the rate; when the tank dies the next in line takes over until the mob is dead.
+		final double mean = _threatMedian[Role.TANK.ordinal()];
+		final double pBuff = partyBuff(buffer, Role.TANK, 1, level);
+		final double mBuff = partyBuff(buffer, Role.TANK, 2, level);
+		final double tankThreat = threat(z, tankStats.pDef(), tankStats.mDef(), pBuff, mBuff, hitChance(z, Role.TANK, level));
+		final double tankFactor = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), tankThreat / mean));
+		final double events = tankFactor * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0)) * p.healReduction(); // party deaths relative to the base rate
+		final double deathFactor = events * Math.pow(p.chainChance(), slot);
+		// Resting: the tank sits for what the healer does not heal, the healer sits for its MP (it burns more than an attacking mage); a death resets the party.
+		double factor = 1.0;
+		if (_restOn)
+		{
+			final double[] tankRow = restRow(z.name(), Role.TANK, level);
+			final double[] mageRow = restRow(z.name(), Role.MAGE, level);
+			if ((tankRow != null) && (mageRow != null))
+			{
+				final double hp = tankRow[1] * (fight / Math.max(1e-6, tankRow[0] - 2.5)) * (1.0 - p.healCoverage());
+				final double sitHp = hp / Math.max(1e-9, tankRow[2]);
+				final double sitMp = mageRow[3] * (fight / Math.max(1e-6, mageRow[0] - 2.5)) * p.healerMpFactor();
+				final double cycle = fight + 2.5;
+				factor = cycle / (cycle + Math.max(sitHp, sitMp));
+			}
+		}
+		final double resetShare = Math.min(0.9, (events * p.baseDeathsPerHour() * p.resetSeconds()) / 3600.0);
+		kills = Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare)));
+		return new PartyOutcome(kills, deathFactor, p.expBonus() / 4.0, slot, buffer);
+	}
+
+	private double[] restRow(String zone, Role role, int level)
+	{
+		final Map<Role, java.util.TreeMap<Integer, double[]>> byRole = _rest.get(zone);
+		final java.util.TreeMap<Integer, double[]> table = (byRole == null) ? null : byRole.get(role);
+		if ((table == null) || table.isEmpty())
+		{
+			return null;
+		}
+		return ((table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry()).getValue();
+	}
+
 	/** @return whether this class has a rotation line */
 	public boolean hasRotation(int classId)
 	{
@@ -303,7 +511,23 @@ public final class ZoneCombat
 	 */
 	private double rotationFightSeconds(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction)
 	{
+		double seconds = 0.0;
+		for (int pass = 0; pass < 2; pass++)
+		{
+			final int w = (pass == 0) ? 0 : nearestWindow(seconds);
+			seconds = zone.hp() / Math.max(1e-6, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, w));
+		}
+		return seconds;
+	}
+
+	/** Damage per second of the class's rotation against the zone's defence over a window (0 to 6), scaled by the weapon and the skills it has. */
+	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, int window)
+	{
 		final java.util.TreeMap<Integer, double[]> table = _rotations.get(_rotationLine.get(classId));
+		if (table == null)
+		{
+			return zone.hp() / Math.max(1e-6, _killScale[role.ordinal()] * rawTimeToKill(zone, role, level, weaponAttack, skillFraction)); // no rotation line: the relative model
+		}
 		final java.util.Map.Entry<Integer, double[]> entry = (table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry();
 		final double[] r = entry.getValue();
 		final double scale = (role == Role.MAGE) ? (SIM_MDEF / Math.max(1.0, zone.mDef())) : (SIM_PDEF / Math.max(1.0, zone.pDef()));
@@ -311,15 +535,8 @@ public final class ZoneCombat
 		final double ratio = (refAttack <= 0) ? 1.0 : Math.max(0.1, Math.min(1.5, weaponAttack / refAttack));
 		final double gear = (role == Role.MAGE) ? Math.sqrt(ratio) : ratio;
 		final double skills = (role == Role.MAGE) ? Math.max(0.1, skillFraction) : Math.max(0.0, Math.min(1.0, skillFraction));
-		double seconds = 0.0;
-		for (int pass = 0; pass < 2; pass++)
-		{
-			final int w = (pass == 0) ? 0 : nearestWindow(seconds);
-			final double auto = Math.min(r[0], r[1 + w]);
-			final double dps = (auto + ((r[1 + w] - auto) * skills)) * scale * gear;
-			seconds = zone.hp() / Math.max(1e-6, dps);
-		}
-		return seconds;
+		final double auto = Math.min(r[0], r[1 + window]);
+		return (auto + ((r[1 + window] - auto) * skills)) * scale * gear;
 	}
 
 	private static int nearestWindow(double seconds)
