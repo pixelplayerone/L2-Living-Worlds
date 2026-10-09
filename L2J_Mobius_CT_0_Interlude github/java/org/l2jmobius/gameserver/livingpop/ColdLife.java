@@ -338,7 +338,7 @@ public final class ColdLife
 			}
 		}
 
-		final Town town = catalog.nearestShoppingTown(point(bot));
+		final Town town = townFor(bot, zone, catalog);
 		progressClassQuest(bot, now, context, events);
 		String betterZone = null;
 		if (town != null)
@@ -377,6 +377,17 @@ public final class ColdLife
 			// The bot stands still while the scroll is cast, then appears at the town's arrival point (arriveInTown).
 			bot.setLeg(TravelLeg.stay(from, now, context.travel().escapeCastMs()));
 			events.add(new DecisionLog.Event(null, "Used a Scroll of Escape to " + town.name() + " (" + DecisionLog.num(bot.getEscapes()) + " left)"));
+		}
+		else if (!catalog.sameLand(from, shops))
+		{
+			// No scroll, and water between it and the town (an island without a town): it cannot walk, so it goes back
+			// the way it came, paying what the gatekeeper's way here cost (FPC-277).
+			final ZoneCatalog.Teleport link = (zone == null) ? null : zone.teleportFrom(town.name());
+			final long fee = (link == null) ? 0L : Math.min(Math.max(0L, bot.getAdena()), link.fee());
+			bot.setAdena(bot.getAdena() - fee);
+			bot.setActivity(TO_TOWN);
+			bot.setLeg(TravelLeg.stay(from, now, context.travel().escapeCastMs()));
+			events.add(new DecisionLog.Event(null, "Has no Scroll of Escape and water lies between it and " + town.name() + ", so takes the gatekeeper's way back" + ((fee > 0) ? (" for " + DecisionLog.num(fee) + " adena") : "")));
 		}
 		else
 		{
@@ -493,7 +504,7 @@ public final class ColdLife
 		{
 			return false;
 		}
-		final Town town = context.catalog().nearestShoppingTown(point(bot));
+		final Town town = townFor(bot, zone, context.catalog());
 		if (town == null)
 		{
 			return false;
@@ -1247,11 +1258,12 @@ public final class ColdLife
 
 	/**
 	 * @return whether a trip to this town uses a Scroll of Escape: the bot has one and the town is not close enough to
-	 *         walk (the same rule the trip itself follows)
+	 *         walk, or is across the water (the same rule the trip itself follows)
 	 */
 	private static boolean usesEscape(ColdBot bot, Town town, Context context)
 	{
-		return (bot.getEscapes() > 0) && (point(bot).distance(shopsOf(town)) > context.travel().escapeMinDistance());
+		final Point here = point(bot);
+		return (bot.getEscapes() > 0) && ((here.distance(shopsOf(town)) > context.travel().escapeMinDistance()) || !context.catalog().sameLand(here, shopsOf(town)));
 	}
 
 	/**
@@ -1269,6 +1281,32 @@ public final class ColdLife
 			}
 		}
 		return offers;
+	}
+
+	/**
+	 * The town a bot hunting in a zone goes to: the nearest one with shops on its own land. On an island without such a
+	 * town, the cheapest town whose gatekeeper goes to the zone, as the way it came (FPC-277).
+	 */
+	private static Town townFor(ColdBot bot, Zone zone, ZoneCatalog catalog)
+	{
+		final Point here = point(bot);
+		final Town town = catalog.nearestShoppingTown(here);
+		if ((town == null) || (zone == null) || catalog.sameLand(here, town.arrival()))
+		{
+			return town;
+		}
+		Town best = null;
+		long bestFee = Long.MAX_VALUE;
+		for (ZoneCatalog.Teleport teleport : zone.teleports())
+		{
+			final Town candidate = catalog.town(teleport.town());
+			if ((candidate != null) && candidate.hasGrocer() && (teleport.fee() < bestFee))
+			{
+				best = candidate;
+				bestFee = teleport.fee();
+			}
+		}
+		return (best != null) ? best : town;
 	}
 
 	private static Point point(ColdBot bot)

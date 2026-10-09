@@ -35,6 +35,7 @@ import org.l2jmobius.gameserver.livingpop.DropYield;
 import org.l2jmobius.gameserver.livingpop.GoalPlanner;
 import org.l2jmobius.gameserver.livingpop.LivingChat;
 import org.l2jmobius.gameserver.livingpop.LivingGear;
+import org.l2jmobius.gameserver.livingpop.LivingRoute;
 import org.l2jmobius.gameserver.livingpop.LivingSupplies;
 import org.l2jmobius.gameserver.livingpop.SkillPlanner;
 import org.l2jmobius.gameserver.livingpop.SupplyPlanner;
@@ -94,6 +95,8 @@ public class LivingTravelTest
 		testGearDrops();
 		testGearShopSafety();
 		testGearTripBudget();
+		testIslands();
+		testRouteOverBridge();
 
 		System.out.println("LivingTravelTest: " + (_checks - _failures) + "/" + _checks + " checks passed.");
 		if (_failures > 0)
@@ -1017,6 +1020,123 @@ public class LivingTravelTest
 		ColdLife.advance(near, 0L, 0L, context, nearLog);
 		check("a trip by scroll sets a new scroll aside", farLog.stream().anyMatch(e -> e.text().endsWith("it can spend 250")));
 		check("a walk to a close town keeps the scroll and its price", nearLog.stream().anyMatch(e -> e.text().endsWith("it can spend 650")));
+	}
+
+	// FPC-277. Isle sits on an island; Shore is on the mainland but closer to Isle in a straight line than to Main; Rock is
+	// an island with no town, reached by Main's gatekeeper.
+	private static final String ISLAND_XML = "<zones>" //
+		+ "<town name=\"Isle\" x=\"0\" y=\"0\" z=\"0\"><gatekeeper npcId=\"1\" x=\"100\" y=\"0\" z=\"0\"/><grocer npcId=\"2\" x=\"0\" y=\"100\" z=\"0\"/><route town=\"Main\" fee=\"500\"/></town>" //
+		+ "<town name=\"Main\" x=\"40000\" y=\"0\" z=\"0\"><gatekeeper npcId=\"3\" x=\"40100\" y=\"0\" z=\"0\"/><grocer npcId=\"4\" x=\"40000\" y=\"100\" z=\"0\"/><route town=\"Isle\" fee=\"500\"/></town>" //
+		+ "<island name=\"The Isle\" minX=\"-10000\" maxX=\"10000\" minY=\"-10000\" maxY=\"10000\"/>" //
+		+ "<island name=\"The Rock\" minX=\"60000\" maxX=\"70000\" minY=\"-5000\" maxY=\"5000\"/>" //
+		+ "<zone name=\"Isle Newbies\" minLevel=\"1\" maxLevel=\"10\" starterRace=\"Human\"><spot x=\"2000\" y=\"0\" z=\"0\"/></zone>" //
+		+ "<zone name=\"Shore\" minLevel=\"15\" maxLevel=\"25\"><teleport town=\"Main\" x=\"14000\" y=\"0\" z=\"0\" fee=\"100\"/><spot x=\"14000\" y=\"0\" z=\"0\"/></zone>" //
+		+ "<zone name=\"Rock\" minLevel=\"30\" maxLevel=\"40\"><teleport town=\"Main\" x=\"65000\" y=\"0\" z=\"0\" fee=\"300\"/><spot x=\"65000\" y=\"0\" z=\"0\"/></zone>" //
+		+ "</zones>";
+
+	private static void testIslands() throws Exception
+	{
+		final ZoneCatalog catalog = ZoneCatalog.parse(ISLAND_XML);
+		check("islands parse", (catalog.islands().size() == 2) && "The Isle".equals(catalog.islandAt(new Point(0, 0, 0)).name()) && (catalog.islandAt(new Point(14000, 0, 0)) == null));
+		check("the mainland and an island are different land", !catalog.sameLand(new Point(14000, 0, 0), new Point(0, 0, 0)) && catalog.sameLand(new Point(14000, 0, 0), new Point(40000, 0, 0)));
+		check("the nearest town is the one on the same land, not across the water", "Main".equals(catalog.nearestShoppingTown(new Point(14000, 0, 0)).name()));
+		check("on an island without a town the nearest town across the water is still given", catalog.nearestShoppingTown(new Point(65000, 0, 0)) != null);
+		check("never on foot to newbie grounds across the water", ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Main"), catalog).way() == ZoneChooser.Way.GATEKEEPER);
+		check("the newbie grounds trip pays the gatekeeper to the island's town", (ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Main"), catalog).fee() == 500L) && ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Main"), catalog).arrival().equals(new Point(0, 0, 0)));
+		check("newbie grounds on the same island are walked to", ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Isle"), catalog).way() == ZoneChooser.Way.WALK);
+
+		final ColdLife.Params travel = new ColdLife.Params(100.0, 20_000L, 10_000L, 0, 60_000L, 60_000L, 4.0, 8, 300_000L, 2500.0);
+		final ColdLife.Context context = new ColdLife.Context(catalog, supply(), travel, (level, tier) -> prices(), new HashMap<>(), new Random(7));
+
+		final ColdBot shore = bot(20, "Shore", 20_000L, 0L, 0L, 14000);
+		final List<DecisionLog.Event> events = new ArrayList<>();
+		ColdLife.advance(shore, 0L, 0L, context, events);
+		check("no scroll on the shore: walks to the town on its land", ColdLife.WALKING_TO_TOWN.equals(shore.getActivity()) && "Main".equals(shore.getTown()) && shore.getLeg().to().equals(new Point(40000, 100, 0)));
+
+		final ColdBot rock = bot(35, "Rock", 20_000L, 0L, 0L, 65000);
+		events.clear();
+		ColdLife.advance(rock, 0L, 0L, context, events);
+		check("no scroll on a townless island: takes the gatekeeper's way back, no swim", ColdLife.TO_TOWN.equals(rock.getActivity()) && "Main".equals(rock.getTown()) && (rock.getAdena() == 19_700L));
+		check("the way back is logged", events.stream().anyMatch(e -> e.text().startsWith("Has no Scroll of Escape and water lies between it and Main")));
+		ColdLife.advance(rock, 20_000L, 20_000L, context, events);
+		check("it lands in the town and shops", ColdLife.IN_TOWN.equals(rock.getActivity()) && (rock.getX() >= 39000));
+
+		final ColdBot scroll = bot(35, "Rock", 20_000L, 0L, 1L, 65000);
+		ColdLife.advance(scroll, 0L, 0L, context, new ArrayList<>());
+		check("with a scroll it reads it instead", ColdLife.ESCAPING.equals(scroll.getActivity()) && (scroll.getEscapes() == 0L));
+	}
+
+	/**
+	 * A river runs north to south at x 1000 to 1400 (water), with a bridge at y 3000 to 3200 over it. Walking from x 0 to
+	 * x 2400 at y 0 must take the bridge, not the water.
+	 */
+	private static final LivingRoute.Terrain RIVER = new LivingRoute.Terrain()
+	{
+		@Override
+		public boolean known(int x, int y)
+		{
+			return (Math.abs(x) < 20000) && (Math.abs(y) < 20000);
+		}
+
+		@Override
+		public int height(int x, int y, int z)
+		{
+			return (river(x) && !bridge(y)) ? -200 : 0;
+		}
+
+		@Override
+		public boolean water(int x, int y, int z)
+		{
+			return river(x) && (z < -50);
+		}
+
+		@Override
+		public boolean canWalk(int x, int y, int z, int tx, int ty, int tz)
+		{
+			return true; // the river bed is walkable ground, as it is in the geodata
+		}
+
+		private boolean river(int x)
+		{
+			return (x >= 1000) && (x <= 1400);
+		}
+
+		private boolean bridge(int y)
+		{
+			return (y >= 3000) && (y <= 3200);
+		}
+	};
+
+	private static void testRouteOverBridge()
+	{
+		final Point from = new Point(0, 0, 0);
+		final Point to = new Point(2400, 0, 0);
+		final List<Point> route = LivingRoute.plan(RIVER, from, to);
+		check("a route is found", (route != null) && !route.isEmpty() && route.get(route.size() - 1).equals(to));
+		boolean wet = false;
+		boolean crossed = false;
+		Point previous = from;
+		for (Point point : (route == null) ? List.<Point> of() : route)
+		{
+			wet |= RIVER.water(point.x(), point.y(), RIVER.height(point.x(), point.y(), point.z()));
+			// Every straight stretch stays dry, and the one that crosses the river does so on the bridge.
+			for (int s = 1; s <= 50; s++)
+			{
+				final int x = previous.x() + (((point.x() - previous.x()) * s) / 50);
+				final int y = previous.y() + (((point.y() - previous.y()) * s) / 50);
+				wet |= RIVER.water(x, y, RIVER.height(x, y, 0));
+				crossed |= (x >= 1000) && (x <= 1400) && (y >= 3000) && (y <= 3200);
+			}
+			previous = point;
+		}
+		check("the route never goes into the river", !wet);
+		check("the route crosses on the bridge", crossed);
+
+		final List<Point> open = LivingRoute.plan(RIVER, new Point(0, 5000, 0), new Point(0, 9000, 0));
+		check("open ground is one straight stretch per leg", (open != null) && (open.size() <= 3));
+		check("no terrain data gives no plan", LivingRoute.plan(RIVER, new Point(30000, 0, 0), new Point(31000, 0, 0)) == null);
+		final List<Point> out = LivingRoute.plan(RIVER, new Point(1200, 0, -200), new Point(0, 0, 0));
+		check("a bot already in the water finds its way out", (out != null) && out.get(out.size() - 1).equals(new Point(0, 0, 0)));
 	}
 
 	private static void check(String label, boolean condition)

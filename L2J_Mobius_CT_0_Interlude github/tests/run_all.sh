@@ -79,6 +79,7 @@ PROD_SOURCES=(
 	"java/org/l2jmobius/gameserver/livingpop/GoalPlanner.java"
 	"java/org/l2jmobius/gameserver/livingpop/ZoneChooser.java"
 	"java/org/l2jmobius/gameserver/livingpop/TravelLeg.java"
+	"java/org/l2jmobius/gameserver/livingpop/LivingRoute.java"
 	"java/org/l2jmobius/gameserver/livingpop/TravelConfig.java"
 	"java/org/l2jmobius/gameserver/livingpop/ColdLife.java"
 	"java/org/l2jmobius/gameserver/livingpop/LivingSupplies.java"

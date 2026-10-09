@@ -15,6 +15,7 @@ maintainer) with the server's own data, so every coordinate is real:
 - each town's Scroll of Escape arrival point comes from data/mapregion/*.xml,
 - each town's gatekeeper and grocer positions come from data/spawns (the grocer is the merchant whose buy list
   sells Scrolls of Escape),
+- the islands (ISLANDS below) are hand-placed boxes; bots never walk across the water to or from one,
 - each town's class masters come from the village master scripts (data/scripts/village_master/*Change*), one per
   script, placed from data/spawns. They change a bot's class and teach its skills.
 
@@ -122,6 +123,14 @@ STARTER_ZONES = [
     ("Dark Elf Village newbie grounds", "DarkElf", "Dark Elf Village", 1, 10),
     ("Orc Village newbie grounds", "Orc", "Orc Village", 1, 10),
     ("Dwarven Village newbie grounds", "Dwarf", "Dwarven Village", 1, 10),
+]
+
+# Islands: land the water separates from the mainland, as a box (name, min x, max x, min y, max y). Bots never walk
+# on or off an island; they take a Scroll of Escape or a gatekeeper, and they shop in a town on their own land
+# (FPC-277). Everything outside these boxes is the mainland. Each box must hold the whole island and no mainland.
+ISLANDS = [
+    ("Talking Island", -131072, -60000, 196608, 270000),
+    ("Devil's Isle", 36000, 56000, 196000, 220000),
 ]
 
 
@@ -367,6 +376,9 @@ def main():
         for other in sorted(hops):
             lines.append('\t\t<route town="%s" fee="%d" />' % (other, hops[other]))
         lines.append("\t</town>")
+
+    for name, min_x, max_x, min_y, max_y in ISLANDS:
+        lines.append('\t<island name="%s" minX="%d" maxX="%d" minY="%d" maxY="%d" />' % (name.replace("'", "&apos;"), min_x, max_x, min_y, max_y))
 
     for name, race, center_dest, lo, hi in STARTER_ZONES:
         found = routes_to(center_dest)
