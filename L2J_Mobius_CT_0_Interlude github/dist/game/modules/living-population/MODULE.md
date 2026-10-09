@@ -164,3 +164,6 @@ keeps it.
 | `MaxLevel` | Level at which cold progression stops. |
 | `SnapshotIntervalSeconds` | How often the monitoring snapshot is written. |
 | `SnapshotFile` | Path of the monitoring JSON snapshot. |
+
+
+The zone combat model (`ZoneCombat`, rotations, zone supply, deaths, experience) is explained in detail in `ZONE_COMBAT.md`.
