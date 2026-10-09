@@ -112,7 +112,6 @@ public class LivingPopulationManager
 	private volatile double _blessedDamage = 2.0; // zone combat: damage with blessed spiritshots over without
 	private boolean _lossTableLoaded; // the server's death experience loss table was handed to ColdRisk
 	private volatile boolean _partyOn = true; // zone combat: bots may hunt in a virtual party (tank, damage dealer, buffer, healer)
-	private volatile double _partyChance = 0.5; // share of bot visits that roll a party
 	private volatile boolean _partyHealers = true; // healers always hunt in the party
 	private volatile ZoneCombat.PartyParams _partyParams = ZoneCombat.PartyParams.defaults();
 	private static final long PARTY_WINDOW_MS = 4L * 3_600_000L; // a bot keeps its roll (party or alone, who is in it) for this long in a zone
@@ -178,10 +177,9 @@ public class LivingPopulationManager
 	private volatile double[] _shotModel = { 0.0, 1.4, 2.4, 2.2 };
 	private volatile boolean _selfHeal = true;
 
-	public void setParty(boolean on, double chance, boolean healers, ZoneCombat.PartyParams params)
+	public void setParty(boolean on, boolean healers, ZoneCombat.PartyParams params)
 	{
 		_partyOn = on;
-		_partyChance = Math.max(0.0, Math.min(1.0, chance));
 		_partyHealers = healers;
 		_partyParams = params;
 	}
@@ -855,11 +853,6 @@ public class LivingPopulationManager
 		}
 		final boolean healer = _partyHealers && ZoneCombat.isHealer(bot.getClassId());
 		final int hash = Objects.hash(bot.getId(), bot.getZone(), now / PARTY_WINDOW_MS) & 0x7fffffff;
-		final boolean rolled = ((hash % 1000) / 1000.0) < _partyChance;
-		if (!healer && !rolled)
-		{
-			return null;
-		}
 		final ZoneCombat.Stats stats = ColdLife.statsOf(bot, _gear, combat);
 		double skills = 1.0;
 		if (_travelConfig.skillTraining() && (bot.getSkills() != null))
@@ -882,7 +875,8 @@ public class LivingPopulationManager
 		final double partyDeaths = (outcome.deathsPerHour() >= 0.0) ? outcome.deathsPerHour() : (base * outcome.deathFactor());
 		final double soloNet = (perKill * soloKills * 60.0) - (soloDeaths * loss);
 		final double partyNet = (perKill * outcome.expShare() * outcome.killsPerMinute() * 60.0) - (partyDeaths * loss);
-		return (partyNet > soloNet) ? outcome : null;
+		// A bot hunts alone while that earns it experience, and looks for a party once alone is a loss (its deaths cost more than its kills give).
+		return (soloNet < 0.0) ? outcome : null;
 	}
 
 	/**
