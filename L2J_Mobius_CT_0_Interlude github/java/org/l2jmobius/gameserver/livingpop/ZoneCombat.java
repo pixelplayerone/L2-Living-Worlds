@@ -148,7 +148,7 @@ public final class ZoneCombat
 	private volatile boolean _selfHealOn; // mystic-line bots heal themselves with the heals they have learned, and summoners heal the servitor (HEAL rows)
 	private final Map<String, java.util.TreeMap<Integer, List<double[]>>> _heals = new HashMap<>(); // line -> level -> heals {skill id, power, mana, cast s, reuse s}
 	private volatile boolean _hpDeaths; // deaths from the HP model (fight damage against the HP a bot starts a fight with) instead of the flat rate times the gear threat
-	private volatile double _restSigmas = 2.0; // a bot sits when its HP falls below an average fight's damage plus this many standard deviations of it
+	private volatile double _restSigmas = 1.5; // a bot sits when its HP falls below an average fight's damage plus this many standard deviations of it
 	private volatile double _deathBase = 0.3; // the cold death rate per hour the factor is a multiple of
 	private volatile int _rotationWindow = -1; // index of the fixed rotation window (-1 = nearest the fight's length)
 	private volatile boolean _shotsFromHits; // shots a kill uses from its hits (fight time over the attack interval, times the weapon's shots per attack) instead of a flat count
