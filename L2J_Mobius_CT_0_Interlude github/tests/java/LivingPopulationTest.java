@@ -825,6 +825,10 @@ public class LivingPopulationTest
 				seen.add(String.valueOf(Math.round(rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, v).killsPerMinute() * 1000)));
 			}
 			check("party: the damage dealer varies across the whole damage list", seen.size() > 2);
+			rot.setRangedWalk(0.5);
+			final double ranged = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3).killsPerMinute();
+			rot.setRangedWalk(1.0);
+			check("party: a ranged damage dealer (the healer's mage) pulls for the group, so the party walks less", ranged > rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3).killsPerMinute());
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.0));

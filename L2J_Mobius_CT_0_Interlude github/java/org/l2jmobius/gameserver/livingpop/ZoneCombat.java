@@ -540,7 +540,8 @@ public final class ZoneCombat
 			final double dps = (rotationDps(z, Role.TANK, 90, level, tankStats.attack(), tankSkills, 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
 			fight = z.hp() / Math.max(1e-6, dps * gearCut);
 		}
-		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
+		// A ranged damage dealer (archer or mage, the healer's mage included) pulls the mob for the group, so the party walks less between kills.
+		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) * ((dpsRole == Role.BOW || dpsRole == Role.MAGE) ? _rangedWalk : 1.0);
 		double kills = 60.0 / (overhead + fight);
 		// Deaths: the mobs hit the tank, and the healer behind it cuts the rate; when the tank dies the next in line takes over until the mob is dead.
 		final double mean = _threatMedian[Role.TANK.ordinal()];
@@ -1186,6 +1187,7 @@ public final class ZoneCombat
 	{
 		_rangedWalk = Math.max(0.05, Math.min(1.0, factor));
 		_killCache.clear();
+		_partyCache.clear();
 	}
 
 	/** @param on whether a solo bot hunts with the Newbie Helper's buffs (levels 8-25) and then a Hierophant's or Doom Cryer's buffs at its level */
