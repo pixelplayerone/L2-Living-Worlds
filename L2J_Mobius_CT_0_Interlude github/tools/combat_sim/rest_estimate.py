@@ -8,7 +8,7 @@ For a class line at a level (the sim's best gear and rotation), against a zone's
 Physical classes burn MP at a rate their regen cannot match if they cast their skills all the time, so they mix skills and auto-attacks:
 the share of time on skills is the most their MP regen sustains (they then never rest for MP, they just kill slower); a mage has no
 useful auto-attack, so it casts and sits when its MP is out. HP rest comes on top for everyone.
-A bot keeps hunting until HP falls to REST_HP (10%) or MP to REST_MP (5%), then sits until it is topped up. Over a long hunt the
+A bot sits to refill HP when the monsters have taken more than it can spare (the death model's threshold, not set here), and sits when MP falls to REST_MP (5%). Over a long hunt the
 pool size cancels out: each kill leaves a deficit (use - regen over the whole cycle) and sitting repays it at the sitting rate.
   sit per kill  = max(HP deficit / HP sit regen, MP deficit / MP sit regen)        (HP and MP refill at the same time)
   kills factor  = cycle / (cycle + sit)         (1.0 = never has to rest; 0.8 = a fifth of the time sitting)
@@ -18,7 +18,7 @@ for the threshold's burst risk. Usage: python3 rest_estimate.py
 import csv, json, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-REST_HP, REST_MP = 0.10, 0.05        # rest when HP or MP falls to this share of the pool
+REST_MP = 0.05                        # rest when MP falls to this share of the pool
 OVERHEAD = 2.5                        # seconds per kill that are not fighting (finding the next mob, looting); same as the cold model
 ENGAGED = 1.0                         # monsters hitting the bot at once, on average (1.0 = one at a time; 1.3 for some pulling)
 HIT = 0.85                            # share of monster hits that land
@@ -84,11 +84,10 @@ def estimate(role, zone_name, level):
     sit_hp = hp_def / max(1e-9, (st["hp_regen_3s"] / 3.0) * SIT)
     sit_mp = mp_def / max(1e-9, (st["mp_regen_3s"] / 3.0) * SIT)
     sit = max(sit_hp, sit_mp)
-    # how many kills before the threshold on a full pool (for the burst: the first rest comes after this many)
-    n_hp = (st["hp_max"] * (1 - REST_HP)) / hp_def if hp_def > 0 else float("inf")
+    # how many kills before the MP threshold on a full pool (the first MP rest comes after this many)
     n_mp = (st["mp_max"] * (1 - REST_MP)) / mp_def if mp_def > 0 else float("inf")
     return dict(role=role, zone=zone_name, level=level, sim_level=key, kill_s=tk, skill_share=skill_share, hp_loss=hp_loss, hp_pool=st["hp_max"], hp_def=hp_def, mp_loss=mp_loss, mp_pool=st["mp_max"], mp_def=mp_def,
-                kills_before_rest=min(n_hp, n_mp), limit="HP" if sit_hp >= sit_mp and sit_hp > 0 else ("MP" if sit_mp > 0 else "-"), sit_s=sit, factor=cycle / (cycle + sit),
+                kills_before_rest=n_mp, limit="HP" if sit_hp >= sit_mp and sit_hp > 0 else ("MP" if sit_mp > 0 else "-"), sit_s=sit, factor=cycle / (cycle + sit),
                 cycle=cycle, hp_sit_regen=(st["hp_regen_3s"] / 3.0) * SIT, sit_mp=sit_mp, mp_sit_regen=(st["mp_regen_3s"] / 3.0) * SIT)
 
 
@@ -98,7 +97,7 @@ if __name__ == "__main__":
     for lo in (20, 50, 60):
         z = min(extra, key=lambda r: abs(int(r["min_level"]) - lo))
         picks.insert(1 if lo == 20 else 2 if lo == 50 else 3, (z["zone"], (int(z["min_level"]) + int(z["max_level"])) // 2))
-    rows, md = [], ["| zone | level | role | kill s | skills share | HP lost / kill | HP pool | MP used / kill | MP pool | kills before 1st rest | limit | sit s / kill | kills factor |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    rows, md = [], ["| zone | level | role | kill s | skills share | HP lost / kill | HP pool | MP used / kill | MP pool | kills before 1st MP rest | limit | sit s / kill | kills factor |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for zone, level in picks:
         for role in ROLES:
             e = estimate(role, zone, level)
