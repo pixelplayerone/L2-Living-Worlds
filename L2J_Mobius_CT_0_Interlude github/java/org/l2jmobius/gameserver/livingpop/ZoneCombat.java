@@ -122,9 +122,13 @@ public final class ZoneCombat
 	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotSelf = new HashMap<>(); // line -> level -> {dps ratio over 5 .. 120 s with the self buffs, P.Def mul, M.Def mul}
 	private final Map<String, java.util.TreeMap<Integer, int[]>> _rotSelfIds = new HashMap<>(); // line -> level -> the self buff skill ids those ratios assume
+	private final Map<Role, double[][]> _newbie = new java.util.EnumMap<>(Role.class); // Newbie Helper buffs: role -> {damage, pDef, mDef} by level (8-25)
+	private volatile boolean _startingBuffs;
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _serv = new HashMap<>(); // summoner line -> level -> {servitor dps, HP, P.Def}
 	private static final int[] ROTATION_WINDOWS = { 5, 15, 30, 45, 60, 90, 120 };
 	private static final double SIM_PDEF = 400.0;
+	private static final int NEWBIE_FROM_LEVEL = 8; // the Newbie Helper's support magic (SupportMagic.java)
+	private static final int NEWBIE_TO_LEVEL = 25;
 	private static final double MOB_HITS_PER_SECOND = 0.5; // a monster's attacks on its target
 	private static final double SERVITOR_RESUMMON_SECONDS = 20.0;
 	private static final double SERVITOR_MAX_DEAD_SHARE = 0.6;
@@ -174,6 +178,7 @@ public final class ZoneCombat
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotSelf = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, int[]>> rotSelfIds = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> serv = new HashMap<>();
+		final Map<Role, double[][]> newbie = new java.util.EnumMap<>(Role.class);
 		final Map<String, Map<Role, java.util.TreeMap<Integer, double[]>>> rest = new HashMap<>();
 		final Map<String, Map<Role, double[][]>> partyBuffs = new HashMap<>();
 		try (BufferedReader in = new BufferedReader(reader))
@@ -230,6 +235,17 @@ public final class ZoneCombat
 						final String idText = (f.length > 3 + values.length) ? f[3 + values.length] : "-";
 						rotSelfIds.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, idText.equals("-") ? new int[0] : java.util.Arrays.stream(idText.split(",")).mapToInt(Integer::parseInt).toArray());
 					}
+					else if (f[0].equals("NBUFF") && (f.length >= 6))
+					{
+						final int level = Integer.parseInt(f[2]);
+						if ((level >= 0) && (level <= MAX_BUFF_LEVEL))
+						{
+							final double[][] table = newbie.computeIfAbsent(Role.valueOf(f[1].toUpperCase(java.util.Locale.ROOT)), r -> new double[3][MAX_BUFF_LEVEL + 1]);
+							table[0][level] = Double.parseDouble(f[3]);
+							table[1][level] = Double.parseDouble(f[4]);
+							table[2][level] = Double.parseDouble(f[5]);
+						}
+					}
 					else if (f[0].equals("SERV") && (f.length >= 6))
 					{
 						serv.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), new double[] { Double.parseDouble(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]) });
@@ -273,6 +289,7 @@ public final class ZoneCombat
 		model._rotSelf.putAll(rotSelf);
 		model._rotSelfIds.putAll(rotSelfIds);
 		model._serv.putAll(serv);
+		model._newbie.putAll(newbie);
 		model._rest.putAll(rest);
 		model._partyBuffs.putAll(partyBuffs);
 		return model;
@@ -1065,14 +1082,42 @@ public final class ZoneCombat
 	/** @return the blended buff multiplier (kind 0 damage, 1 P.Def, 2 M.Def) for a role at a level: 1 with no share or no data */
 	private double buff(Role role, int kind, int level)
 	{
+		final double starting = _startingBuffs ? startingBuff(role, kind, level) : 1.0;
 		final double share = _buffShare[role.ordinal()];
 		final double[][] table = _buffs.get(role);
 		if ((share <= 0.0) || (table == null))
 		{
-			return 1.0;
+			return starting;
 		}
 		final double full = table[kind][Math.max(0, Math.min(MAX_BUFF_LEVEL, level))];
-		return (full <= 0.0) ? 1.0 : (1.0 + (share * (full - 1.0)));
+		return Math.max(starting, (full <= 0.0) ? 1.0 : (1.0 + (share * (full - 1.0))));
+	}
+
+	/**
+	 * The buffs a solo bot sets out with: the Newbie Helper's from level 8 to 25, then a Hierophant's or a Doom Cryer's at the bot's level (the average of the two,
+	 * since which one buffed it is not tracked). Nothing below level 8.
+	 */
+	private double startingBuff(Role role, int kind, int level)
+	{
+		if (level < NEWBIE_FROM_LEVEL)
+		{
+			return 1.0;
+		}
+		if (level <= NEWBIE_TO_LEVEL)
+		{
+			final double[][] table = _newbie.get(role);
+			final double v = (table == null) ? 0.0 : table[kind][Math.min(MAX_BUFF_LEVEL, level)];
+			return (v <= 0.0) ? 1.0 : v;
+		}
+		return (partyBuff("hierophant", role, kind, level) + partyBuff("doom_cryer", role, kind, level)) / 2.0;
+	}
+
+	/** @param on whether a solo bot hunts with the Newbie Helper's buffs (levels 8-25) and then a Hierophant's or Doom Cryer's buffs at its level */
+	public void setStartingBuffs(boolean on)
+	{
+		_startingBuffs = on;
+		_killCache.clear();
+		_deathCache.clear();
 	}
 
 	private double curve(String name, int grade)

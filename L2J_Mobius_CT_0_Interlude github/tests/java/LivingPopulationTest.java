@@ -785,6 +785,17 @@ public class LivingPopulationTest
 			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
 			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
 			check("party: the party is cheaper to die in than going alone", tankParty.deathFactor() < rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)));
+			final ZoneCombat starting = ZoneCombat.parse(new java.io.StringReader(rotData + "NBUFF\tMELEE\t16\t1.15\t1.15\t1.0\nPBUFF\thierophant\tmelee\t30\t1.4\t1.1\t1.0\nPBUFF\tdoom_cryer\tmelee\t30\t1.2\t1.1\t1.0\n"), ZoneCombat.Params.defaults());
+			starting.setRotationTtk(true);
+			final double unbuffedL16 = starting.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0);
+			final double unbuffedL30 = starting.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0);
+			final double unbuffedL7 = starting.killsPerMinute("Rot", 88, 7, fit, 1.0, 1.0);
+			starting.setStartingBuffs(true);
+			check("starting buffs: the Newbie Helper's Haste at level 16 kills faster", starting.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0) > unbuffedL16);
+			check("starting buffs: below level 8 nothing", Math.abs(starting.killsPerMinute("Rot", 88, 7, fit, 1.0, 1.0) - unbuffedL7) < 1e-9);
+			check("starting buffs: from 26 the average of a Hierophant and a Doom Cryer (x1.3 here)", starting.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0) > unbuffedL30);
+			starting.setStartingBuffs(false);
+			check("starting buffs: off returns to the base rate", Math.abs(starting.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0) - unbuffedL30) < 1e-9);
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.0));

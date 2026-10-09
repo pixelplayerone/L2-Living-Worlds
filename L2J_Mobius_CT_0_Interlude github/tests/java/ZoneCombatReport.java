@@ -32,6 +32,7 @@ public class ZoneCombatReport
 		model.setRotationTtk(true);
 		model.setRest(true);
 		model.setEvasion(true);
+		model.setStartingBuffs(true);
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
 		levelAverages(model, risk, args[1], args[2]);
 		System.out.println();
