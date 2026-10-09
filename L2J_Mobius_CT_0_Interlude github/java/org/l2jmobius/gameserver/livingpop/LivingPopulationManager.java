@@ -101,6 +101,8 @@ public class LivingPopulationManager
 	private volatile ZoneCatalog _catalog = ZoneCatalog.empty();
 	private volatile ZoneCombat _combat = ZoneCombat.off(); // zone-based kill and death rates, or off for the flat ones
 	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10);
+	private volatile boolean _combatRates = true; // kill and death rates from the zone model
+	private volatile boolean _expGap = true; // no hunting experience when outleveled for the zone, like the server
 	private volatile String _combatFile = "modules/living-population/data/zone_combat.tsv";
 	private volatile long[] _kitPrices; // gear kit price by grade, from the item data (see kitPrices)
 	private final Map<String, DropYield.Yield> _zoneYields = new ConcurrentHashMap<>(); // zone|level|spoiler|gear -> per kill
@@ -137,9 +139,12 @@ public class LivingPopulationManager
 	 * Sets the zone combat model's tuning and data file. Call before {@link #start(LivingPopulationConfig, TravelConfig)}.
 	 * @param params the tuning ({@code enabled} false keeps the flat kill and death rates)
 	 * @param dataFile the generated zone_combat.tsv
+	 * @param expLevelGap whether hunting gives no experience when the bot is {@code MonsterExpMaxLevelDifference} or more levels away from the zone's monsters (uses the same data file)
 	 */
-	public void setZoneCombat(ZoneCombat.Params params, String dataFile)
+	public void setZoneCombat(ZoneCombat.Params params, String dataFile, boolean expLevelGap)
 	{
+		_expGap = expLevelGap;
+		_combatRates = (params != null) && params.enabled();
 		_combatParams = (params == null) ? _combatParams : params;
 		_combatFile = (dataFile == null) ? _combatFile : dataFile;
 	}
@@ -197,7 +202,7 @@ public class LivingPopulationManager
 
 		// Zone combat: kill and death rates from each bot's stats against its zone's monsters. Needs the zone data file.
 		_combat = ZoneCombat.off();
-		if (_combatParams.enabled())
+		if (_combatRates || _expGap)
 		{
 			try (Reader reader = Files.newBufferedReader(Path.of(_combatFile), StandardCharsets.UTF_8))
 			{
@@ -209,7 +214,7 @@ public class LivingPopulationManager
 			}
 			catch (Exception e)
 			{
-				LOGGER.log(Level.WARNING, "LivingPopulation: could not read " + _combatFile + ": " + e.getMessage() + "; cold bots keep the flat kill and death rates.", e);
+				LOGGER.log(Level.WARNING, "LivingPopulation: could not read " + _combatFile + ": " + e.getMessage() + "; cold bots keep the flat kill and death rates and the experience level gap is not applied.", e);
 			}
 		}
 
@@ -508,7 +513,9 @@ public class LivingPopulationManager
 		final int targetLevel = !_config.directorEnabled() ? 0 : (_config.levelGoal() > 0) ? Math.min(_config.levelGoal(), maxLevel) : PopulationDirector.targetLevel(humanPlayerLevels());
 		_targetLevel = targetLevel;
 		final PopulationDirector.Params directorParams = _config.directorParams();
-		final ZoneCombat combat = _combat;
+		final ZoneCombat combat = _combatRates ? _combat : ZoneCombat.off(); // rates
+		final ZoneCombat gapData = _expGap ? _combat : ZoneCombat.off(); // zone monster levels for the experience gap
+		final int maxLevelGap = RatesConfig.MONSTER_EXP_MAX_LEVEL_DIFFERENCE;
 		final double flatKillsPerMinute = Math.max(0.0, _config.killsPerMinute());
 		final double expPerKillUnitPerRate = Math.max(0.0, _config.expPerMobLevel()) * rate; // times a kill rate: experience per mob level per minute
 
@@ -560,6 +567,11 @@ public class LivingPopulationManager
 			// This bot's own kill rate: its stats against the average monster of the zone it hunts (the flat rate when the model is off).
 			final IntToLongFunction expPerMinuteForLevel = level ->
 			{
+				// Like the server, a kill pays no experience when the bot is too many levels away from the zone's monsters.
+				if (ZoneCombat.outleveled(level, gapData.mobLevel(bot.getZone()), maxLevelGap))
+				{
+					return 0L;
+				}
 				final double base = Math.max(0.0, level * expPerKillUnitPerRate * killsPerMinuteOf(combat, bot, level, flatKillsPerMinute));
 				return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
 			};

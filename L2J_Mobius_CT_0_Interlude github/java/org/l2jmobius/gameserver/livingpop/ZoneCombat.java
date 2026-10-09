@@ -224,6 +224,34 @@ public final class ZoneCombat
 		return _params.gearTierLevelStep();
 	}
 
+	/**
+	 * @param zone a zone name
+	 * @return the average level of the monsters there, or -1 when the zone is not in the data
+	 */
+	public double mobLevel(String zone)
+	{
+		final Integer zi = (zone == null) ? null : _zoneIndex.get(zone);
+		return (zi == null) ? -1.0 : _zones.get(zi).mobLevel();
+	}
+
+	/**
+	 * The server's own rule for experience from a kill (Attackable.calculateExpAndSp): none when the killer and the monster
+	 * are {@code maxDifference} or more levels apart, either way (Rates.ini MonsterExpMaxLevelDifference).
+	 * @param level the bot's level
+	 * @param mobLevel the average level of the monsters in its zone (0 or less = unknown)
+	 * @param maxDifference the server's limit (0 or less = no limit)
+	 * @return whether hunting there pays no experience
+	 */
+	public static boolean outleveled(int level, double mobLevel, int maxDifference)
+	{
+		if ((maxDifference <= 0) || (mobLevel <= 0))
+		{
+			return false;
+		}
+		final double gap = level - mobLevel;
+		return (gap >= maxDifference) || (gap <= -maxDifference);
+	}
+
 	/** @return whether the model is active (on and with data) */
 	public boolean enabled()
 	{

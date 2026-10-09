@@ -715,6 +715,11 @@ public class LivingPopulationTest
 		final double behindFlat = ColdRisk.danger(risk, 40, 37, 43, 20, 2, 4, 2).deathsPerHour();
 		final double behindZoned = ColdRisk.danger(risk, 40, 37, 43, 20, 2, 4, 2, 1.0).deathsPerHour();
 		check("zone combat: zone factor replaces the gear-behind step", (behindFlat > flat) && (Math.abs(behindZoned - 0.3) < 1e-9));
+		check("zone combat: mob level is read from the data", (Math.abs(model.mobLevel("Mid") - 42.0) < 1e-9) && (model.mobLevel("Nowhere") < 0));
+		check("exp gap: a bot 11+ levels over the zone earns nothing", ZoneCombat.outleveled(25, 4.0, 11) && ZoneCombat.outleveled(15, 4.0, 11));
+		check("exp gap: inside the limit earns", !ZoneCombat.outleveled(14, 4.0, 11) && !ZoneCombat.outleveled(42, 42.0, 11));
+		check("exp gap: far below the zone earns nothing too", ZoneCombat.outleveled(20, 42.0, 11) && !ZoneCombat.outleveled(35, 42.0, 11));
+		check("exp gap: unknown zone or no limit never blocks", !ZoneCombat.outleveled(80, -1.0, 11) && !ZoneCombat.outleveled(80, 4.0, 0));
 		check("zone combat: economy params keep everything but the kill rate", econ().withKillsPerMinute(7.0).killsPerMinute() == 7.0 && econ().withKillsPerMinute(7.0).adenaPerMobLevel() == 5.0);
 	}
 

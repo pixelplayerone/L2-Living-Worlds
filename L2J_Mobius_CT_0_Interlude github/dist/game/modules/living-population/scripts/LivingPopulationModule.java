@@ -136,7 +136,8 @@ public class LivingPopulationModule implements GameModule
 			Math.max(0.01, context.config().getDouble("MinDeathFactor", 0.25)), //
 			Math.max(0.01, context.config().getDouble("MaxDeathFactor", 4.0)), //
 			config.gearTierLevelStep()), //
-			context.config().getString("ZoneCombatFile", "modules/living-population/data/zone_combat.tsv"));
+			context.config().getString("ZoneCombatFile", "modules/living-population/data/zone_combat.tsv"), //
+			context.config().getBoolean("ExpLevelGap", true));
 		LivingPopulationManager.getInstance().start(config, travel);
 		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
 		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());

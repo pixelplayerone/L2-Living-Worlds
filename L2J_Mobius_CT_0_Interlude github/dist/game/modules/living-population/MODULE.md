@@ -146,6 +146,7 @@ keeps it.
 | `ColdDeathsPerHour` / `DeathRecoverSeconds` | How often a cold bot dies in the middle of a fitting zone (riskier at the bottom, without potions, with old gear, as a caster), and how long it recovers in town. |
 | `ZoneCombat` / `ZoneCombatFile` | Zone combat: each cold bot's kills per minute and deaths per hour come from its gear grade and learned skills against the average monster of the zone it hunts in (`data/zone_combat.tsv`, built from the datapack by `tools/combat_sim/build_zone_combat.py`), instead of one flat rate. Calibrated so a well-geared bot in the median zone gets `ColdKillsPerMinute` and `ColdDeathsPerHour`. `False` (or a missing file) keeps the flat rates. |
 | `ColdFightShare` / `SkillDamageFloor` | How much of a kill cycle is actual fighting (the rest, finding mobs and looting, does not depend on gear), and the damage a bot with none of its level's skills does (1.0 with all). |
+| `ExpLevelGap` | Like the server (`MonsterExpMaxLevelDifference` in Rates.ini), a cold bot earns no experience or SP while hunting in a zone whose average monster is that many levels or more away from it. |
 | `MinKillsPerMinute` / `MaxKillsPerMinute` / `MinDeathFactor` / `MaxDeathFactor` | Limits on the model's kill rate and on its death rate as a multiple of `ColdDeathsPerHour`. |
 | `RestEveryMinutes` / `RestSeconds` | Cold bots sit down to rest this long after this much hunting. |
 | `AvoidZoneMinutes` | After two deaths in one zone within this time, the bot avoids it this long and picks zones two levels lower. |
