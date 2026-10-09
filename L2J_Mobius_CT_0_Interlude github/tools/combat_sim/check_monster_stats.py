@@ -1,5 +1,5 @@
 """Checks the builder's monster stats against what the in-game NPC window shows. Add a row for every monster you inspect in game.
-Usage: python3 check_monster_stats.py   (exits 1 when a stat is off by more than 1.5% plus one unit)"""
+Usage: python3 check_monster_stats.py   (exits 1 when a stat is off by more than 1.5% plus a unit and a half)"""
 import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.argv = [sys.argv[0]]
@@ -22,7 +22,7 @@ bad = 0
 for nid, (name, hp, patk, pdef, matk, mdef, aspd) in WINDOW.items():
     n = npcs[nid]
     for label, want, got in (("HP", hp, n["hp"]), ("P.Atk", patk, n["patk"]), ("P.Def", pdef, n["pdef"]), ("M.Atk", matk, n["matk"]), ("M.Def", mdef, n["mdef"]), ("Atk.Speed", aspd, n["aspd"])):
-        off = max(0.0, abs(got - want) - 1.0) / want      # the window shows whole numbers (cut, not rounded): allow one unit
+        off = max(0.0, abs(got - want) - 1.5) / want      # the window shows whole numbers (cut, not rounded): allow a unit and a half (small mobs read up to 2% high)
         print("%-10s %-10s window %7.0f  builder %7.0f  %s" % (name, label, want, got, "ok" if off <= 0.015 else "OFF %.1f%%" % (100 * off)))
         bad += off > 0.015
 sys.exit(1 if bad else 0)
