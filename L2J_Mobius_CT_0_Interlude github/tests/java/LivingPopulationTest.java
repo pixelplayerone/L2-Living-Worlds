@@ -829,6 +829,24 @@ public class LivingPopulationTest
 			final double ranged = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3).killsPerMinute();
 			rot.setRangedWalk(1.0);
 			check("party: a ranged damage dealer (the healer's mage) pulls for the group, so the party walks less", ranged > rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3).killsPerMinute());
+			final ZoneCombat noMp = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "REST\tRot\tmelee\t40\t6.5\t40\t10\t0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			final ZoneCombat withMp = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "REST\tRot\tmelee\t40\t6.5\t40\t10\t0\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			noMp.setRest(true);
+			withMp.setRest(true);
+			final double spoilFree = noMp.killsPerMinute("Rot", 117, 40, fit, 1.0, 1.0);
+			check("spoil mana: a spoiler bot sits to refill the mana Spoil takes on every kill", withMp.killsPerMinute("Rot", 117, 40, fit, 1.0, 1.0) < spoilFree);
+			check("spoil mana: other classes pay nothing", Math.abs(withMp.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - noMp.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0)) < 1e-9);
+			check("spoil mana: grows with the Spoil level", (ZoneCombat.spoilMana(9) == 0) && (ZoneCombat.spoilMana(40) == 31) && (ZoneCombat.spoilMana(80) == 67));
+			boolean anySpoil = false;
+			boolean anyClean = false;
+			for (int v = 0; v < 64; v++)
+			{
+				final boolean spoils = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, v).spoils();
+				anySpoil |= spoils;
+				anyClean |= !spoils;
+			}
+			check("party spoiling: a Fortune Seeker among the random damage dealers makes the party spoil", anySpoil && anyClean);
+			check("party spoiling: a spoiler bot's party spoils, and its spoil mana is its own cost", rot.party("Rot", 117, 40, fit, 1.0, 1.0, false, 3).spoils());
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.0));

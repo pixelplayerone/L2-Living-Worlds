@@ -273,7 +273,7 @@ public final class ZoneCombat
 					}
 					else if (f[0].equals("REST") && (f.length >= 8))
 					{
-						rest.computeIfAbsent(f[1], k -> new java.util.EnumMap<>(Role.class)).computeIfAbsent(Role.valueOf(f[2].toUpperCase(java.util.Locale.ROOT)), k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[3]), new double[] { Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]) });
+						rest.computeIfAbsent(f[1], k -> new java.util.EnumMap<>(Role.class)).computeIfAbsent(Role.valueOf(f[2].toUpperCase(java.util.Locale.ROOT)), k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[3]), new double[] { Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]), (f.length >= 9) ? Double.parseDouble(f[8]) : 0.0 });
 					}
 					else if (f[0].equals("ROTCLASS") && (f.length >= 3))
 					{
@@ -349,8 +349,32 @@ public final class ZoneCombat
 		return Math.max(0.2, Math.min(0.98, (80.0 + (2.0 * (monsterAccuracy - evasion))) / 100.0));
 	}
 
+	/** Spoil (skill 254) mana by skill level; a spoiler learns the levels at these character levels. */
+	private static final int[] SPOIL_LEVEL = { 10, 20, 28, 36, 43, 49, 55, 60, 64, 68, 72 };
+	private static final int[] SPOIL_MP = { 12, 19, 25, 31, 38, 44, 50, 55, 59, 63, 67 };
+
+	/** @return the mana one Spoil cast takes at a character level (the best level learned by then; 0 below 10) */
+	public static int spoilMana(int level)
+	{
+		int mp = 0;
+		for (int i = 0; i < SPOIL_LEVEL.length; i++)
+		{
+			if (level >= SPOIL_LEVEL[i])
+			{
+				mp = SPOIL_MP[i];
+			}
+		}
+		return mp;
+	}
+
+	/** @return the seconds of sitting one Spoil cast adds per kill (0 for a non-spoiler or without MP regen data) */
+	private static double spoilSitSeconds(double[] rest, int level, boolean spoiler)
+	{
+		return (!spoiler || (rest.length < 5) || (rest[4] <= 0.0)) ? 0.0 : (spoilMana(level) / rest[4]);
+	}
+
 	/** Kills factor from sitting: the cycle over the cycle plus the sit; potions heal part of the HP deficit so it sits less. 1 without rest data. */
-	private double restFactor(String zone, Role role, int level, double killsPerMinute, double potionsPerHour)
+	private double restFactor(String zone, Role role, int level, double killsPerMinute, double potionsPerHour, boolean spoiler)
 	{
 		final Map<Role, java.util.TreeMap<Integer, double[]>> byRole = _rest.get(zone);
 		final java.util.TreeMap<Integer, double[]> table = (byRole == null) ? null : byRole.get(role);
@@ -377,7 +401,8 @@ public final class ZoneCombat
 			sitRegen *= extras[1];
 		}
 		final double sitHp = Math.max(0.0, r[1] - healPerKill) / Math.max(1e-9, sitRegen);
-		final double sit = Math.max(sitHp, r[3]);
+		// A spoiler bot casts Spoil on every monster: that mana is refilled by sitting too (a spoiler in the party that is not the bot costs it nothing).
+		final double sit = Math.max(sitHp, r[3] + spoilSitSeconds(r, level, spoiler));
 		return r[0] / (r[0] + sit);
 	}
 
@@ -409,8 +434,9 @@ public final class ZoneCombat
 	 * @param slot 0 tank, 1 damage dealer, 2 buffer, 3 healer
 	 * @param buffer the buffer line giving the buffs
 	 * @param lootShare the share of each drop (adena, items) the bot gets: one over the party size
+	 * @param spoils whether the party spoils its kills (the bot or the damage dealer is a Scavenger, Bounty Hunter or Fortune Seeker): the spoil drops are shared too
 	 */
-	public record PartyOutcome(double killsPerMinute, double deathFactor, double expShare, int slot, String buffer, double lootShare)
+	public record PartyOutcome(double killsPerMinute, double deathFactor, double expShare, int slot, String buffer, double lootShare, boolean spoils)
 	{
 	}
 
@@ -563,12 +589,14 @@ public final class ZoneCombat
 				final double sitHp = hp / Math.max(1e-9, tankRow[2]);
 				final double sitMp = mageRow[3] * (fight / Math.max(1e-6, mageRow[0] - 2.5)) * p.healerMpFactor();
 				final double cycle = fight + 2.5;
-				factor = cycle / (cycle + Math.max(sitHp, sitMp));
+				final double[] ownRow = restRow(z.name(), role, level);
+				final double sitSpoil = LivingSupplies.isSpoiler(classId) && (ownRow != null) ? spoilSitSeconds(ownRow, level, true) : 0.0; // only when the bot itself spoils
+				factor = cycle / (cycle + Math.max(sitHp, Math.max(sitMp, sitSpoil)));
 			}
 		}
 		final double resetShare = Math.min(0.9, (events * p.baseDeathsPerHour() * p.resetSeconds()) / 3600.0);
 		kills = Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare)));
-		return new PartyOutcome(kills, deathFactor, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE);
+		return new PartyOutcome(kills, deathFactor, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE, LivingSupplies.isSpoiler(classId) || LivingSupplies.isSpoiler(dpsClass));
 	}
 
 	private double[] restRow(String zone, Role role, int level)
@@ -949,7 +977,7 @@ public final class ZoneCombat
 		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
 		final boolean rotation = _rotationTtk && hasRotation(classId);
 		final long selfIdx = (stats.selfBuffs() < 0) ? 11L : Math.round(Math.min(1.0, stats.selfBuffs()) * 10.0);
-		final long key = ((((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 22L + (skills * 22L) + (shots * 2L) + ((blessed && (role == Role.MAGE)) ? 1L : 0L)) * 128L + (rotation ? (classId & 127) + 0L : 0L)) * 256L + Math.min(255L, Math.round(potionsPerHour * 10.0))) * 12L + selfIdx;
+		final long key = (((((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 22L + (skills * 22L) + (shots * 2L) + ((blessed && (role == Role.MAGE)) ? 1L : 0L)) * 128L + (rotation ? (classId & 127) + 0L : 0L)) * 256L + Math.min(255L, Math.round(potionsPerHour * 10.0))) * 12L + selfIdx) * 2L + (LivingSupplies.isSpoiler(classId) ? 1L : 0L);
 		return _killCache.computeIfAbsent(key, k ->
 		{
 			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0, stats.selfBuffs()) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
@@ -957,7 +985,7 @@ public final class ZoneCombat
 			double kills = 60.0 / (overhead + fightSeconds);
 			if (_restOn)
 			{
-				kills *= restFactor(_zones.get(zi).name(), role, level, kills, potionsPerHour);
+				kills *= restFactor(_zones.get(zi).name(), role, level, kills, potionsPerHour, LivingSupplies.isSpoiler(classId));
 			}
 			final double[] pet = rotation ? servitor(classId, level) : null;
 			if (pet != null)

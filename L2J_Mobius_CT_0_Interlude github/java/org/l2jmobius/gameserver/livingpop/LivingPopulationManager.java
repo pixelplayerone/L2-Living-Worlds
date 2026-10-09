@@ -733,7 +733,7 @@ public class LivingPopulationManager
 			{
 				final ColdEconomy.State before = new ColdEconomy.State(bot.getAdena(), bot.getSoulshots(), bot.getPotions(), bot.getGearTier(), bot.isRewardClaimed(), bot.getGoal());
 				// A kill pays from the zone monsters' real drop lists when the catalog has them: adena now, loot sold in town.
-				final DropYield.Yield yield = _travelConfig.dropIncome() ? zoneYield(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId())) : null;
+				final DropYield.Yield yield = _travelConfig.dropIncome() ? zoneYield(bot.getZone(), progress.level(), spoils) : null;
 				// A mystic fires spiritshots, at its own rate per kill. A bot's own kill rate (zone combat) replaces the flat one.
 				final ColdEconomy.Params shotParams = LivingSupplies.isMystic(bot.getClassId()) ? economyParams.withSoulshotsPerKill(_travelConfig.spiritshotsPerKill()) : economyParams;
 				final ColdEconomy.Params botEconomy = combat.enabled() ? shotParams.withKillsPerMinute(botKillsPerMinute) : shotParams;
@@ -749,7 +749,7 @@ public class LivingPopulationManager
 				// Gear kept per slot: the weapons and armor its kills dropped are rolled for real; it wears the better ones.
 				if ((_gear != null) && _travelConfig.dropIncome() && (huntedMs > 0))
 				{
-					final Map<Integer, Double> chances = zoneGear(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId()));
+					final Map<Integer, Double> chances = zoneGear(bot.getZone(), progress.level(), spoils);
 					if (!chances.isEmpty())
 					{
 						final double kills = botKillsPerMinute * lootScale * (huntedMs / 60_000.0);

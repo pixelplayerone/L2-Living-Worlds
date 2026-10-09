@@ -97,3 +97,10 @@ Healers cannot level alone (their rotation is weak), and at the highest levels a
 - Early shared classes take the first line (alphabetical) that grows from them. Self buffs are scaled by the share of skills bought, not simulated per bot.
 - **Late-level deaths (left open on purpose; needs party behavior for cold bots).** A solo bot in the highest zones (about level 76-80) dies roughly 2 times an hour in this model, and each death costs 2.5% of a level. At level 76 that is about 1.9 x 2.5% x 220M = 10M experience an hour against about 5.7M gained (`ZoneExp`), so a solo cold bot there would not level. This is not tuned away: it is the gap that cold-sim party behavior (buffers, healers, shared fights, a full buffer party raises damage x2.4-3.6 and P.Def x1.5-1.8 at those levels; see `BuffedLeveling`) is meant to close. Until that exists, either treat late levels as unfinished, or lower `MaxDeathFactor` / `AggroPullRisk`, or set the `BuffShare*` settings above 0.
 - Zone averages hide spread (named or champion monsters); there is no experience reduction for hunting well below the bot's level.
+
+## Spoiling
+
+- Drops and spoil are per-zone expected values (spawn-weighted over the hunting area's monsters), not a random mob per kill; gear drops are rolled for real with the zone's per-item chances.
+- A party spoils when the bot is a spoiler (Scavenger, Bounty Hunter, Fortune Seeker) or the random damage dealer is a Fortune Seeker. The spoil drops are then split like the rest (a quarter to the bot).
+- Spoil mana: only a spoiler *bot* pays it. Each kill takes one Spoil cast (skill 254: 12 mana at level 10 up to 67 at 72), refilled by sitting with the class's MP sit regen (`REST` column 9). A spoiler in the simulated party costs the bot nothing.
+- Not modeled: Spoil/Sweeper cast time, spoil failure.
