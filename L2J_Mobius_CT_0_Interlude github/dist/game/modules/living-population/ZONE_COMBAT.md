@@ -48,9 +48,21 @@ A monster hits with `80% + 2 x (accuracy - evasion)`, clamped to 20-98% (the ser
 A cold death costs the server's own penalty: the percentage in `experienceLoss.xml` (10% at level 1, about 7.6% at 20, 5.1% at 40, 4% at 52-61, 2.5% at 76, 1% at 80) of the experience span of the bot's level, capped at 10% of it, and never below the start of its level. The table is read from the server's `ExperienceLossData` at the first tick (`ColdRisk.setExpLossTable`); without it a straight-line estimate (6.5% minus 0.07% per level) is used. The 20% chance of the temporary Death Penalty debuff and the server's loss-reduction stats are not modeled. Deaths come from the death rate above, so the net experience of a zone is its gain minus deaths per hour times this loss.
 
 ## Starting buffs (`StartingBuffs`)
-Solo bots hunt buffed. Levels 8-25 carry the Newbie Helper's support magic, as the server script (`SupportMagic.java`) gives it to characters that have not done their third class transfer: Shield for Beginners (P.Def x1.15, levels 11-23), Haste for Beginners (attack speed x1.15, fighters, 15-19), Acumen for Beginners (cast speed x1.3, mages, 13-21), Empower for Beginners (M.Atk x1.55, mages, 15-19). Wind Walk, Blessed Body and Soul, Vampiric Rage, Regeneration, Concentration and the Life Cubic do not change damage or defence here and are left out. From level 26 the bot is assumed to have been buffed by a Hierophant or a Doom Cryer at its level before it went out (the average of the two lines' multipliers, `PBUFF` rows), and nothing below level 8. Self buffs (above) are on top. These multipliers are not re-applied or stored per bot: they are computed from the bot's level each time, so a level-up changes them at once and nothing stale is kept.
+Solo bots hunt buffed, but never with the full buffer party (while this is on, `BuffedLeveling` is ignored).
+- **Levels 8-25: the Newbie Helper**, as the server script (`SupportMagic.java`) gives it to characters that have not done their third class transfer:
+  - Shield for Beginners: P.Def x1.15, levels 11-23.
+  - Haste for Beginners: attack speed x1.15, fighters, 15-19. Acumen: cast speed x1.3, mages, 13-21. Empower: M.Atk x1.55, mages, 15-19.
+  - Blessed Body (HP x1.35, fighters, 12-22) counts as effective HP in the death rate. Blessed Soul (MP x1.35, mages) changes nothing, because the pool size cancels in the rest model.
+  - Vampiric Rage (fighters, 13-21): 9% of the damage dealt (about the monster's HP) returns as HP, so the bot sits less. Regeneration (14-20): sitting regen x1.2.
+  - Wind Walk for Beginners (8-24): run speed +33 on a base of 120.
+  - Left out: Concentration (interrupts) and the Life Cubic.
+- **Level 26 and up: a Hierophant or a Doom Cryer** at the bot's level before it went out (the average of the two lines' multipliers, `PBUFF` rows): damage, P.Def, M.Def. Nothing below level 8.
+- **Speed.** Run-speed buffs shorten the 2.5 s of walking and targeting between monsters by the same factor: Wind Walk (x1.275) at 8-24, and the best run-speed self buff the class has learned (Dash +40, Sprint +20, Sonic Move +40; x1.17-1.33), in proportion to the share the bot has bought. The bigger of the two applies. Attack and cast speed are in the damage multipliers above.
+- **Servitors** carry the same buffs: their damage is added to the summoner's before the bot's buff multiplier is applied, and their P.Def and HP use the fighter set's defence buffs.
+- These multipliers are computed from the bot's level each time, not stored, so a level-up changes them at once and nothing stale is kept. Self buffs (above) are on top.
 
 ## Buffs (`BuffedLeveling`)
+The full buffer party for every bot; off by default and ignored while `StartingBuffs` is on.
 Per role, `BuffShareTank/Melee/Bow/Mage` (0 = unbuffed, 1 = the full buffer party): damage, P.Def and M.Def multipliers by level (`BUFF` rows, from the sim's buffer party: server caps, same-type buffs replace each other). The multiplier is blended by the share.
 
 ## Data and tooling (`tools/combat_sim`)

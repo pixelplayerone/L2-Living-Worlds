@@ -121,6 +121,7 @@ public final class ZoneCombat
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotations = new HashMap<>(); // line -> level -> {auto dps, dps over 5, 15, 30, 45, 60, 90, 120 s} against the sim's dummy
 	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotSelf = new HashMap<>(); // line -> level -> {dps ratio over 5 .. 120 s with the self buffs, P.Def mul, M.Def mul}
+	private final Map<String, java.util.TreeMap<Integer, Double>> _rotSelfRun = new HashMap<>(); // line -> level -> run speed multiplier from learned run-speed self buffs (Dash, Sprint, Sonic Move)
 	private final Map<String, java.util.TreeMap<Integer, int[]>> _rotSelfIds = new HashMap<>(); // line -> level -> the self buff skill ids those ratios assume
 	private final Map<Role, double[][]> _newbie = new java.util.EnumMap<>(Role.class); // Newbie Helper buffs: role -> {damage, pDef, mDef} by level (8-25)
 	private volatile boolean _startingBuffs;
@@ -177,6 +178,7 @@ public final class ZoneCombat
 		final Map<Integer, String> rotationLine = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotSelf = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, int[]>> rotSelfIds = new HashMap<>();
+		final Map<String, java.util.TreeMap<Integer, Double>> rotSelfRun = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> serv = new HashMap<>();
 		final Map<Role, double[][]> newbie = new java.util.EnumMap<>(Role.class);
 		final Map<String, Map<Role, java.util.TreeMap<Integer, double[]>>> rest = new HashMap<>();
@@ -234,21 +236,28 @@ public final class ZoneCombat
 						rotSelf.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, values);
 						final String idText = (f.length > 3 + values.length) ? f[3 + values.length] : "-";
 						rotSelfIds.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, idText.equals("-") ? new int[0] : java.util.Arrays.stream(idText.split(",")).mapToInt(Integer::parseInt).toArray());
+						if (f.length > 4 + values.length)
+						{
+							rotSelfRun.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(level, Double.parseDouble(f[4 + values.length]));
+						}
 					}
 					else if (f[0].equals("NBUFF") && (f.length >= 6))
 					{
 						final int level = Integer.parseInt(f[2]);
 						if ((level >= 0) && (level <= MAX_BUFF_LEVEL))
 						{
-							final double[][] table = newbie.computeIfAbsent(Role.valueOf(f[1].toUpperCase(java.util.Locale.ROOT)), r -> new double[3][MAX_BUFF_LEVEL + 1]);
+							final double[][] table = newbie.computeIfAbsent(Role.valueOf(f[1].toUpperCase(java.util.Locale.ROOT)), r -> new double[6][MAX_BUFF_LEVEL + 1]);
 							table[0][level] = Double.parseDouble(f[3]);
 							table[1][level] = Double.parseDouble(f[4]);
 							table[2][level] = Double.parseDouble(f[5]);
+							table[3][level] = (f.length >= 8) ? Double.parseDouble(f[6]) : 1.0; // sit regen multiplier (Regeneration)
+							table[4][level] = (f.length >= 8) ? Double.parseDouble(f[7]) : 0.0; // share of damage dealt that comes back as HP (Vampiric Rage)
+							table[5][level] = (f.length >= 9) ? Double.parseDouble(f[8]) : 1.0; // run speed multiplier (Wind Walk for Beginners)
 						}
 					}
 					else if (f[0].equals("SERV") && (f.length >= 6))
 					{
-						serv.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), new double[] { Double.parseDouble(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]) });
+						serv.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), (f.length >= 8) ? new double[] { Double.parseDouble(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]) } : new double[] { Double.parseDouble(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]) });
 					}
 					else if (f[0].equals("PBUFF") && (f.length >= 7))
 					{
@@ -288,6 +297,7 @@ public final class ZoneCombat
 		model._rotationLine.putAll(rotationLine);
 		model._rotSelf.putAll(rotSelf);
 		model._rotSelfIds.putAll(rotSelfIds);
+		model._rotSelfRun.putAll(rotSelfRun);
 		model._serv.putAll(serv);
 		model._newbie.putAll(newbie);
 		model._rest.putAll(rest);
@@ -349,8 +359,16 @@ public final class ZoneCombat
 		}
 		final java.util.Map.Entry<Integer, double[]> entry = (table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry();
 		final double[] r = entry.getValue(); // cycle, HP deficit per kill, HP sit regen per s, MP sit s
-		final double healPerKill = (potionsPerHour <= 0 || killsPerMinute <= 0) ? 0.0 : ((potionsPerHour * ((level < 20) ? POTION_HEAL_LESSER : POTION_HEAL)) / (killsPerMinute * 60.0));
-		final double sitHp = Math.max(0.0, r[1] - healPerKill) / Math.max(1e-9, r[2]);
+		double healPerKill = (potionsPerHour <= 0 || killsPerMinute <= 0) ? 0.0 : ((potionsPerHour * ((level < 20) ? POTION_HEAL_LESSER : POTION_HEAL)) / (killsPerMinute * 60.0));
+		double sitRegen = r[2];
+		if (_startingBuffs && (level >= NEWBIE_FROM_LEVEL) && (level <= NEWBIE_TO_LEVEL) && (_newbie.get(role) != null) && knows(zone))
+		{
+			// Newbie Helper fighters: Vampiric Rage returns a share of the damage dealt (about the monster's HP) and Regeneration speeds the sitting regen.
+			final double[][] nb = _newbie.get(role);
+			healPerKill += nb[4][level] * _zones.get(_zoneIndex.get(zone)).hp();
+			sitRegen *= (nb[3][level] <= 0.0) ? 1.0 : nb[3][level];
+		}
+		final double sitHp = Math.max(0.0, r[1] - healPerKill) / Math.max(1e-9, sitRegen);
 		final double sit = Math.max(sitHp, r[3]);
 		return r[0] / (r[0] + sit);
 	}
@@ -604,7 +622,9 @@ public final class ZoneCombat
 		final double[] pet = servitor(classId, level);
 		if (pet != null)
 		{
-			dps += pet[0] * (SIM_PDEF / Math.max(1.0, zone.pDef())) * Math.max(0.1, Math.max(0.0, Math.min(1.0, skillFraction)));
+			// The servitor's damage joins the summoner's, so the buffs applied to the total (the bot's own, or the party's) reach it too: it carries the same buffs.
+			final double buffed = pet[0];
+			dps += buffed * (SIM_PDEF / Math.max(1.0, zone.pDef())) * Math.max(0.1, Math.max(0.0, Math.min(1.0, skillFraction)));
 		}
 		return dps;
 	}
@@ -640,9 +660,10 @@ public final class ZoneCombat
 	 * exposed until it summons again.
 	 * @return {share of time without the servitor, the summoner's exposure to damage (0 to 1)}
 	 */
-	private double[] servitorShield(ZoneStats zone, double[] pet, double fightSeconds, double killsPerMinute)
+	private double[] servitorShield(ZoneStats zone, double[] pet, int level, double fightSeconds, double killsPerMinute)
 	{
-		final double damagePerFight = fightSeconds * MOB_HITS_PER_SECOND * 70.0 * zone.pAtk() / Math.max(1.0, pet[2]);
+		final double defence = pet[2] * buff(Role.MELEE, 1, level); // the servitor's P.Def and HP carry the bot's buffs (Shield, Blessed Body, the buffers')
+		final double damagePerFight = fightSeconds * MOB_HITS_PER_SECOND * 70.0 * zone.pAtk() / Math.max(1.0, defence);
 		final double servitorDeathsPerHour = killsPerMinute * 60.0 * damagePerFight / Math.max(1.0, pet[1]);
 		final double dead = Math.min(SERVITOR_MAX_DEAD_SHARE, servitorDeathsPerHour * SERVITOR_RESUMMON_SECONDS / 3600.0);
 		return new double[] { dead, Math.min(1.0, SERVITOR_BASE_EXPOSURE + dead) };
@@ -921,7 +942,7 @@ public final class ZoneCombat
 		return _killCache.computeIfAbsent(key, k ->
 		{
 			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0, stats.selfBuffs()) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
-			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
+			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, classId, level, stats.selfBuffs(), skills / 10.0); // the walk between monsters shrinks with the bot's speed
 			double kills = 60.0 / (overhead + fightSeconds);
 			if (_restOn)
 			{
@@ -930,7 +951,7 @@ public final class ZoneCombat
 			final double[] pet = rotation ? servitor(classId, level) : null;
 			if (pet != null)
 			{
-				kills *= 1.0 - servitorShield(_zones.get(zi), pet, fightSeconds, kills)[0]; // time spent summoning again
+				kills *= 1.0 - servitorShield(_zones.get(zi), pet, level, fightSeconds, kills)[0]; // time spent summoning again
 			}
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), kills));
 		});
@@ -992,7 +1013,7 @@ public final class ZoneCombat
 			{
 				// The servitor takes the hits first: the summoner is only exposed while it is down (plus a base share of attacks that still reach the master).
 				final double fight = rotationFightSeconds(z, role, classId, level, curve(role == Role.MAGE ? "matk_mage" : "patk_melee", LivingSupplies.gradeFor(level)), 1.0, 1.0);
-				gear *= servitorShield(z, pet, fight, _params.baseKillsPerMinute() * 0.6)[1];
+				gear *= servitorShield(z, pet, level, fight, _params.baseKillsPerMinute() * 0.6)[1];
 			}
 			return gear * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0));
 		});
@@ -1082,15 +1103,18 @@ public final class ZoneCombat
 	/** @return the blended buff multiplier (kind 0 damage, 1 P.Def, 2 M.Def) for a role at a level: 1 with no share or no data */
 	private double buff(Role role, int kind, int level)
 	{
-		final double starting = _startingBuffs ? startingBuff(role, kind, level) : 1.0;
+		if (_startingBuffs)
+		{
+			return startingBuff(role, kind, level); // a solo bot carries a Hierophant's or Doom Cryer's buffs, never the full buffer party's (BuffedLeveling is ignored)
+		}
 		final double share = _buffShare[role.ordinal()];
 		final double[][] table = _buffs.get(role);
 		if ((share <= 0.0) || (table == null))
 		{
-			return starting;
+			return 1.0;
 		}
 		final double full = table[kind][Math.max(0, Math.min(MAX_BUFF_LEVEL, level))];
-		return Math.max(starting, (full <= 0.0) ? 1.0 : (1.0 + (share * (full - 1.0))));
+		return (full <= 0.0) ? 1.0 : (1.0 + (share * (full - 1.0)));
 	}
 
 	/**
@@ -1110,6 +1134,27 @@ public final class ZoneCombat
 			return (v <= 0.0) ? 1.0 : v;
 		}
 		return (partyBuff("hierophant", role, kind, level) + partyBuff("doom_cryer", role, kind, level)) / 2.0;
+	}
+
+	/**
+	 * @return how much faster than a plain bot it runs between monsters: Wind Walk for Beginners at levels 8-24, or the best run-speed self buff the class has learned
+	 *         (Dash +40, Sprint +20, Sonic Move +40 on a base of 120, in proportion to the share it has bought), whichever is bigger; 1 without either
+	 */
+	private double runSpeed(Role role, int classId, int level, double selfShare, double skillFraction)
+	{
+		double speed = 1.0;
+		if (_startingBuffs && (level >= NEWBIE_FROM_LEVEL) && (level <= NEWBIE_TO_LEVEL) && (_newbie.get(role) != null))
+		{
+			speed = Math.max(speed, _newbie.get(role)[5][Math.min(MAX_BUFF_LEVEL, level)] <= 0.0 ? 1.0 : _newbie.get(role)[5][Math.min(MAX_BUFF_LEVEL, level)]);
+		}
+		final java.util.TreeMap<Integer, Double> table = _rotSelfRun.get(_rotationLine.get(classId));
+		final java.util.Map.Entry<Integer, Double> entry = (table == null) ? null : table.floorEntry(level);
+		if (entry != null)
+		{
+			final double share = (selfShare < 0) ? Math.max(0.0, Math.min(1.0, skillFraction)) : Math.min(1.0, selfShare);
+			speed = Math.max(speed, 1.0 + ((entry.getValue() - 1.0) * share));
+		}
+		return speed;
 	}
 
 	/** @param on whether a solo bot hunts with the Newbie Helper's buffs (levels 8-25) and then a Hierophant's or Doom Cryer's buffs at its level */
