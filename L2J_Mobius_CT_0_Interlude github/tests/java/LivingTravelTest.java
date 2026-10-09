@@ -95,6 +95,8 @@ public class LivingTravelTest
 		testGearDrops();
 		testGearShopSafety();
 		testGearTripBudget();
+		testDecisionGuardrails();
+		testGearGuardrails();
 		testIslands();
 		testRouteOverBridge();
 
@@ -113,7 +115,7 @@ public class LivingTravelTest
 	private static SupplyPlanner.Params supply()
 	{
 		// 10 potions, restock at a quarter (2); 30 minutes of shots at 12 kills x 6 shots; 2 scrolls; reserve max(500, 250/level, 10%).
-		return new SupplyPlanner.Params(10, 0.25, 30, 0.2, 2, 500L, 250L, 0.10, 12.0, 6.0, 50_000L, 10);
+		return new SupplyPlanner.Params(10, 0.25, 30, 0.2, 2, 500L, 250L, 0.10, 12.0, 6.0, 50_000L, 10, 200L);
 	}
 
 	private static SupplyPlanner.Prices prices()
@@ -191,6 +193,13 @@ public class LivingTravelTest
 		check("an unlocked tier is bought when affordable", rich.upgraded());
 		check("soulshots are topped up to the stock", rich.soulshots() == 2160L);
 		check("nothing needed buys nothing", !SupplyPlanner.shop(10, 500_000L, 2L, 10L, 5000L, 1, true, prices(), params).any());
+
+		// Soulshots come in a batch of at least 200 or not at all (7 adena each, 2500 reserve at level 10).
+		check("a nearly full bot does not top up a handful of soulshots", SupplyPlanner.shop(10, 500_000L, 2L, 10L, 2000L, 1, true, prices(), params).soulshots() == 0L);
+		check("a bot that can afford only 50 soulshots buys none", !SupplyPlanner.shop(10, 2850L, 2L, 10L, 0L, 1, true, prices(), params).any());
+		check("a bot that can afford 200 soulshots buys them", SupplyPlanner.shop(10, 3900L, 2L, 10L, 0L, 1, true, prices(), params).soulshots() == 200L);
+		final SupplyPlanner.Params anyAmount = new SupplyPlanner.Params(10, 0.25, 30, 0.2, 2, 500L, 250L, 0.10, 12.0, 6.0, 50_000L, 10, 0L);
+		check("no minimum buys any amount", SupplyPlanner.shop(10, 2850L, 2L, 10L, 0L, 1, true, prices(), anyAmount).soulshots() == 50L);
 	}
 
 	private static void testGoalPlanner()
@@ -214,7 +223,7 @@ public class LivingTravelTest
 
 		// Soulshots low (100 of 2,160): 5,600 adena at level 20 keeps 5,000, so only 85 shots: not worth a trip.
 		final GoalPlanner.Plan fewShots = GoalPlanner.plan(new GoalPlanner.View(20, 5_600L, 10L, 100L, 2L, 2, true, "Near Woods", 10, 20, null), prices(), params);
-		check("no trip for a handful of soulshots", (fewShots.chosen().goal() == GoalPlanner.Goal.HUNT) && GoalPlanner.describe(fewShots).contains("it could only buy 85"));
+		check("no trip for a handful of soulshots", (fewShots.chosen().goal() == GoalPlanner.Goal.HUNT) && GoalPlanner.describe(fewShots).contains("it cannot afford the smallest batch of 200"));
 		final GoalPlanner.Plan manyShots = GoalPlanner.plan(new GoalPlanner.View(20, 20_000L, 10L, 100L, 2L, 2, true, "Near Woods", 10, 20, null), prices(), params);
 		check("a trip for a proper batch of soulshots", (manyShots.chosen().goal() == GoalPlanner.Goal.TOWN) && "soulshots".equals(manyShots.chosen().key()));
 
@@ -361,15 +370,28 @@ public class LivingTravelTest
 		ColdLife.advance(poor, 1L, 1L, context, events);
 		check("with nothing better it can afford, it goes back to its old zone", ColdLife.TO_ZONE.equals(poor.getActivity()) && "Near Woods".equals(poor.getZone()));
 
+		// Too poor for any gatekeeper: it walks, however far, to the nearest zone that fits, instead of waiting in town.
+		final ColdBot broke = bot(21, "Far Hills", 600L, 10L, 2L, 0);
+		broke.setActivity(ColdLife.IN_TOWN);
+		broke.setTown("Alpha");
+		broke.setLevel(30);
+		broke.setGearTier(2);
+		broke.setLeg(TravelLeg.stay(new Point(0, 0, 0), 0L, 0L));
+		events.clear();
+		ColdLife.advance(broke, 1L, 1L, context, events);
+		check("too poor for a gatekeeper it walks to the nearest fitting zone", ColdLife.TO_ZONE.equals(broke.getActivity()) && "Beyond".equals(broke.getZone()) && (broke.getAdena() == 600L) && (broke.getLeg().to().x() == 121000));
+		check("the walk says why", events.stream().anyMatch(e -> e.text().contains("on foot, as it cannot afford a gatekeeper")));
+
+		// No zone fits its level at all: then it waits in town.
 		final ColdBot stuck = bot(21, "Far Hills", 600L, 10L, 2L, 0);
 		stuck.setActivity(ColdLife.IN_TOWN);
 		stuck.setTown("Alpha");
-		stuck.setLevel(30);
+		stuck.setLevel(31);
 		stuck.setGearTier(2);
 		stuck.setLeg(TravelLeg.stay(new Point(0, 0, 0), 0L, 0L));
 		events.clear();
 		ColdLife.advance(stuck, 1L, 1L, context, events);
-		check("stuck without fees waits in town", ColdLife.IN_TOWN.equals(stuck.getActivity()) && (stuck.getLeg().durationMs() == 300_000L));
+		check("with no fitting zone it waits in town", ColdLife.IN_TOWN.equals(stuck.getActivity()) && (stuck.getLeg().durationMs() == 300_000L));
 		check("the wait is a keyed decision", events.stream().anyMatch(e -> "stuck-Alpha".equals(e.key())));
 	}
 
@@ -404,7 +426,7 @@ public class LivingTravelTest
 		elf.setLevel(1);
 		check("no starter zone for a race without one", !ColdLife.adoptStartingZone(elf, catalog()) && (elf.getZone() == null));
 		check("hunting counts only while hunting", ColdLife.isHunting(null) && ColdLife.isHunting(ColdLife.HUNTING) && !ColdLife.isHunting(ColdLife.RESTING) && !ColdLife.isHunting(ColdLife.DEAD) && !ColdLife.isHunting(ColdLife.IN_TOWN));
-		check("shipped travel defaults", TravelConfig.defaults().enabled() && (TravelConfig.defaults().escapeStock() == 2));
+		check("shipped travel defaults", TravelConfig.defaults().enabled() && (TravelConfig.defaults().escapeStock() == 2) && (TravelConfig.defaults().potionStock() == 30));
 	}
 
 	private static final DropYield.Items ITEMS = new DropYield.Items()
@@ -1020,6 +1042,92 @@ public class LivingTravelTest
 		ColdLife.advance(near, 0L, 0L, context, nearLog);
 		check("a trip by scroll sets a new scroll aside", farLog.stream().anyMatch(e -> e.text().endsWith("it can spend 250")));
 		check("a walk to a close town keeps the scroll and its price", nearLog.stream().anyMatch(e -> e.text().endsWith("it can spend 650")));
+	}
+
+	private static void testDecisionGuardrails() throws Exception
+	{
+		// Potions: no stock means none for anyone, and light classes drink in step with what they carry.
+		check("no potion stock gives light classes none either", (LivingSupplies.potionStockFor(10, 0) == 0) && (LivingSupplies.potionStockFor(9, 1) == 1));
+		check("potion use follows the role", (LivingSupplies.potionUseFactor(4) == 1.5) && (LivingSupplies.potionUseFactor(0) == 1.0) && (LivingSupplies.potionUseFactor(10) == 0.5) && (LivingSupplies.potionUseFactor(9) == 0.5));
+
+		// Mystics fire spiritshots of their grade, at their own rate.
+		check("mystics are told apart from archers", LivingSupplies.isMystic(10) && !LivingSupplies.isMystic(9) && LivingSupplies.isLight(9));
+		check("a mystic buys spiritshots of its grade", (LivingSupplies.shotIdFor(10, 0) == 2509) && (LivingSupplies.shotIdFor(10, 40) == 2511) && (LivingSupplies.shotIdFor(0, 40) == 1464));
+		check("its stock follows its own rate", SupplyPlanner.soulshotTarget(true, supply().withSoulshotsPerKill(2.0)) == 720L);
+		final GoalPlanner.Plan spirits = GoalPlanner.plan(new GoalPlanner.View(20, 20_000L, 10L, 10L, 2L, 2, true, "Near Woods", 10, 20, null), prices(), supply().withSoulshotsPerKill(2.0), true);
+		check("a mystic's plan says spiritshots", GoalPlanner.describe(spirits).contains("Spiritshots low"));
+
+		// A shot minimum above half the stock shrinks to half, so a small stock still restocks.
+		final SupplyPlanner.Params small = new SupplyPlanner.Params(10, 0.25, 1, 0.2, 2, 500L, 250L, 0.10, 12.0, 6.0, 50_000L, 10, 200L);
+		check("the shot minimum is at most half the stock", SupplyPlanner.soulshotMinPurchase(true, small) == 36L);
+		check("a small stock still buys shots", SupplyPlanner.shop(10, 100_000L, 2L, 10L, 0L, 1, true, prices(), small).soulshots() == 72L);
+
+		// Zones: a bot stays in a zone at its limit, and leaves only once it is clearly over.
+		final ZoneCatalog catalog = catalog();
+		final ZoneCatalog.Town alpha = catalog.town("Alpha");
+		final Map<String, Integer> atLimit = new HashMap<>();
+		atLimit.put("Near Woods", 8);
+		check("keeps a zone at its limit", "Near Woods".equals(ZoneChooser.choose(new ZoneChooser.Situation(16, "Elf", catalog.zone("Near Woods"), alpha, 100_000L, atLimit, 8), catalog, null).zone().name()));
+		atLimit.put("Near Woods", 10);
+		check("leaves one a quarter over", "Far Hills".equals(ZoneChooser.choose(new ZoneChooser.Situation(16, "Elf", catalog.zone("Near Woods"), alpha, 100_000L, atLimit, 8), catalog, null).zone().name()));
+		final ZoneChooser.Choice walk = ZoneChooser.walkFallback(new ZoneChooser.Situation(25, "Elf", null, alpha, 0L, null, 8), catalog);
+		check("the broke walk goes to the nearest fitting zone", (walk != null) && "Far Hills".equals(walk.zone().name()) && (walk.way() == ZoneChooser.Way.WALK) && (walk.fee() == 0L));
+		final Map<String, Integer> fullHills = new HashMap<>();
+		fullHills.put("Far Hills", 8);
+		check("and prefers one that is not full", "Beyond".equals(ZoneChooser.walkFallback(new ZoneChooser.Situation(25, "Elf", null, alpha, 0L, fullHills, 8), catalog).zone().name()));
+		check("no fitting zone, no walk", ZoneChooser.walkFallback(new ZoneChooser.Situation(31, "Elf", null, alpha, 0L, null, 8), catalog) == null);
+
+		// A bot that picks a zone is counted there at once, so the next one leaving in the same tick sees it.
+		final ColdLife.Context context = context(0);
+		context.occupancy().put("Near Woods", 3);
+		final ColdBot mover = bot(25, "Near Woods", 600L, 10L, 2L, 0);
+		mover.setActivity(ColdLife.IN_TOWN);
+		mover.setTown("Alpha");
+		mover.setGearTier(2);
+		mover.setLeg(TravelLeg.stay(new Point(0, 0, 0), 0L, 0L));
+		ColdLife.advance(mover, 1L, 1L, context, new ArrayList<>());
+		check("a zone pick moves the head count at once", ColdLife.TO_ZONE.equals(mover.getActivity()) && "Near Woods".equals(mover.getZone()) && (context.occupancy().get("Near Woods") == 3));
+		final ColdBot changer = bot(30, "Near Woods", 100_000L, 10L, 2L, 0);
+		changer.setActivity(ColdLife.IN_TOWN);
+		changer.setTown("Alpha");
+		changer.setGearTier(3);
+		changer.setLeg(TravelLeg.stay(new Point(0, 0, 0), 0L, 0L));
+		ColdLife.advance(changer, 1L, 1L, context, new ArrayList<>());
+		check("moving on counts it out of the old zone and into the new one", !"Near Woods".equals(changer.getZone()) && (context.occupancy().get("Near Woods") == 2) && (context.occupancy().get(changer.getZone()) == 1));
+
+		// A trickle of loot is still credited but not logged.
+		final ColdBot crumbs = bot(15, "Near Woods", 20_000L, 0L, 1L, 5000);
+		crumbs.setLoot(40L);
+		final List<DecisionLog.Event> events = new ArrayList<>();
+		ColdLife.advance(crumbs, 0L, 0L, context, events);
+		ColdLife.advance(crumbs, 20_000L, 20_000L, context, events);
+		final long errandsEnd = crumbs.getLeg().endAt();
+		ColdLife.advance(crumbs, errandsEnd, errandsEnd - 20_000L, context, events);
+		check("loot worth a few adena is sold without a log line", (crumbs.getLoot() == 0L) && events.stream().noneMatch(e -> e.text().startsWith("Sold its loot")));
+	}
+
+	private static void testGearGuardrails() throws Exception
+	{
+		// Only upgrades worth it are bought, and an offer with no price is never taken.
+		final Map<LivingGear.Slot, Integer> kit = gear("weapon:10");
+		final LivingGear.Piece slightly = weapon(16, "Sword+", 0, "SWORD", false, false, 21, 0, 1);
+		check("a barely better piece is not bought", LivingGear.shop(kit, WARRIOR, 15, 100_000L, List.of(new LivingGear.Offer(slightly, 100L, true)), GEAR_ITEMS).isEmpty() && "weapon:10".equals(LivingGear.encode(kit)));
+		check("a free offer is not taken", LivingGear.shop(kit, WARRIOR, 15, 100_000L, List.of(new LivingGear.Offer(PIECES.get(11), 0L, true)), GEAR_ITEMS).isEmpty());
+		check("a slot bought this visit is left alone", LivingGear.shop(kit, WARRIOR, 15, 100_000L, List.of(new LivingGear.Offer(PIECES.get(11), 5000L, true)), GEAR_ITEMS, Set.of(LivingGear.Slot.WEAPON)).isEmpty());
+
+		// An empty ring slot and only the cheap ring within reach: by scroll the trip costs more than the ring, so it waits
+		// for a visit made for something else; walking to a close town it is worth it.
+		final ColdLife.Context context = gearContext();
+		final ColdBot far = bot(15, "Near Woods", 5650L, 10L, 2L, 5000);
+		far.setGear("weapon:11,chest:24,shield:30,ring1:41");
+		final List<DecisionLog.Event> farLog = new ArrayList<>();
+		ColdLife.advance(far, 0L, 0L, context, farLog);
+		check("no trip of its own for a cheap piece in an empty slot", ColdLife.HUNTING.equals(far.getActivity()) && farLog.stream().noneMatch(e -> e.text().contains("Ring")));
+		final ColdBot near = bot(15, "Near Woods", 5650L, 10L, 2L, 2000);
+		near.setGear("weapon:11,chest:24,shield:30,ring1:41");
+		final List<DecisionLog.Event> nearLog = new ArrayList<>();
+		ColdLife.advance(near, 0L, 0L, context, nearLog);
+		check("but one worth more than the trip is", nearLog.stream().anyMatch(e -> e.text().contains("Can afford a better")));
 	}
 
 	// FPC-277. Isle sits on an island; Shore is on the mainland but closer to Isle in a straight line than to Main; Rock is

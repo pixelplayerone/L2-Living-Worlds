@@ -126,9 +126,10 @@ public final class ZoneChooser
 			}
 		}
 
-		// Keep the current zone while it still fits (up to OUTLEVEL_SLACK levels past its top) and is not crowded.
+		// Keep the current zone while it still fits (up to OUTLEVEL_SLACK levels past its top) and is not clearly
+		// overcrowded. A zone just at its limit is kept: the bots already there do not all bounce out to another one.
 		final Zone current = situation.currentZone();
-		if ((current != null) && !current.isStarter() && !situation.avoids(current) && (situation.level() >= current.minLevel()) && (situation.level() <= (current.maxLevel() + OUTLEVEL_SLACK)) && !full(current, situation))
+		if ((current != null) && !current.isStarter() && !situation.avoids(current) && (situation.level() >= current.minLevel()) && (situation.level() <= (current.maxLevel() + OUTLEVEL_SLACK)) && !overFull(current, situation))
 		{
 			final Choice stay = route(current, town, catalog);
 			if ((stay != null) && (stay.fee() <= situation.budget()))
@@ -227,6 +228,42 @@ public final class ZoneChooser
 		return best;
 	}
 
+	/**
+	 * The way on for a bot too poor for any gatekeeper: on foot, however far, to the zone nearest its town that fits its
+	 * level and lies on the same land, one that is not full when there is one.
+	 * @param situation the situation
+	 * @param catalog the catalog
+	 * @return the walk, or null when no zone fits its level
+	 */
+	public static Choice walkFallback(Situation situation, ZoneCatalog catalog)
+	{
+		final Town town = situation.town();
+		if (town == null)
+		{
+			return null;
+		}
+		Zone best = null;
+		boolean bestFull = true;
+		double bestDistance = Double.MAX_VALUE;
+		for (Zone zone : catalog.zones())
+		{
+			// Never on foot across the sea (FPC-277).
+			if (zone.isStarter() || !zone.fits(situation.level()) || situation.avoids(zone) || !catalog.sameLand(zone.center(), town.arrival()))
+			{
+				continue;
+			}
+			final boolean full = full(zone, situation);
+			final double distance = zone.center().distance(town.arrival());
+			if ((best == null) || (bestFull && !full) || ((bestFull == full) && (distance < bestDistance)))
+			{
+				best = zone;
+				bestFull = full;
+				bestDistance = distance;
+			}
+		}
+		return (best == null) ? null : new Choice(best, Way.WALK, null, 0L, town.arrival());
+	}
+
 	/** The center of the race's newbie grounds, standing in for its home village; null when the race has none. */
 	private static Point home(String race, ZoneCatalog catalog)
 	{
@@ -244,6 +281,14 @@ public final class ZoneChooser
 	{
 		final Integer count = (situation.occupancy() == null) ? null : situation.occupancy().get(zone.name());
 		return (situation.capacity() > 0) && (count != null) && (count.intValue() >= situation.capacity());
+	}
+
+	/** @return whether a zone is clearly over its limit: a quarter more bots than it takes, and at least one more */
+	private static boolean overFull(Zone zone, Situation situation)
+	{
+		final Integer count = (situation.occupancy() == null) ? null : situation.occupancy().get(zone.name());
+		final int capacity = situation.capacity();
+		return (capacity > 0) && (count != null) && (count.intValue() >= (capacity + Math.max(1, capacity / 4)));
 	}
 
 	private static double fitScore(Zone zone, int level)

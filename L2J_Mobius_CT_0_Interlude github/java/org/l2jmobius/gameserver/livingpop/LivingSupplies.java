@@ -22,8 +22,8 @@ import java.util.Set;
 
 /**
  * The real items a living bot buys at the grocer, by level and gear: the healing potion a player of that level buys, the
- * soulshot grade its weapon fires (same grade thresholds as the phantom gear: D 20, C 40, B 52, A 61, S 76), and the
- * Scroll of Escape. Pure.
+ * soulshot or spiritshot grade its weapon fires (same grade thresholds as the phantom gear: D 20, C 40, B 52, A 61,
+ * S 76), and the Scroll of Escape. Pure.
  */
 public final class LivingSupplies
 {
@@ -41,14 +41,22 @@ public final class LivingSupplies
 		1467, // S
 	};
 
+	private static final int[] SPIRITSHOT_BY_GRADE =
+	{
+		2509, // no grade
+		2510, // D
+		2511, // C
+		2512, // B
+		2513, // A
+		2514, // S
+	};
+
 	// Class ids (Interlude) by how many potions the role carries, following L2Solo: tanks take the most, casters, archers
 	// and healers the fewest (they rest for mana and fight from range). Everyone else is melee.
 	private static final Set<Integer> TANKS = Set.of(4, 5, 6, 19, 20, 32, 33, 90, 91, 99, 106);
-	private static final Set<Integer> LIGHT = Set.of(
-		// every mystic class (mages, summoners, healers, buffers)
-		10, 11, 12, 13, 14, 15, 16, 17, 25, 26, 27, 28, 29, 30, 38, 39, 40, 41, 42, 43, 49, 50, 51, 52, 94, 95, 96, 97, 98, 103, 104, 105, 110, 111, 112, 115, 116,
-		// archers
-		9, 24, 37, 92, 102, 109);
+	// Every mystic class (mages, summoners, healers, buffers): they fire spiritshots, not soulshots.
+	private static final Set<Integer> MYSTICS = Set.of(10, 11, 12, 13, 14, 15, 16, 17, 25, 26, 27, 28, 29, 30, 38, 39, 40, 41, 42, 43, 49, 50, 51, 52, 94, 95, 96, 97, 98, 103, 104, 105, 110, 111, 112, 115, 116);
+	private static final Set<Integer> ARCHERS = Set.of(9, 24, 37, 92, 102, 109);
 
 	private LivingSupplies()
 	{
@@ -67,11 +75,26 @@ public final class LivingSupplies
 		{
 			return (int) Math.round(meleeStock * 1.5);
 		}
-		if (LIGHT.contains(classId))
+		if (isLight(classId))
 		{
-			return Math.max(1, meleeStock / 2);
+			return (meleeStock <= 0) ? 0 : Math.max(1, meleeStock / 2);
 		}
 		return meleeStock;
+	}
+
+	/**
+	 * How fast a bot of this class drinks potions while cold, against a melee fighter: in step with the stock it carries
+	 * (see {@link #potionStockFor}), as tanks take the most hits and casters and archers fight from range.
+	 * @param classId the bot's class id
+	 * @return the factor for the configured potions per hour
+	 */
+	public static double potionUseFactor(int classId)
+	{
+		if (TANKS.contains(classId))
+		{
+			return 1.5;
+		}
+		return isLight(classId) ? 0.5 : 1.0;
 	}
 
 	/**
@@ -89,7 +112,16 @@ public final class LivingSupplies
 	 */
 	public static boolean isLight(int classId)
 	{
-		return LIGHT.contains(classId);
+		return MYSTICS.contains(classId) || ARCHERS.contains(classId);
+	}
+
+	/**
+	 * @param classId a class id
+	 * @return whether the class is a mystic (mages, summoners, healers, buffers), which fires spiritshots
+	 */
+	public static boolean isMystic(int classId)
+	{
+		return MYSTICS.contains(classId);
 	}
 
 	/**
@@ -146,5 +178,24 @@ public final class LivingSupplies
 	public static int soulshotIdFor(int gearLevel)
 	{
 		return SOULSHOT_BY_GRADE[gradeFor(gearLevel)];
+	}
+
+	/**
+	 * @param gearLevel the level its gear corresponds to (0 for the newbie starter gear)
+	 * @return the spiritshot item id for that gear's grade
+	 */
+	public static int spiritshotIdFor(int gearLevel)
+	{
+		return SPIRITSHOT_BY_GRADE[gradeFor(gearLevel)];
+	}
+
+	/**
+	 * @param classId the bot's class id
+	 * @param gearLevel the level its gear corresponds to
+	 * @return the shot item id it buys: spiritshots for a mystic, soulshots for everyone else
+	 */
+	public static int shotIdFor(int classId, int gearLevel)
+	{
+		return isMystic(classId) ? spiritshotIdFor(gearLevel) : soulshotIdFor(gearLevel);
 	}
 }

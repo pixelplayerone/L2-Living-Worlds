@@ -485,9 +485,24 @@ public class LivingPopulationManager
 		final boolean economy = _config.economyEnabled();
 		final ColdEconomy.Params economyParams = economy ? _config.economyParams() : null;
 
-		// Phase 5: travel, town visits and player-like supplies. Occupancy is counted once per tick for zone capacity.
+		// Phase 5: travel, town visits and player-like supplies. Occupancy is counted once per tick for zone capacity, and
+		// each bot that picks a zone moves itself in the count at once.
 		final boolean travel = _travel && economy;
-		final ColdLife.Context life = travel ? new ColdLife.Context(_catalog, _travelConfig.supplyParams(_config), _travelConfig.travelParams(), this::prices, zoneOccupancy(), _random, _travelConfig.riskParams(), expToNextLevel, _travelConfig.classQuestParams(), _travelConfig.skillTraining() ? this::skillTree : null, _gear) : null;
+		final ColdLife.PriceBook priceBook = new ColdLife.PriceBook()
+		{
+			@Override
+			public SupplyPlanner.Prices prices(int level, int gearTier)
+			{
+				return LivingPopulationManager.this.prices(level, gearTier);
+			}
+
+			@Override
+			public SupplyPlanner.Prices prices(int level, int gearTier, int classId)
+			{
+				return LivingPopulationManager.this.prices(level, gearTier, classId);
+			}
+		};
+		final ColdLife.Context life = travel ? new ColdLife.Context(_catalog, _travelConfig.supplyParams(_config), _travelConfig.travelParams(), priceBook, zoneOccupancy(), _random, _travelConfig.riskParams(), expToNextLevel, _travelConfig.classQuestParams(), _travelConfig.skillTraining() ? this::skillTree : null, _gear) : null;
 		_handoff.setLife(life); // hot bots make the same decisions, acted out by their live characters
 
 		// Resolve up to resolveBatch due bots, starting from a rotating cursor so a population larger than the batch is
@@ -540,7 +555,9 @@ public class LivingPopulationManager
 				final ColdEconomy.State before = new ColdEconomy.State(bot.getAdena(), bot.getSoulshots(), bot.getPotions(), bot.getGearTier(), bot.isRewardClaimed(), bot.getGoal());
 				// A kill pays from the zone monsters' real drop lists when the catalog has them: adena now, loot sold in town.
 				final DropYield.Yield yield = _travelConfig.dropIncome() ? zoneYield(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId())) : null;
-				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, economyParams, (yield == null) ? -1.0 : yield.adena(), events);
+				// A mystic fires spiritshots, at its own rate per kill.
+				final ColdEconomy.Params shotParams = LivingSupplies.isMystic(bot.getClassId()) ? economyParams.withSoulshotsPerKill(_travelConfig.spiritshotsPerKill()) : economyParams;
+				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, shotParams, (yield == null) ? -1.0 : yield.adena(), events);
 				huntAdena = Math.max(0L, after.adena() - before.adena());
 				if ((yield != null) && (huntedMs > 0))
 				{
@@ -595,7 +612,8 @@ public class LivingPopulationManager
 	/** Bots in or heading to each zone, counted once per resolver tick for zone capacity. */
 	private Map<String, Integer> zoneOccupancy()
 	{
-		final Map<String, Integer> counts = new HashMap<>();
+		// Concurrent: a bot that picks a zone updates it at once (ColdLife), on this thread or, for a hot bot, the game's.
+		final Map<String, Integer> counts = new ConcurrentHashMap<>();
 		for (ColdBot bot : _bots)
 		{
 			if (bot.getZone() != null)
@@ -615,10 +633,20 @@ public class LivingPopulationManager
 	 */
 	private SupplyPlanner.Prices prices(int level, int gearTier)
 	{
+		return prices(level, gearTier, -1);
+	}
+
+	/**
+	 * As {@link #prices(int, int)}, with the spiritshot price for a mystic.
+	 * @param classId bot class id (-1 for a fighter's soulshots)
+	 * @return the prices
+	 */
+	private SupplyPlanner.Prices prices(int level, int gearTier, int classId)
+	{
 		final int step = _config.gearTierLevelStep();
 		final int gearLevel = ((gearTier <= 0) || (step <= 0)) ? 0 : Math.min(level, gearTier * step);
 		final long nextTier = (step <= 0) ? 0L : kitPrices()[LivingSupplies.gradeFor((gearTier + 1) * step)];
-		return new SupplyPlanner.Prices(price(LivingSupplies.potionIdFor(level)), price(LivingSupplies.soulshotIdFor(gearLevel)), price(LivingSupplies.SCROLL_OF_ESCAPE), nextTier);
+		return new SupplyPlanner.Prices(price(LivingSupplies.potionIdFor(level)), price(LivingSupplies.shotIdFor(classId, gearLevel)), price(LivingSupplies.SCROLL_OF_ESCAPE), nextTier);
 	}
 
 	/**

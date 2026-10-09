@@ -91,8 +91,11 @@ game/modules/alt-companion/MODULE.md
 game/modules/alt-companion/TESTING.md
 game/modules/alt-companion/config/module.ini
 game/modules/alt-companion/scripts/AltCompanionModule.java
-# Module framework: Living Population module (off by default). config/module.ini ships this
-# one time so patch-only testers get the settings; remove it from this list after the next patch.
+# Module framework: Living Population module (on by default). config/module.ini ships in the patch
+# for now so patch-only testers get new keys and defaults (Enabled True, PotionStock 30,
+# SoulshotMinPurchase, SpiritshotsPerKill). It overwrites the tester's copy, so a tester who turned the
+# module off or changed a setting must do it again after patching. Remove the module.ini line once its
+# keys settle.
 game/modules/living-population/module.json
 game/modules/living-population/MODULE.md
 game/modules/living-population/config/module.ini

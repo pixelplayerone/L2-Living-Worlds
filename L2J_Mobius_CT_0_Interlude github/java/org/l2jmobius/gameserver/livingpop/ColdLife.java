@@ -20,10 +20,12 @@ package org.l2jmobius.gameserver.livingpop;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.IntToLongFunction;
 
@@ -57,6 +59,8 @@ public final class ColdLife
 
 	/** Skill levels waiting at the trainer that make a trip of their own worthwhile. */
 	public static final int SKILL_TRIP_MIN = 3;
+	/** Loot sold for less than this is still credited, but not written to the decision log. */
+	public static final long LOOT_LOG_MIN = 100L;
 
 	private ColdLife()
 	{
@@ -74,9 +78,17 @@ public final class ColdLife
 	 * @param zoneCapacity bots per zone before it counts as full (0 = no limit)
 	 * @param retryMs how long a bot that could not find an affordable way on waits before trying again
 	 * @param escapeMinDistance a town closer than this is walked to even with a Scroll of Escape in the bag
+	 * @param spiritshotsPerKill spiritshots a mystic fires per kill (fighters use the soulshot rate of the supply tuning)
 	 */
-	public record Params(double moveSpeed, long escapeCastMs, long errandStopMs, int afkChancePercent, long afkMinMs, long afkMaxMs, double potionsPerHour, int zoneCapacity, long retryMs, double escapeMinDistance)
+	public record Params(double moveSpeed, long escapeCastMs, long errandStopMs, int afkChancePercent, long afkMinMs, long afkMaxMs, double potionsPerHour, int zoneCapacity, long retryMs, double escapeMinDistance, double spiritshotsPerKill)
 	{
+		/** The default spiritshot use: a caster fires one per spell, about two spells a kill. */
+		public static final double DEFAULT_SPIRITSHOTS_PER_KILL = 2.0;
+
+		public Params(double moveSpeed, long escapeCastMs, long errandStopMs, int afkChancePercent, long afkMinMs, long afkMaxMs, double potionsPerHour, int zoneCapacity, long retryMs, double escapeMinDistance)
+		{
+			this(moveSpeed, escapeCastMs, errandStopMs, afkChancePercent, afkMinMs, afkMaxMs, potionsPerHour, zoneCapacity, retryMs, escapeMinDistance, DEFAULT_SPIRITSHOTS_PER_KILL);
+		}
 	}
 
 	/** Unit prices for a bot's level and gear, read from the real item data by the manager. */
@@ -88,6 +100,17 @@ public final class ColdLife
 		 * @return the prices
 		 */
 		SupplyPlanner.Prices prices(int level, int gearTier);
+
+		/**
+		 * @param level bot level
+		 * @param gearTier bot gear tier (fixes the shot grade)
+		 * @param classId bot class (a mystic buys spiritshots instead of soulshots)
+		 * @return the prices
+		 */
+		default SupplyPlanner.Prices prices(int level, int gearTier, int classId)
+		{
+			return prices(level, gearTier);
+		}
 	}
 
 	/** Each class's skill tree, read from the real skill data by the manager. */
@@ -315,7 +338,7 @@ public final class ColdLife
 	private static void hunt(ColdBot bot, long now, long elapsedMs, Context context, List<DecisionLog.Event> events)
 	{
 		// Drink potions as if taking real damage while hunting. Fractional rates are rolled so the average is right.
-		final double expected = (Math.max(0L, elapsedMs) / 3_600_000.0) * context.travel().potionsPerHour();
+		final double expected = (Math.max(0L, elapsedMs) / 3_600_000.0) * context.travel().potionsPerHour() * LivingSupplies.potionUseFactor(bot.getClassId());
 		long drunk = (long) Math.floor(expected);
 		if (context.random().nextDouble() < (expected - drunk))
 		{
@@ -351,13 +374,13 @@ public final class ColdLife
 			}
 		}
 
-		final SupplyPlanner.Prices prices = context.priceBook().prices(bot.getLevel(), bot.getGearTier());
+		final SupplyPlanner.Prices prices = context.priceBook().prices(bot.getLevel(), bot.getGearTier(), bot.getClassId());
 		// It plans with what it will have once its loot is sold, which it does first thing in town.
 		final String[] classErrand = classErrand(bot, town, context);
 		final String[] skillErrand = skillErrand(bot, town, context);
 		final String[] gearErrand = gearErrand(bot, town, context, now);
 		final GoalPlanner.View view = new GoalPlanner.View(bot.getLevel(), purse(bot), bot.getPotions(), bot.getSoulshots(), bot.getEscapes(), bot.getGearTier(), bot.isRewardClaimed(), (zone == null) ? null : zone.name(), (zone == null) ? 0 : zone.minLevel(), (zone == null) ? 0 : zone.maxLevel(), betterZone, classErrand[0], classErrand[1], skillErrand[0], skillErrand[1], gearErrand[0], gearErrand[1], gearErrand[2]);
-		final GoalPlanner.Plan plan = GoalPlanner.plan(view, prices, supplyFor(bot, context));
+		final GoalPlanner.Plan plan = GoalPlanner.plan(view, prices, supplyFor(bot, context), LivingSupplies.isMystic(bot.getClassId()));
 		bot.setGoal(goalLabel(plan.chosen().goal()));
 		events.add(new DecisionLog.Event(planKey(plan), GoalPlanner.describe(plan)));
 
@@ -603,11 +626,14 @@ public final class ColdLife
 			final long sold = bot.getLoot();
 			bot.setAdena(Math.min(ColdEconomy.MAX_ADENA, bot.getAdena() + sold));
 			bot.setLoot(0L);
-			events.add(new DecisionLog.Event(null, "Sold its loot in " + town.name() + " for " + DecisionLog.num(sold) + " adena"));
+			if (sold >= LOOT_LOG_MIN)
+			{
+				events.add(new DecisionLog.Event(null, "Sold its loot in " + town.name() + " for " + DecisionLog.num(sold) + " adena"));
+			}
 		}
 		if (town.hasGrocer())
 		{
-			final SupplyPlanner.Prices prices = context.priceBook().prices(bot.getLevel(), bot.getGearTier());
+			final SupplyPlanner.Prices prices = context.priceBook().prices(bot.getLevel(), bot.getGearTier(), bot.getClassId());
 			final SupplyPlanner.Params supply = supplyFor(bot, context);
 			final SupplyPlanner.Purchase bought = SupplyPlanner.shop(bot.getLevel(), bot.getAdena(), bot.getEscapes(), bot.getPotions(), bot.getSoulshots(), bot.getGearTier(), bot.isRewardClaimed(), prices, supply);
 			if (bought.any())
@@ -620,7 +646,7 @@ public final class ColdLife
 				{
 					bot.setGearTier(bot.getGearTier() + 1);
 				}
-				events.add(new DecisionLog.Event(null, "Shopped in " + town.name() + ": " + describe(bought, bot.getGearTier()) + " for " + DecisionLog.num(bought.cost()) + " adena (keeps " + DecisionLog.num(SupplyPlanner.reserve(bot.getLevel(), bot.getAdena() + bought.cost(), supply)) + " in reserve)"));
+				events.add(new DecisionLog.Event(null, "Shopped in " + town.name() + ": " + describe(bought, bot.getGearTier(), LivingSupplies.isMystic(bot.getClassId())) + " for " + DecisionLog.num(bought.cost()) + " adena (keeps " + DecisionLog.num(SupplyPlanner.reserve(bot.getLevel(), bot.getAdena() + bought.cost(), supply)) + " in reserve)"));
 			}
 			else
 			{
@@ -710,7 +736,7 @@ public final class ColdLife
 	 */
 	private static String[] skillErrand(ColdBot bot, Town town, Context context)
 	{
-		final SkillPlanner.Lesson lesson = previewLesson(bot, SupplyPlanner.spendable(purse(bot), context.supply().reserveFloor()), context);
+		final SkillPlanner.Lesson lesson = previewLesson(bot, trainingBudget(bot, purse(bot), context), context);
 		if ((lesson == null) || (lesson.learned().size() < SKILL_TRIP_MIN))
 		{
 			return new String[2];
@@ -731,7 +757,8 @@ public final class ColdLife
 		{
 			return "no " + what + " it can reach";
 		}
-		if ((masterTown != town) && (town.feeTo(masterTown.name()) > purse(bot)))
+		// The fee leaves at least the reserve floor, the money it leaves the master's town with for the way back out.
+		if ((masterTown != town) && ((town.feeTo(masterTown.name()) + context.supply().reserveFloor()) > purse(bot)))
 		{
 			return "cannot afford the gatekeeper to " + masterTown.name();
 		}
@@ -775,7 +802,7 @@ public final class ColdLife
 			return;
 		}
 		final Map<Integer, Integer> known = SkillPlanner.decode(bot.getSkills());
-		final SkillPlanner.Lesson lesson = SkillPlanner.learn(context.skills().tree(bot.getClassId()), known, bot.getLevel(), bot.getSp(), SupplyPlanner.spendable(bot.getAdena(), context.supply().reserveFloor()));
+		final SkillPlanner.Lesson lesson = SkillPlanner.learn(context.skills().tree(bot.getClassId()), known, bot.getLevel(), bot.getSp(), trainingBudget(bot, bot.getAdena(), context));
 		if (!lesson.any())
 		{
 			return;
@@ -821,7 +848,7 @@ public final class ColdLife
 	 */
 	private static boolean visitTrainer(ColdBot bot, Town town, long now, Context context, List<DecisionLog.Event> events)
 	{
-		final SkillPlanner.Lesson lesson = previewLesson(bot, SupplyPlanner.spendable(bot.getAdena(), context.supply().reserveFloor()), context);
+		final SkillPlanner.Lesson lesson = previewLesson(bot, trainingBudget(bot, bot.getAdena(), context), context);
 		if ((lesson == null) || !lesson.any())
 		{
 			return false;
@@ -857,7 +884,7 @@ public final class ColdLife
 			return false;
 		}
 		final long fee = town.feeTo(other.name());
-		if (fee > bot.getAdena())
+		if ((fee + context.supply().reserveFloor()) > bot.getAdena())
 		{
 			events.add(new DecisionLog.Event("masterfee-" + other.name(), "Cannot afford the gatekeeper to " + other.name() + " for its " + what + " yet"));
 			return false;
@@ -909,7 +936,8 @@ public final class ColdLife
 		}
 		final Zone current = catalog.zone(bot.getZone());
 		final long budget = SupplyPlanner.spendable(bot.getAdena(), context.supply().reserveFloor());
-		ZoneChooser.Choice choice = ZoneChooser.choose(situation(bot, current, town, budget, now, context), catalog, context.random());
+		final ZoneChooser.Situation situation = situation(bot, current, town, budget, now, context);
+		ZoneChooser.Choice choice = ZoneChooser.choose(situation, catalog, context.random());
 		if ((choice == null) && (current != null))
 		{
 			// Nothing better it can afford: go back to where it was, even if it no longer fits perfectly.
@@ -918,6 +946,14 @@ public final class ColdLife
 			{
 				choice = back;
 			}
+		}
+		boolean broke = false;
+		if (choice == null)
+		{
+			// Too poor for any gatekeeper: it walks to the nearest zone that fits, however far, as a broke player does,
+			// rather than wait in a town where it earns nothing.
+			choice = ZoneChooser.walkFallback(situation, catalog);
+			broke = choice != null;
 		}
 		if (choice == null)
 		{
@@ -949,20 +985,39 @@ public final class ColdLife
 			default:
 			{
 				start = point(bot); // sets off on foot from where it finished its errands
-				events.add(new DecisionLog.Event(null, change + zone.name() + " (levels " + zone.minLevel() + " to " + zone.maxLevel() + ") on foot"));
+				events.add(new DecisionLog.Event(null, change + zone.name() + " (levels " + zone.minLevel() + " to " + zone.maxLevel() + ") on foot" + (broke ? ", as it cannot afford a gatekeeper" : "")));
 				break;
 			}
 		}
 		moveTo(bot, start);
+		countMove(context.occupancy(), bot.getZone(), zone.name());
 		bot.setZone(zone.name());
 		bot.setTown(null);
 		bot.setActivity(TO_ZONE);
 		bot.setLeg(TravelLeg.walk(start, spot, now, context.travel().moveSpeed()));
 	}
 
-	/** The supply tuning for this bot: the configured stock, with the potion stock set by its class's role. */
+	/**
+	 * Moves a bot from one zone to another in this tick's head counts at once, so bots leaving town in the same tick see
+	 * it and do not all pick the same zone past its limit.
+	 */
+	private static void countMove(Map<String, Integer> occupancy, String from, String to)
+	{
+		if ((occupancy == null) || to.equals(from))
+		{
+			return;
+		}
+		if (from != null)
+		{
+			occupancy.computeIfPresent(from, (name, count) -> (count > 1) ? (count - 1) : null);
+		}
+		occupancy.merge(to, 1, Integer::sum);
+	}
+
 	// After a visit, an upgrade alone does not send it back to town before it has hunted this long.
 	public static final long GEAR_TRIP_GAP_MS = 20 * 60_000L;
+	// A piece for an empty slot is worth a trip of its own only when it costs at least this much more than the trip.
+	public static final long EMPTY_SLOT_TRIP_MIN = 1000L;
 	// Shopping rounds per visit: each spends what the pieces it replaced sold for in the round before.
 	private static final int GEAR_SHOP_PASSES = 4;
 
@@ -984,6 +1039,14 @@ public final class ColdLife
 		return errand;
 	}
 
+	/** @return the gatekeeper fee from this town back to the bot's zone (0 on foot or when it has no zone) */
+	private static long feeBack(ColdBot bot, Town town, Context context)
+	{
+		final Zone zone = context.catalog().zone(bot.getZone());
+		final ZoneChooser.Choice back = (zone == null) ? null : ZoneChooser.route(zone, town, context.catalog());
+		return (back == null) ? 0L : Math.max(0L, back.fee());
+	}
+
 	private static String[] gearErrand(ColdBot bot, Town town, Context context)
 	{
 		final GearShop shop = context.gear();
@@ -996,14 +1059,18 @@ public final class ColdLife
 		// What it will have for gear in town: its purse once the loot is sold, less the supplies it buys first (counting
 		// the Scroll of Escape the trip itself uses, when it uses one rather than walking).
 		final SupplyPlanner.Params supply = supplyFor(bot, context);
-		final SupplyPlanner.Prices prices = context.priceBook().prices(bot.getLevel(), bot.getGearTier());
+		final SupplyPlanner.Prices prices = context.priceBook().prices(bot.getLevel(), bot.getGearTier(), bot.getClassId());
 		final long escapesLeft = usesEscape(bot, town, context) ? (bot.getEscapes() - 1) : bot.getEscapes();
 		final SupplyPlanner.Purchase supplies = SupplyPlanner.shop(bot.getLevel(), purse(bot), Math.max(0L, escapesLeft), bot.getPotions(), bot.getSoulshots(), bot.getGearTier(), bot.isRewardClaimed(), prices, supply);
 		final long adena = Math.max(0L, purse(bot) - supplies.cost());
 		final long budget = SupplyPlanner.spendable(adena, SupplyPlanner.reserve(bot.getLevel(), adena, supply));
-		for (LivingGear.Change change : LivingGear.shop(gearOf(bot), fit, bot.getLevel(), budget, offers, shop.items()))
+		final List<LivingGear.Change> affordable = LivingGear.shop(gearOf(bot), fit, bot.getLevel(), budget, offers, shop.items());
+		// Filling an empty slot is always an upgrade, so on its own it is only worth the trip for a piece that costs more
+		// than the trip itself (a cheap no-grade ring waits for a visit made for something else).
+		final long tripCost = EMPTY_SLOT_TRIP_MIN + (usesEscape(bot, town, context) ? prices.escape() : 0L) + feeBack(bot, town, context);
+		for (LivingGear.Change change : affordable)
 		{
-			if (change.good())
+			if (!change.removed().isEmpty() || (change.price() >= tripCost))
 			{
 				return new String[]
 				{
@@ -1012,6 +1079,10 @@ public final class ColdLife
 					"gear-" + change.piece().itemId()
 				};
 			}
+		}
+		if (!affordable.isEmpty())
+		{
+			return new String[3]; // only small pieces it can afford: it buys them on its next visit, no trip of their own
 		}
 		final LivingGear.Change wish = LivingGear.wish(gearOf(bot), fit, bot.getLevel(), offers, shop.items());
 		if (wish == null)
@@ -1040,6 +1111,8 @@ public final class ColdLife
 		final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
 		long adena = bot.getAdena();
 		final List<String> old = new ArrayList<>();
+		// A slot filled on this visit is not shopped again, so it never buys a piece and sells it a round later.
+		final Set<LivingGear.Slot> locked = EnumSet.noneOf(LivingGear.Slot.class);
 		long sold = 0;
 		// The old pieces are sold in the same visit, so their money can buy the next piece now rather than pull it back to
 		// town a minute later: shop again with it until nothing more is affordable.
@@ -1047,7 +1120,7 @@ public final class ColdLife
 		{
 			final long cash = Math.min(ColdEconomy.MAX_ADENA, adena + sold);
 			final long budget = SupplyPlanner.spendable(cash, SupplyPlanner.reserve(bot.getLevel(), cash, supplyFor(bot, context)));
-			final List<LivingGear.Change> bought = LivingGear.shop(gear, fit, bot.getLevel(), budget, offersIn(shop, town), shop.items());
+			final List<LivingGear.Change> bought = LivingGear.shop(gear, fit, bot.getLevel(), budget, offersIn(shop, town), shop.items(), locked);
 			if (bought.isEmpty())
 			{
 				break;
@@ -1055,6 +1128,7 @@ public final class ColdLife
 			for (LivingGear.Change change : bought)
 			{
 				adena -= change.price();
+				locked.add(change.slot());
 				events.add(new DecisionLog.Event(null, "Bought " + LivingGear.describe(change, fit) + (change.shop() ? (" in " + town.name()) : " from another player") + " for " + DecisionLog.num(change.price()) + " adena"));
 				for (int itemId : change.removed())
 				{
@@ -1165,7 +1239,17 @@ public final class ColdLife
 
 	private static SupplyPlanner.Params supplyFor(ColdBot bot, Context context)
 	{
-		return context.supply().withPotionStock(LivingSupplies.potionStockFor(bot.getClassId(), context.supply().potionStock()));
+		final SupplyPlanner.Params supply = context.supply().withPotionStock(LivingSupplies.potionStockFor(bot.getClassId(), context.supply().potionStock()));
+		return LivingSupplies.isMystic(bot.getClassId()) ? supply.withSoulshotsPerKill(context.travel().spiritshotsPerKill()) : supply;
+	}
+
+	/**
+	 * @return what it may spend at its trainer: what is left above its full operating reserve, as for supplies and gear,
+	 *         so spellbooks never leave it too poor to travel back out to a zone
+	 */
+	private static long trainingBudget(ColdBot bot, long adena, Context context)
+	{
+		return SupplyPlanner.spendable(adena, SupplyPlanner.reserve(bot.getLevel(), adena, supplyFor(bot, context)));
 	}
 
 	private static ZoneChooser.Situation situation(ColdBot bot, Zone current, Town town, long budget, long now, Context context)
@@ -1216,7 +1300,7 @@ public final class ColdLife
 		}
 	}
 
-	private static String describe(SupplyPlanner.Purchase bought, int tierAfter)
+	private static String describe(SupplyPlanner.Purchase bought, int tierAfter, boolean spiritshots)
 	{
 		final StringBuilder sb = new StringBuilder();
 		if (bought.escapes() > 0)
@@ -1229,7 +1313,7 @@ public final class ColdLife
 		}
 		if (bought.soulshots() > 0)
 		{
-			sb.append((sb.length() > 0) ? ", " : "").append(DecisionLog.num(bought.soulshots())).append(" soulshots");
+			sb.append((sb.length() > 0) ? ", " : "").append(DecisionLog.num(bought.soulshots())).append(spiritshots ? " spiritshots" : " soulshots");
 		}
 		if (bought.upgraded())
 		{
