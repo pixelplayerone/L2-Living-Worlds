@@ -132,6 +132,7 @@ public final class ZoneCombat
 	private final Map<List<Object>, Boolean> _healCache = new ConcurrentHashMap<>();
 	private volatile boolean _selfHealOn; // mystic-line bots heal themselves with the heals they have learned, and summoners heal the servitor (HEAL rows)
 	private final Map<String, java.util.TreeMap<Integer, List<double[]>>> _heals = new HashMap<>(); // line -> level -> heals {skill id, power, mana, cast s, reuse s}
+	private volatile int _rotationWindow = -1; // index of the fixed rotation window (-1 = nearest the fight's length)
 	private volatile boolean _shotsFromHits; // shots a kill uses from its hits (fight time over the attack interval, times the weapon's shots per attack) instead of a flat count
 	private volatile double[] _hitInterval = { 1.4, 2.4, 2.2 }; // seconds between a bot's attacks: melee (tanks too), bow, mage (one cast)
 	private volatile double _rangedWalk = 1.0; // share of the walk between monsters that archers and casters keep
@@ -608,7 +609,7 @@ public final class ZoneCombat
 		double fight = 0.0;
 		for (int pass = 0; pass < 2; pass++)
 		{
-			final int w = (pass == 0) ? 0 : nearestWindow(fight);
+			final int w = windowFor(pass, fight);
 			final double dps = (rotationDps(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
 			fight = z.hp() / Math.max(1e-6, dps * gearCut);
 		}
@@ -677,7 +678,7 @@ public final class ZoneCombat
 		double seconds = 0.0;
 		for (int pass = 0; pass < 2; pass++)
 		{
-			final int w = (pass == 0) ? 0 : nearestWindow(seconds);
+			final int w = windowFor(pass, seconds);
 			// Servitors are auto-attackers: they get the fighter buffs, not the summoner's (the caller then divides by the summoner's own buff).
 			final double petRatio = buff(Role.MELEE, 0, level) / Math.max(1e-9, buff(role, 0, level));
 			seconds = zone.hp() / Math.max(1e-6, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, w) + (petDps(zone, classId, level, skillFraction) * petRatio));
@@ -857,6 +858,24 @@ public final class ZoneCombat
 			}
 		}
 		return (best <= 0.0) ? 0.0 : (1.0 / best);
+	}
+
+	/** @return the rotation window to read: the fixed one when {@link #setRotationWindow} set it, else 5 s on the first pass and the one nearest the fight after */
+	private int windowFor(int pass, double seconds)
+	{
+		final int fixed = _rotationWindow;
+		return (fixed >= 0) ? fixed : ((pass == 0) ? 0 : nearestWindow(seconds));
+	}
+
+	/**
+	 * @param seconds the rotation window every fight uses (5, 15, 30, 45, 60, 90 or 120; the nearest is taken), or 0 to pick the window nearest each fight's length.
+	 * A bot goes from monster to monster, so its long-run rate (60 s) is a better guide than the opening burst of a short window.
+	 */
+	public void setRotationWindow(int seconds)
+	{
+		_rotationWindow = (seconds <= 0) ? -1 : nearestWindow(seconds);
+		_killCache.clear();
+		_partyCache.clear();
 	}
 
 	private static int nearestWindow(double seconds)

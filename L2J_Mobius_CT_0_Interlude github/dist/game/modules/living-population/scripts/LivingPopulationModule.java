@@ -159,6 +159,7 @@ public class LivingPopulationModule implements GameModule
 			context.config().getBoolean("PartyHealers", true), //
 			new ZoneCombat.PartyParams(true, Math.max(0.0, context.config().getDouble("PartyExpBonus", 1.3)), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealReduction", 0.2))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealCoverage", 0.75))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChainChance", 0.3))), Math.max(0.0, context.config().getDouble("PartyResetSeconds", 45.0)), Math.max(0.0, context.config().getDouble("PartyHealMpPerHp", 0.12)), Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3)), Math.max(0.0, Math.min(0.9, context.config().getDouble("PartyGearPenalty", 0.15)))));
 		LivingPopulationManager.getInstance().setRangedWalk(context.config().getDouble("ZoneRangedWalk", 0.5));
+		LivingPopulationManager.getInstance().setRotationWindow(context.config().getInt("ZoneRotationWindowSeconds", 60));
 		LivingPopulationManager.getInstance().setShotModel(context.config().getBoolean("ShotsFromHits", true), context.config().getDouble("MeleeAttackSeconds", 1.4), context.config().getDouble("BowAttackSeconds", 2.4), context.config().getDouble("CastSeconds", 2.2));
 		LivingPopulationManager.getInstance().setSelfHeal(context.config().getBoolean("SelfHeal", true));
 		LivingPopulationManager.getInstance().setStartingBuffs(context.config().getBoolean("StartingBuffs", true));

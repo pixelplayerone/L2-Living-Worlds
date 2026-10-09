@@ -172,6 +172,7 @@ public class LivingPopulationManager
 
 	private volatile boolean _startingBuffs = true;
 	private volatile double _rangedWalk = 0.5;
+	private volatile int _rotationWindow = 60;
 	private volatile double[] _shotModel = { 0.0, 1.4, 2.4, 2.2 };
 	private volatile boolean _selfHeal = true;
 
@@ -205,6 +206,12 @@ public class LivingPopulationManager
 	}
 
 	/** @param on whether a kill's shots follow its hits; the seconds between attacks of melee, archers and mage casts */
+	/** @param seconds the rotation window cold fights read (60 = the one-minute average; 0 = nearest the fight) */
+	public void setRotationWindow(int seconds)
+	{
+		_rotationWindow = seconds;
+	}
+
 	public void setShotModel(boolean on, double meleeInterval, double bowInterval, double castInterval)
 	{
 		_shotModel = new double[] { on ? 1.0 : 0.0, meleeInterval, bowInterval, castInterval };
@@ -308,6 +315,7 @@ public class LivingPopulationManager
 				_combat.setRest(_zoneRest);
 				_combat.setStartingBuffs(_startingBuffs);
 				_combat.setRangedWalk(_rangedWalk);
+				_combat.setRotationWindow(_rotationWindow);
 				_combat.setShotModel(_shotModel[0] > 0.0, _shotModel[1], _shotModel[2], _shotModel[3]);
 				_combat.setSelfHeal(_selfHeal);
 				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour(), _partyParams.gearPenalty()));
