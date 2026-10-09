@@ -58,6 +58,20 @@ public final class PhantomBuffReservations
 	}
 
 	/**
+	 * Composes the reservation key for a {@code (target, abnormal slot)} pair (FPC-273). Different buffer classes
+	 * fill one slot with different skills (Haste 1086 and Chant of Fury 1251 both use ATTACK_TIME_DOWN), so a claim
+	 * keyed on the skill id let a Prophet and a Warcryer land both on the same target, each overwriting the other.
+	 * Slot codes are stored as negative values in the low half, so they can never collide with a positive skill id.
+	 * @param targetObjectId the buff target's object id
+	 * @param slotOrdinal the abnormal type's ordinal (0 or more)
+	 * @return a unique key for this target/slot pair
+	 */
+	public static long slotKey(int targetObjectId, int slotOrdinal)
+	{
+		return key(targetObjectId, -(slotOrdinal + 1));
+	}
+
+	/**
 	 * Attempts to claim a slot. A slot is granted when it is free, expired, or already held by this same caster
 	 * (a re-claim just refreshes it); it is refused only while a <i>different</i> caster holds an unexpired claim.
 	 * @param key the {@link #key(int, int)} of the target/skill pair

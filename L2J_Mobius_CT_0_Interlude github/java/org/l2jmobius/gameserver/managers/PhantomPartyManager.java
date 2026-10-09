@@ -6523,7 +6523,7 @@ public class PhantomPartyManager
 		{
 			return true;
 		}
-		PhantomBuffs.releaseBuff(target.getObjectId(), buff.getId(), state.npc.getObjectId());
+		PhantomBuffs.releaseBuff(target.getObjectId(), buff, state.npc.getObjectId());
 		return false;
 	}
 
@@ -6841,9 +6841,9 @@ public class PhantomPartyManager
 				{
 					return; // getting up first; cast on the next tick (pendingBuff kept so the order isn't lost)
 				}
-				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff.getId(), npc.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
+				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff, npc.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
 				{
-					return; // another support (or the buddy) is already landing this exact buff on the target
+					return; // another support (or the buddy) is already landing a buff in this slot on the target
 				}
 				dbgBuff(npc, target, buff, "on-demand");
 				npc.setTarget(target);
@@ -7340,12 +7340,23 @@ public class PhantomPartyManager
 		for (Member m : _members.values())
 		{
 			if ((m != state) && m.isSupport() && (m.owner == state.owner) && !m.npc.isDead() && m.npc.isCastingNow() //
-				&& (m.npc.getTarget() == target) && (m.npc.getLastSkillCast() != null) && (m.npc.getLastSkillCast().getId() == buff.getId()))
+				&& (m.npc.getTarget() == target) && (m.npc.getLastSkillCast() != null) && sameBuffSlot(m.npc.getLastSkillCast(), buff))
 			{
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/** Same skill, or two skills filling one abnormal slot (Haste and Chant of Fury), so casting both would overlap (FPC-273). */
+	private static boolean sameBuffSlot(Skill a, Skill b)
+	{
+		if (a.getId() == b.getId())
+		{
+			return true;
+		}
+		final AbnormalType slot = b.getAbnormalType();
+		return (slot != null) && !slot.isNone() && (a.getAbnormalType() == slot);
 	}
 
 	/** The Recharge skill this support knows (Elder/Shillien Elder have it; Bishops don't), or {@code null}. */
@@ -7909,6 +7920,11 @@ public class PhantomPartyManager
 				}
 				// TEMPORARY: on cooldown or not enough MP right now. A real buffer waits and completes the requested
 				// kit rather than dropping the buff - hold on this same buff (index NOT advanced) and retry next tick.
+				if (PhantomBuffs.coveredByOtherBuffer(target, buff))
+				{
+					state.rebuffIdx++; // another buffer's skill already fills this slot (FPC-273) - don't overwrite it
+					continue;
+				}
 				if (npc.isSkillDisabled(buff) || (npc.getCurrentMp() < buff.getMpConsume()))
 				{
 					return true;
@@ -7917,9 +7933,9 @@ public class PhantomPartyManager
 				{
 					return true; // getting up first; cast this same buff next tick (index NOT advanced, so it isn't skipped)
 				}
-				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff.getId(), npc.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
+				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff, npc.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
 				{
-					state.rebuffIdx++; // another support (or the buddy) is already (re)casting this exact buff - skip so it isn't doubled
+					state.rebuffIdx++; // another support (or the buddy) is already (re)casting a buff in this slot - skip so it isn't doubled
 					continue;
 				}
 				dbgBuff(npc, target, buff, "rebuff");
@@ -7974,15 +7990,15 @@ public class PhantomPartyManager
 			{
 				if (beingBuffedByAnother(state, target, buff))
 				{
-					continue; // another support is already landing this exact buff on this target - don't double-cast it
+					continue; // another support is already landing a buff in this slot on this target - don't double-cast it
 				}
 				if (!readyToCast(npc))
 				{
 					return true; // getting up first; cast on the next tick
 				}
-				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff.getId(), npc.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
+				if (!PhantomBuffs.reserveBuff(target.getObjectId(), buff, npc.getObjectId(), PhantomBuffs.buffHoldMillis(buff)))
 				{
-					continue; // another bot buffer (party support or the personal buddy) is already landing this exact buff
+					continue; // another bot buffer (party support or the personal buddy) is already landing a buff in this slot
 				}
 				dbgBuff(npc, target, buff, "upkeep");
 				npc.setTarget(target);
