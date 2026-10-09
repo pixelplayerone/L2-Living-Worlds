@@ -599,12 +599,18 @@ public final class ColdLife
 
 	/**
 	 * Sits down for a rest once it has hunted long enough since the last one, as a player recovers HP and MP between
-	 * fights. Casters and archers rest longer.
+	 * fights. Casters and archers rest longer. Only without the zone model's rest estimate, which replaces it.
 	 * @return whether it sat down
 	 */
 	private static boolean rests(ColdBot bot, long now, long elapsedMs, Context context)
 	{
 		final ColdRisk.Params risk = context.risk();
+		if ((context.combat() != null) && context.combat().restModeled(bot.getZone()))
+		{
+			// The zone model already takes the sitting out of the kill rate; a fixed rest on top would count it twice.
+			bot.setRisk(bot.getRisk().withHunted(0L));
+			return false;
+		}
 		final long hunted = bot.getRisk().huntedSinceRestMs() + elapsedMs;
 		if ((risk.restEveryMs() <= 0) || (risk.restMs() <= 0) || (hunted < risk.restEveryMs()))
 		{

@@ -157,3 +157,7 @@ These are the smaller choices, written down so the reason survives. Almost all a
 - *Self heals come from the spells, and are used only when they pay.* Healers, mages and summoners can heal themselves, so leaving them out made them rest and die more than real ones. An earlier version used a flat 60% coverage at 0.12 mana per HP; the real power, mana, cast time and reuse of the heals replaced it. The first run showed that a bot that always heals kills 30-40% slower and dies about half as often, which is a loss at low levels and a win at high ones, so each bot heals only where it nets more experience. The death cut (half the healed share) is the one remaining guess.
 
 **Spoiling and undead** are explained in their own sections above.
+
+## Old mechanisms the zone model replaces
+- *Fixed rests.* `RestEveryMinutes` / `RestSeconds` made every bot sit for a fixed time, which also took that time out of hunting. Where the rest estimate has rows for the zone (`ZoneRest`), sitting is already inside the kill rate, so the fixed rests are skipped there (they still apply without zone data).
+- *Class death guess.* `ColdRisk` multiplied the death rate by 0.75 for tanks and 1.25 for light classes. The zone factor already uses the role's defence and evasion, so the guess is applied only when there is no zone factor.

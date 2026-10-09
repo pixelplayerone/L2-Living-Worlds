@@ -198,7 +198,11 @@ public final class ColdRisk
 				reasons.add("gear behind its level");
 			}
 		}
-		rate *= LivingSupplies.isTank(classId) ? 0.75 : (LivingSupplies.isLight(classId) ? 1.25 : 1.0);
+		if (zoneFactor <= 0.0)
+		{
+			// Only without the zone model: its factor already uses the role's defence and evasion, which replaces this class guess.
+			rate *= LivingSupplies.isTank(classId) ? 0.75 : (LivingSupplies.isLight(classId) ? 1.25 : 1.0);
+		}
 		return new Danger(Math.max(0.0, rate), List.copyOf(reasons));
 	}
 

@@ -357,6 +357,15 @@ public final class ZoneCombat
 	}
 
 	/**
+	 * @param zone a zone
+	 * @return whether sitting is already modeled for that zone (the rest estimate is on and has rows for it), so the fixed rests are not taken on top
+	 */
+	public boolean restModeled(String zone)
+	{
+		return _restOn && _rest.containsKey(zone);
+	}
+
+	/**
 	 * @param on whether monsters miss a bot with evasion, so it takes fewer hits (a lower death factor for the nimble: archers, then fighters, then mages)
 	 */
 	public void setEvasion(boolean on)
