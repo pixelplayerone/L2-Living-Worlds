@@ -147,8 +147,7 @@ public final class ZoneCombat
 	private volatile boolean _selfHealOn; // mystic-line bots heal themselves with the heals they have learned, and summoners heal the servitor (HEAL rows)
 	private final Map<String, java.util.TreeMap<Integer, List<double[]>>> _heals = new HashMap<>(); // line -> level -> heals {skill id, power, mana, cast s, reuse s}
 	private volatile boolean _hpDeaths; // deaths from the HP model (fight damage against the HP a bot starts a fight with) instead of the flat rate times the gear threat
-	private volatile int _restMonsters = 2; // how many monsters at once a bot keeps HP for before it pulls (it sits below that)
-	private volatile double _restSigmas = 1.5; // a bot sits when its HP falls below an average fight's damage plus this many standard deviations of it
+	private volatile double _fightRisk = 0.002; // the chance of dying in one fight a bot accepts: it sits below the HP at which a fight is riskier than this, so a more dangerous zone makes it rest sooner
 	private volatile double _deathBase = 0.3; // the cold death rate per hour the factor is a multiple of
 	private volatile int _rotationWindow = -1; // index of the fixed rotation window (-1 = nearest the fight's length)
 	private volatile boolean _shotsFromHits; // shots a kill uses from its hits (fight time over the attack interval, times the weapon's shots per attack) instead of a flat count
@@ -1514,22 +1513,14 @@ public final class ZoneCombat
 	}
 
 	/**
-	 * @param on whether deaths come from the HP model: a bot sits when its HP falls below an average fight's damage plus {@code sigmas} standard deviations of it, and dies in a fight whose damage exceeds the HP it started it with
-	 * @param sigmas how many standard deviations above the average fight's damage it keeps in HP before it sits (0 = exactly the damage one average monster does)
+	 * @param on whether deaths come from the HP model: a bot sits when its HP falls to the level at which a fight is riskier than {@code fightRisk}, and dies in a fight whose damage exceeds the HP it started it with
+	 * @param fightRisk the chance of dying in one fight that a bot accepts before it sits (0.002 = 1 in 500); a more dangerous zone raises the HP it keeps
 	 * @param baseDeathsPerHour the cold death rate per hour that {@link #deathFactor} is a multiple of
 	 */
-	/** @param monsters how many monsters at once a bot keeps HP for before it pulls (1 = just the one it pulls; 2 = also a second joining) */
-	public void setRestMonsters(int monsters)
-	{
-		_restMonsters = Math.max(1, Math.min(6, monsters));
-		_deathCache.clear();
-		_rateCache.clear();
-	}
-
-	public void setHpDeaths(boolean on, double sigmas, double baseDeathsPerHour)
+	public void setHpDeaths(boolean on, double fightRisk, double baseDeathsPerHour)
 	{
 		_hpDeaths = on;
-		_restSigmas = Math.max(0.0, sigmas);
+		_fightRisk = Math.max(1e-9, Math.min(0.5, fightRisk));
 		_deathBase = Math.max(1e-6, baseDeathsPerHour);
 		_deathCache.clear();
 		_rateCache.clear();
@@ -1679,8 +1670,8 @@ public final class ZoneCombat
 
 	/**
 	 * The HP model's death rate for a fighter taking monsters' hits for {@code fight} seconds per kill. A fight starts with one monster, and a 2nd, 3rd ... up to a 6th can join it (see {@link #setExtraMonsters});
-	 * they all attack from the start and die one after another, so n monsters do n(n+1)/2 times one monster's damage. The fighter sits when its HP falls below one monster's average damage plus {@code ZoneRestSigmas}
-	 * standard deviations of it (it does not know more are coming), sits until full, and dies in a fight whose damage is more than the HP it started with.
+	 * they all attack from the start and die one after another, so n monsters do n(n+1)/2 times one monster's damage. The fighter sits when its HP falls below the level at which a fight is riskier than {@code ZoneFightRisk}
+	 * (the monsters that may join are counted, so a dangerous zone makes it sit sooner), sits until full, and dies in a fight whose damage is more than the HP it started with.
 	 * @param r the fighter's rest row (HP pool and sitting regen)
 	 * @param defence the fighter's P.Def with buffs
 	 * @param healCoverage the share of the average damage a healer heals as it comes in (0 = none); the spread of the damage is not healed
@@ -1702,8 +1693,27 @@ public final class ZoneCombat
 		final double taken = 1.0 - healCoverage;
 		final double standing = r[2] * 1.1 / 1.5; // the rest row holds the sitting regen (standing x 1.5 / 1.1)
 		final double loss = Math.max(0.0, (mean * averageWeight * taken) - (standing * (fight + 2.5)));
-		final double planned = _restMonsters * (_restMonsters + 1) / 2.0; // n monsters do n(n+1)/2 times one monster's damage
-		final double sitBelow = Math.min(pool * 0.9, (mean * planned * taken) + (_restSigmas * sigma * Math.sqrt(planned)));
+		// The HP at which a fight's death chance (over the monsters that may join) is the risk the bot accepts: a dangerous zone puts it high, an easy one low.
+		final double cap = pool * 0.9;
+		double sitBelow = cap;
+		if (fightRisk(counts, mean, sigma, taken, cap) < _fightRisk)
+		{
+			double low = 0.0;
+			double high = cap;
+			for (int i = 0; i < 40; i++)
+			{
+				final double mid = (low + high) / 2.0;
+				if (fightRisk(counts, mean, sigma, taken, mid) > _fightRisk)
+				{
+					low = mid;
+				}
+				else
+				{
+					high = mid;
+				}
+			}
+			sitBelow = high;
+		}
 		double hp = pool;
 		double sum = 0.0;
 		int fights = 0;
@@ -1722,6 +1732,18 @@ public final class ZoneCombat
 			}
 		}
 		return killsPerHour * (sum / fights);
+	}
+
+	/** @return the chance a fight that starts at {@code hp} kills the fighter, over the number of monsters that may join it */
+	private static double fightRisk(double[] counts, double mean, double sigma, double taken, double hp)
+	{
+		double risk = 0.0;
+		for (int n = 1; n <= 6; n++)
+		{
+			final double weight = n * (n + 1) / 2.0;
+			risk += counts[n - 1] * normalTail((hp - (mean * weight * taken)) / (sigma * Math.sqrt(weight)));
+		}
+		return risk;
 	}
 
 	/** Self buffs that raise P.Def (Majesty, Iron Will, Rage's penalty ...), in proportion to the share the bot has learned: the multiple of its P.Def. */

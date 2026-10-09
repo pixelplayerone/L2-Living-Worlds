@@ -31,7 +31,7 @@ public class ZoneCombatReport
 		model.setAggroRisk(1.0);
 		model.setRotationTtk(true);
 		model.setRotationWindow(60);
-		model.setHpDeaths(true, Double.parseDouble(System.getProperty("sigmas", "1.5")), 0.3);
+		model.setHpDeaths(true, Double.parseDouble(System.getProperty("risk", "0.002")), 0.3);
 		model.setRest(true);
 		model.setEvasion(true);
 		model.setStartingBuffs(true);

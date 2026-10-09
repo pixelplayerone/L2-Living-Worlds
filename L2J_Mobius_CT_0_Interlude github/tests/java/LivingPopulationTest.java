@@ -954,7 +954,7 @@ public class LivingPopulationTest
 			final String hpData = ZONE_DATA + "\nREST\tCrowded\tmelee\t40\t6.5\t200\t10\t0\t1.0\t4000\nREST\tMid\tmelee\t40\t6.5\t200\t10\t0\t1.0\t4000";
 			final ZoneCombat hp = ZoneCombat.parse(new java.io.StringReader(hpData), ZoneCombat.Params.defaults());
 			hp.setRest(true);
-			hp.setHpDeaths(true, 1.5, 0.3);
+			hp.setHpDeaths(true, 0.002, 0.3);
 			final ZoneCombat.Stats hpStats = hp.curveStats(ZoneCombat.Role.MELEE, 2, 2);
 			check("hp deaths: a zone without rest data has none (-1)", hp.deathsPerHour("Easy", 2, 40, hpStats) < 0.0);
 			hp.setExtraMonsters(new double[] { 0, 0, 0, 0, 0 });
