@@ -14,10 +14,10 @@ import org.l2jmobius.gameserver.livingpop.ZoneCombat;
 public class ZoneCombatReport
 {
 	// class ids (Interlude): 6 a tank, 2 Gladiator (melee), 9 Hawkeye-line archer, 10 Human Mystic (mage)
-	private static final int TANK = 6;       // Temple Knight line (a tank id in LivingSupplies)
-	private static final int MELEE = 2;      // Gladiator line
-	private static final int BOW = 9;
-	private static final int MAGE = 10;
+	private static final int TANK = 90;
+	private static final int MELEE = 88;
+	private static final int BOW = 92;
+	private static final int MAGE = 94;
 
 	public static void main(String[] args) throws Exception
 	{
@@ -29,10 +29,12 @@ public class ZoneCombatReport
 		}
 		final ColdRisk.Params risk = new ColdRisk.Params(0.3, 90_000L, 600_000L, 60_000L, 3_600_000L);
 		model.setAggroRisk(1.0);
+		model.setRotationTtk(true);
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
 		levelAverages(model, risk);
 		System.out.println();
 		rotationCompare(model);
+		model.setRotationTtk(true);
 		System.out.println();
 		levelAveragesBack(model, risk);
 		System.out.println();
