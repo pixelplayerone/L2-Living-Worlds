@@ -82,31 +82,65 @@ About 0.7 ms per pass for 2500 bots after the first pass: results are cached by 
 
 ## Virtual party (`ColdParty`)
 Healers cannot level alone (their rotation is weak), and at the highest levels a solo bot loses more experience to deaths than it gains, so cold bots can hunt in a virtual party. Nothing is grouped for real: each bot gets a rough four-member party made of itself and reference members.
-- **Members.** Tank (slot 0), damage dealer (1), buffer (2), healer (3). The bot fills its own slot (healers: slot 3, a mage wearing the healer's gear does the damage); the others are reference members in the best gear of the bot's grade (Phoenix Knight tank; a Duelist, Sagittarius or Archmage chosen at random for the damage dealer). The buffer is a Hierophant or a Doom Cryer picked at random (a bot that is a buffer brings its own line's buffs, any of Hierophant, Sword Muse, Spectral Dancer, Dominator, Doom Cryer, the saints).
+- **Members.** Tank (slot 0), damage dealer (1), buffer (2), healer (3). The bot fills its own slot (healers: slot 3, a mage wearing the healer's gear does the damage); the others are reference members in the best gear of the bot's grade (Phoenix Knight tank; the damage dealer is drawn at random from every damage line: Duelist, Dreadnought, Titan, Grand Khavatari, Fortune Seeker, Maestro, Adventurer, Wind Rider, Ghost Hunter, Sagittarius, Moonlight and Ghost Sentinel, and the mage lines). The buffer is a Hierophant or a Doom Cryer picked at random (a bot that is a buffer brings its own line's buffs, any of Hierophant, Sword Muse, Spectral Dancer, Dominator, Doom Cryer, the saints).
 - **Who parties.** Healers always (`PartyHealers`); others roll `PartyChance` per zone and four-hour window, and take the party only where its net experience an hour (after the death loss) beats going alone.
 - **Kills.** Tank and damage dealer rotations add up, each with the buffer's multipliers, cut by `PartyGearPenalty` (15%, a stop-gap since real members are rarely in top gear). Resting is the tank's HP deficit minus what the healer heals (`PartyHealCoverage`) and the healer's MP (`PartyHealerMpFactor` times an attacking mage's). A death costs the party `PartyResetSeconds` (45) to resurrect and get going.
 - **Deaths.** Monsters hit the tank; the healer leaves `PartyHealReduction` (a fifth) of its death rate; when the tank dies the next in line takes the hits until the monster is dead, each next member dying with `PartyChainChance` (0.3). So the damage dealer dies at 0.3 times the tank's rate, the buffer at 0.09, the healer at 0.027.
 - **Rewards.** The bot gets `PartyExpBonus / 4` of each kill's experience (default 1.30, the server's four-member bonus, so 32.5%; members are assumed to be the bot's level, so the server's level-squared split is an even quarter), a quarter of the adena, and a quarter of the chance at each item drop (the party's kill rate times 1/4). Shots and potions stay at the bot's own rate, since it attacks the whole time.
-- **Limits.** Loot is split by chance rather than by the server's loot rules (random, by turn, spoil to the spoiler); party size is fixed at four; reference members never die for real; the buffer's own cost is not paid.
+- **Limits.** Loot is split by chance rather than by the server's loot rules (random, by turn, spoil to the spoiler); party size is fixed at four; reference members never die for real; the buffer's own cost is not paid. See "Design decisions and reasoning" below for why each party rule is what it is.
 
 ## Known limits
 - Not validated against hot-bot measurements; late-level numbers are predictions.
 - Crits are in the rotation damage (expected crit damage) but not in the relative model. Multi-pulls, monster skills, self-heals, set bonuses and enchants are not modeled; potion healing and evasion are rough.
-- Healers (Cardinal and the like) use their line's attack rotation, which is weak (their real rotation is against undead and is not used), and get no credit for healing themselves, so they kill slower than other mages and die as often as them; the virtual party is what lets them level.
+- Healers (Cardinal and the like) use their line's attack rotation, which is weak outside undead zones (in zones with undead they use their undead rotation for that share, see "Undead zones"), and get no credit for healing themselves, so they kill slower than other mages and die as often as them; the virtual party is what lets them level.
 - Rotations assume infinite MP and the sim's best gear; a bot is scaled by its weapon only, and skipped skills are estimated by share, not re-simulated.
 - Early shared classes take the first line (alphabetical) that grows from them. Self buffs are scaled by the share of skills bought, not simulated per bot.
 - **Late-level deaths (left open on purpose; needs party behavior for cold bots).** A solo bot in the highest zones (about level 76-80) dies roughly 2 times an hour in this model, and each death costs 2.5% of a level. At level 76 that is about 1.9 x 2.5% x 220M = 10M experience an hour against about 5.7M gained (`ZoneExp`), so a solo cold bot there would not level. This is not tuned away: it is the gap that cold-sim party behavior (buffers, healers, shared fights, a full buffer party raises damage x2.4-3.6 and P.Def x1.5-1.8 at those levels; see `BuffedLeveling`) is meant to close. Until that exists, either treat late levels as unfinished, or lower `MaxDeathFactor` / `AggroPullRisk`, or set the `BuffShare*` settings above 0.
 - Zone averages hide spread (named or champion monsters); there is no experience reduction for hunting well below the bot's level.
 
 ## Spoiling
-
-- Drops and spoil are per-zone expected values (spawn-weighted over the hunting area's monsters), not a random mob per kill; gear drops are rolled for real with the zone's per-item chances.
-- A party spoils when the bot is a spoiler (Scavenger, Bounty Hunter, Fortune Seeker) or the random damage dealer is a Fortune Seeker. The spoil drops are then split like the rest (a quarter to the bot).
-- Spoil mana: only a spoiler *bot* pays it. Each kill takes one Spoil cast (skill 254: 12 mana at level 10 up to 67 at 72), refilled by sitting with the class's MP sit regen (`REST` column 9). A spoiler in the simulated party costs the bot nothing.
-- Not modeled: Spoil/Sweeper cast time, spoil failure.
+- **Which mob.** No random mob is picked per kill. A zone's drops and spoil are spawn-weighted expected values per kill (cached per zone, level and spoiler flag), so the long-run income matches the zone's real mix without noise. Gear drops (weapons and armor) are rolled for real with the zone's per-item chances, because a single piece changes what the bot wears.
+- **Who spoils.** A bot that is a Scavenger, Bounty Hunter or Fortune Seeker spoils its own kills. A party spoils when the bot is a spoiler or the random damage dealer is a Fortune Seeker (`PartyOutcome.spoils`). The spoil drops are then split like all other loot (a quarter to the bot). Spoil is assumed to always succeed and to be swept.
+- **Spoil mana.** Each kill takes one Spoil cast (skill 254): 12 mana at level 10, 19 at 20, 25 at 28, 31 at 36, 38 at 43, 44 at 49, 50 at 55, 55 at 60, 59 at 64, 63 at 68, 67 at 72. The mana is added to the sitting needed to refill MP, using the class's MP sit regen (`REST` column 9). It is paid **only when the bot itself is the spoiler**. A spoiler in the simulated party costs the bot nothing, because that member is a reference and its mana is not simulated.
+- Not modeled: Spoil and Sweeper cast time (about 1.8 s a cast) and failure chance.
 
 ## Undead zones
+- Each zone records the share of its monsters that are undead (`ZUNDEAD` rows, from the datapack NPC race; 19 zones have some, 7 are at least half).
+- A line with a second rotation against undead (`ROTU` rows: Cardinal, Hierophant, Eva's Saint, Shillien Saint and Phoenix Knight have one in the sim) uses it for the undead share of its kills and the plain rotation for the rest. Seconds per kill are averaged, not damage, because each kill takes the time of its own kind.
+- It is only used where it is faster than the plain rotation. Healers gain a lot (about 3x a Cardinal's damage at level 40, from Turn Undead style skills). Phoenix Knight's undead rotation is equal or slower in the sim (about 13% slower at level 80), so it is effectively unchanged.
+- Only damage per second is compared. If an undead rotation burns more MP, the extra sitting is not counted.
+- In a healer's 2-man party the damage comes from the partner mage, so a healer bot only gets the undead rotation when it hunts alone.
 
-Zones record the share of their monsters that are undead (`ZUNDEAD`, 19 zones have some, 7 are half or more). The healer lines (Cardinal, Hierophant, Eva's Saint, Shillien Saint) and Phoenix Knight (its undead rotation is no faster, so it is unaffected) have a second rotation against undead (`ROTU`: Turn Undead style skills, about 3x a Cardinal's damage at level 40). A line with one uses it for the undead share of the kills and the plain rotation for the rest, averaging the seconds per kill. Other lines, and zones without undead, are unchanged.
+## Design decisions and reasoning
+These are the smaller choices, written down so the reason survives. Almost all are deliberate rough stand-ins to be tuned later.
 
-The undead rotation is only used where it is faster than the plain one, so Phoenix Knight (whose undead rotation is equal or slower) is effectively unchanged; the healers gain.
+**Walking and speed**
+- *Ranged classes walk half as much (`ZoneRangedWalk` 0.5).* Archers and mages attack from range, so they do not have to move to reach each monster. Only the 2.5 s of walking and targeting is halved, not the fight. The module default is 0.5 (the class default is 1.0, off).
+- *A party with a ranged damage dealer also halves it.* The ranged member pulls the mob for the whole group, so the tank and the others do not have to go to it either. That includes the healer's mage.
+- *Run-speed buffs shorten the walk by the speed gained.* 10% faster means 10% less walking time. Only the walk is affected, not the fight.
+- *Temporary speed self buffs are not counted* (Dash 15 s with an 80 s reuse, Sonic Move 15 s, Thrill Fight 300 s, Sprint 1200 s with its toggle cost). They last seconds to minutes, so a bot cannot hold them while hunting. Long buffs from the Newbie Helper and Hierophant are counted.
+
+**Self buffs and summoners**
+- *Self buffs are free and permanent.* No MP cost and no duration, to keep the calculation simple. Bots get the share of the gain equal to the share of those skills they bought, and nothing is stored per bot, so a level-up never leaves a stale profile.
+- *Burst and low-HP buffs are skipped* (Frenzy, Guts, Zealot, Dead Eye, Rapid Fire, Angelic Icon, Thrill Fight). Replaying them gave 5x damage for a Titan, which is not sustained damage.
+- *Daggers face the mob.* The target faces the attacker, so there is no backstab bonus. The dagger lines already carry Vicious Stance, Mortal Strike and Focus Death.
+- *Servitors take hits first* (monsters hit the pet before the master), so the pet's HP loss is modeled before the summoner's. When it dies the summoner loses 20 s to summoning again and is exposed meanwhile.
+- *Servitors get the fighter buffs, not the summoner's.* They are auto-attackers, so mage buffs would be wrong for them.
+
+**Buffs**
+- *Newbie Helper at 8-25, Hierophant or Doom Cryer from 26.* Only the Newbie Helper buffs the server script gives (and it only to characters that have not done their third class transfer). From 26 it is assumed the bot was buffed before going out, by one of the two main buffers (the average of both).
+- *No full party buffs solo.* A solo bot never gets more than one buffer's buffs, so `BuffedLeveling` is ignored while `StartingBuffs` is on.
+- *The song/dance buffers (Sword Muse, Spectral Dancer) and Dominator are not picked for a party.* The party's buffer is a Hierophant or a Doom Cryer, the two main buffers. A bot that is itself one of the other buffers brings its own line.
+- *HP, regen and Vampiric Rage are included.* Blessed Body counts as effective HP, Regeneration speeds sitting, and Vampiric Rage and Chant of Vampire return a share of the damage dealt as HP (about the monster's HP times the absorb share), so those bots sit less. Blessed Soul is left out because the pool size cancels in the rest model.
+- *Computed from the bot's level each time.* A level-up changes the buffs at once and nothing stale remains.
+
+**Party**
+- *Random damage dealer from every damage line.* Picking from all of them averages out the strengths and weaknesses of any one class.
+- *`PartyGearPenalty` 15%.* Simulated parties would otherwise be in the best gear of their grade, which real parties rarely are. A flat cut to damage and tank defence is a temporary stop-gap.
+- *`PartyExpBonus` 1.30 divided by four.* The server gives 1.30 for a party of four. Members are assumed to be the bot's level, so the level-based split is an even quarter. The bot gets 32.5% of each kill's experience.
+- *Loot split four ways.* Cold bots are not actually grouped, but they can level in groups, so drops should come out even across the board: a quarter of the adena and a quarter of the chance at each item. Shots and potions stay at the bot's own rate, since it attacks the whole time.
+- *Healer's mage uses the healer's equipped gear.* The healer's stats and gear are the only real data the cold bot has, so the 2-man party's mage is built from them, with all skills assumed (1.0).
+- *Bots only take a party when it nets more experience* (after the death loss) than going alone, except healers, who always party because they cannot level alone.
+- *Known side effect.* In the party model the healer's MP rest dominates, so melee, tank and dagger bots at levels 20-40 can kill slower in a party than alone (about 3 kills/min against 7 at level 40). They take the party only where it nets more experience.
+
+**Spoiling and undead** are explained in their own sections above.
