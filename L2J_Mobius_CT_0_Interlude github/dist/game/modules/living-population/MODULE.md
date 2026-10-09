@@ -144,6 +144,9 @@ keeps it.
 | `WalkToTownWithin` | A town closer than this is walked to even with a Scroll of Escape. |
 | `DropIncome` | Cold kills pay from the zone monsters' real drop lists at this server's rates: adena, plus loot sold at half price on the next town visit. |
 | `ColdDeathsPerHour` / `DeathRecoverSeconds` | How often a cold bot dies in the middle of a fitting zone (riskier at the bottom, without potions, with old gear, as a caster), and how long it recovers in town. |
+| `ZoneCombat` / `ZoneCombatFile` | Zone combat: each cold bot's kills per minute and deaths per hour come from its gear grade and learned skills against the average monster of the zone it hunts in (`data/zone_combat.tsv`, built from the datapack by `tools/combat_sim/build_zone_combat.py`), instead of one flat rate. Calibrated so a well-geared bot in the median zone gets `ColdKillsPerMinute` and `ColdDeathsPerHour`. `False` (or a missing file) keeps the flat rates. |
+| `ColdFightShare` / `SkillDamageFloor` | How much of a kill cycle is actual fighting (the rest, finding mobs and looting, does not depend on gear), and the damage a bot with none of its level's skills does (1.0 with all). |
+| `MinKillsPerMinute` / `MaxKillsPerMinute` / `MinDeathFactor` / `MaxDeathFactor` | Limits on the model's kill rate and on its death rate as a multiple of `ColdDeathsPerHour`. |
 | `RestEveryMinutes` / `RestSeconds` | Cold bots sit down to rest this long after this much hunting. |
 | `AvoidZoneMinutes` | After two deaths in one zone within this time, the bot avoids it this long and picks zones two levels lower. |
 | `ClassChanges` / `ClassQuestMinutes1` / `2` / `3` | Bots change class at 20, 40 and 76: take the quest from a class master of their race (by gatekeeper if their town has none), hunt that many minutes, then hand it in and change class. Each bot always takes the same branch. |

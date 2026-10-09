@@ -18,6 +18,7 @@
  */
 package org.l2jmobius.gameserver.livingpop;
 
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,6 +99,9 @@ public class LivingPopulationManager
 	private LivingPopulationConfig _config = LivingPopulationConfig.defaults();
 	private TravelConfig _travelConfig = TravelConfig.defaults();
 	private volatile ZoneCatalog _catalog = ZoneCatalog.empty();
+	private volatile ZoneCombat _combat = ZoneCombat.off(); // zone-based kill and death rates, or off for the flat ones
+	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10);
+	private volatile String _combatFile = "modules/living-population/data/zone_combat.tsv";
 	private volatile long[] _kitPrices; // gear kit price by grade, from the item data (see kitPrices)
 	private final Map<String, DropYield.Yield> _zoneYields = new ConcurrentHashMap<>(); // zone|level|spoiler|gear -> per kill
 	private final Map<String, Map<Integer, Double>> _zoneGear = new ConcurrentHashMap<>(); // zone|level|spoiler -> gear drop chances
@@ -130,7 +134,18 @@ public class LivingPopulationManager
 	}
 
 	/**
-	 * Starts the simulation with the Phase 5 travel configuration.
+	 * Sets the zone combat model's tuning and data file. Call before {@link #start(LivingPopulationConfig, TravelConfig)}.
+	 * @param params the tuning ({@code enabled} false keeps the flat kill and death rates)
+	 * @param dataFile the generated zone_combat.tsv
+	 */
+	public void setZoneCombat(ZoneCombat.Params params, String dataFile)
+	{
+		_combatParams = (params == null) ? _combatParams : params;
+		_combatFile = (dataFile == null) ? _combatFile : dataFile;
+	}
+
+	/**
+	 * Starts the module (see {@link #setZoneCombat} for the zone combat model's tuning, set before this).
 	 * @param config the module configuration
 	 * @param travel the travel, town and supply configuration
 	 */
@@ -179,6 +194,24 @@ public class LivingPopulationManager
 		}
 
 		_gear = (_travel && _travelConfig.gearSlots()) ? new GearCatalog(_travelConfig.gearTrade(), config.gearTierLevelStep()) : null;
+
+		// Zone combat: kill and death rates from each bot's stats against its zone's monsters. Needs the zone data file.
+		_combat = ZoneCombat.off();
+		if (_combatParams.enabled())
+		{
+			try (Reader reader = Files.newBufferedReader(Path.of(_combatFile), StandardCharsets.UTF_8))
+			{
+				_combat = ZoneCombat.parse(reader, new ZoneCombat.Params(true, Math.max(0.01, config.killsPerMinute()), _combatParams.fightShare(), _combatParams.skillFloor(), _combatParams.minKillsPerMinute(), _combatParams.maxKillsPerMinute(), _combatParams.minDeathFactor(), _combatParams.maxDeathFactor(), config.gearTierLevelStep()));
+				if (!_combat.enabled())
+				{
+					LOGGER.warning("LivingPopulation: " + _combatFile + " has no usable zone data; cold bots keep the flat kill and death rates.");
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.log(Level.WARNING, "LivingPopulation: could not read " + _combatFile + ": " + e.getMessage() + "; cold bots keep the flat kill and death rates.", e);
+			}
+		}
 
 		_dao.ensureColumns(); // add columns a newer module version needs to an older table (no manual migration)
 		final long now = System.currentTimeMillis();
@@ -466,7 +499,6 @@ public class LivingPopulationManager
 		final ExperienceData experience = ExperienceData.getInstance();
 		final double rate = Math.max(0.01, RatesConfig.RATE_XP);
 		final int maxLevel = Math.min(_config.maxLevel(), experience.getMaxLevel());
-		final double expPerKillUnit = Math.max(0.0, _config.expPerMobLevel()) * Math.max(0.0, _config.killsPerMinute()) * rate;
 		final IntToLongFunction expToNextLevel = level -> Math.max(1L, experience.getExpForLevel(level + 1) - experience.getExpForLevel(level));
 
 		// Population director: bias leveling toward the online players' level so the world stays peered to them. With
@@ -476,11 +508,9 @@ public class LivingPopulationManager
 		final int targetLevel = !_config.directorEnabled() ? 0 : (_config.levelGoal() > 0) ? Math.min(_config.levelGoal(), maxLevel) : PopulationDirector.targetLevel(humanPlayerLevels());
 		_targetLevel = targetLevel;
 		final PopulationDirector.Params directorParams = _config.directorParams();
-		final IntToLongFunction expPerMinuteForLevel = level ->
-		{
-			final double base = Math.max(0.0, level * expPerKillUnit);
-			return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
-		};
+		final ZoneCombat combat = _combat;
+		final double flatKillsPerMinute = Math.max(0.0, _config.killsPerMinute());
+		final double expPerKillUnitPerRate = Math.max(0.0, _config.expPerMobLevel()) * rate; // times a kill rate: experience per mob level per minute
 
 		// Phase 4: the cold goal/needs economy (adena, soulshots, gear tier, goal). Read the tuning once per tick.
 		final boolean economy = _config.economyEnabled();
@@ -503,7 +533,7 @@ public class LivingPopulationManager
 				return LivingPopulationManager.this.prices(level, gearTier, classId);
 			}
 		};
-		final ColdLife.Context life = travel ? new ColdLife.Context(_catalog, _travelConfig.supplyParams(_config), _travelConfig.travelParams(), priceBook, zoneOccupancy(), _random, _travelConfig.riskParams(), expToNextLevel, _travelConfig.classQuestParams(), _travelConfig.skillTraining() ? this::skillTree : null, _gear) : null;
+		final ColdLife.Context life = travel ? new ColdLife.Context(_catalog, _travelConfig.supplyParams(_config), _travelConfig.travelParams(), priceBook, zoneOccupancy(), _random, _travelConfig.riskParams(), expToNextLevel, _travelConfig.classQuestParams(), _travelConfig.skillTraining() ? this::skillTree : null, _gear, combat.enabled() ? combat : null) : null;
 		_handoff.setLife(life); // hot bots make the same decisions, acted out by their live characters
 
 		// Resolve up to resolveBatch due bots, starting from a rotating cursor so a population larger than the batch is
@@ -527,9 +557,17 @@ public class LivingPopulationManager
 			final long elapsed = Math.max(0L, now - bot.getLastResolvedAt());
 			// With travel on, experience, adena and soulshot use accrue only while hunting (not while traveling or in town).
 			final long huntedMs = (!travel || ColdLife.isHunting(bot.getActivity())) ? elapsed : 0L;
+			// This bot's own kill rate: its stats against the average monster of the zone it hunts (the flat rate when the model is off).
+			final IntToLongFunction expPerMinuteForLevel = level ->
+			{
+				final double base = Math.max(0.0, level * expPerKillUnitPerRate * killsPerMinuteOf(combat, bot, level, flatKillsPerMinute));
+				return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
+			};
 			final ColdProgression.Progress progress = ColdProgression.resolve(bot.getLevel(), bot.getExpIntoLevel(), huntedMs, maxLevel, expToNextLevel, expPerMinuteForLevel);
+			// The rate at the level it ends the span on drives the span's kills, adena, soulshots and drops (a span is short).
+			final double botKillsPerMinute = killsPerMinuteOf(combat, bot, progress.level(), flatKillsPerMinute);
 			// Kills at the modeled kill rate (a monitor counter), and the experience this span added (it earns SP).
-			final double huntKills = Math.max(0.0, _config.killsPerMinute()) * (huntedMs / 60_000.0);
+			final double huntKills = botKillsPerMinute * (huntedMs / 60_000.0);
 			final long huntExp = (experience.getExpForLevel(progress.level()) + progress.expIntoLevel()) - (experience.getExpForLevel(bot.getLevel()) + bot.getExpIntoLevel());
 			long huntAdena = 0L;
 			final List<DecisionLog.Event> events = new ArrayList<>();
@@ -556,13 +594,14 @@ public class LivingPopulationManager
 				final ColdEconomy.State before = new ColdEconomy.State(bot.getAdena(), bot.getSoulshots(), bot.getPotions(), bot.getGearTier(), bot.isRewardClaimed(), bot.getGoal());
 				// A kill pays from the zone monsters' real drop lists when the catalog has them: adena now, loot sold in town.
 				final DropYield.Yield yield = _travelConfig.dropIncome() ? zoneYield(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId())) : null;
-				// A mystic fires spiritshots, at its own rate per kill.
+				// A mystic fires spiritshots, at its own rate per kill. A bot's own kill rate (zone combat) replaces the flat one.
 				final ColdEconomy.Params shotParams = LivingSupplies.isMystic(bot.getClassId()) ? economyParams.withSoulshotsPerKill(_travelConfig.spiritshotsPerKill()) : economyParams;
-				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, shotParams, (yield == null) ? -1.0 : yield.adena(), events);
+				final ColdEconomy.Params botEconomy = combat.enabled() ? shotParams.withKillsPerMinute(botKillsPerMinute) : shotParams;
+				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, botEconomy, (yield == null) ? -1.0 : yield.adena(), events);
 				huntAdena = Math.max(0L, after.adena() - before.adena());
 				if ((yield != null) && (huntedMs > 0))
 				{
-					final double kills = economyParams.killsPerMinute() * (huntedMs / 60_000.0);
+					final double kills = botKillsPerMinute * (huntedMs / 60_000.0);
 					final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
 					bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
 					huntAdena += lootValue;
@@ -573,7 +612,7 @@ public class LivingPopulationManager
 					final Map<Integer, Double> chances = zoneGear(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId()));
 					if (!chances.isEmpty())
 					{
-						final double kills = economyParams.killsPerMinute() * (huntedMs / 60_000.0);
+						final double kills = botKillsPerMinute * (huntedMs / 60_000.0);
 						final long found = ColdLife.findDrops(bot, LivingGear.roll(chances, kills, _random), life, events);
 						bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + found));
 						huntAdena += found;
@@ -608,6 +647,28 @@ public class LivingPopulationManager
 			resolved++;
 		}
 		_resolveCursor = index; // resume here next tick so the budget rotates across the whole population
+	}
+
+	/**
+	 * @param combat the zone combat model
+	 * @param bot a bot (its zone, class, gear and skills)
+	 * @param level the level to rate it at
+	 * @param flat the flat rate to fall back on
+	 * @return the bot's kills per minute in its zone
+	 */
+	private double killsPerMinuteOf(ZoneCombat combat, ColdBot bot, int level, double flat)
+	{
+		if (!combat.knows(bot.getZone()))
+		{
+			return flat;
+		}
+		final int[] grades = ColdLife.gradesOf(bot, _gear, combat.tierStep());
+		double skills = 1.0;
+		if (_travelConfig.skillTraining() && (bot.getSkills() != null))
+		{
+			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
+		}
+		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, grades[0], grades[1], skills);
 	}
 
 	/** Bots in or heading to each zone, counted once per resolver tick for zone capacity. */

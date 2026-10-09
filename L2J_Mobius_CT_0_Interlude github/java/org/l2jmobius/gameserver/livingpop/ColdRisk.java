@@ -153,6 +153,16 @@ public final class ColdRisk
 	 */
 	public static Danger danger(Params params, int level, int zoneMin, int zoneMax, long potions, int gearTier, int tierCeiling, int classId)
 	{
+		return danger(params, level, zoneMin, zoneMax, potions, gearTier, tierCeiling, classId, 0.0);
+	}
+
+	/**
+	 * Like {@link #danger(Params, int, int, int, long, int, int, int)} with the zone's own factor from {@link ZoneCombat}.
+	 * @param zoneFactor the multiple of the base rate its gear and the zone's monsters give it; above 0 it replaces the
+	 *            gear-behind step (that is already in it), 0 or less keeps the old behavior
+	 */
+	public static Danger danger(Params params, int level, int zoneMin, int zoneMax, long potions, int gearTier, int tierCeiling, int classId, double zoneFactor)
+	{
 		final List<String> reasons = new ArrayList<>();
 		// Where it stands in the zone's range: at the bottom the monsters hit twice as hard as in the middle, at the top half.
 		final double half = Math.max(1.0, (zoneMax - zoneMin) / 2.0);
@@ -171,11 +181,22 @@ public final class ColdRisk
 			rate *= 2.0;
 			reasons.add("out of potions");
 		}
-		final int missing = Math.max(0, tierCeiling - gearTier);
-		if (missing > 0)
+		if (zoneFactor > 0.0)
 		{
-			rate *= 1.0 + (0.5 * missing);
-			reasons.add("gear behind its level");
+			rate *= zoneFactor;
+			if (zoneFactor >= 1.5)
+			{
+				reasons.add("the zone's monsters hit hard for its gear");
+			}
+		}
+		else
+		{
+			final int missing = Math.max(0, tierCeiling - gearTier);
+			if (missing > 0)
+			{
+				rate *= 1.0 + (0.5 * missing);
+				reasons.add("gear behind its level");
+			}
 		}
 		rate *= LivingSupplies.isTank(classId) ? 0.75 : (LivingSupplies.isLight(classId) ? 1.25 : 1.0);
 		return new Danger(Math.max(0.0, rate), List.copyOf(reasons));

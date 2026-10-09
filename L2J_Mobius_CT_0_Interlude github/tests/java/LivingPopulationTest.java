@@ -35,6 +35,8 @@ import org.l2jmobius.gameserver.livingpop.HandoffPolicy;
 import org.l2jmobius.gameserver.livingpop.LivingPopulationConfig;
 import org.l2jmobius.gameserver.livingpop.NeedsEvaluator;
 import org.l2jmobius.gameserver.livingpop.PopulationDirector;
+import org.l2jmobius.gameserver.livingpop.ColdRisk;
+import org.l2jmobius.gameserver.livingpop.ZoneCombat;
 
 /**
  * Standalone (no JUnit, no game server) regression harness for the dependency-free Living Population cold logic:
@@ -63,7 +65,7 @@ public class LivingPopulationTest
 	private static int _checks = 0;
 	private static int _failures = 0;
 
-	public static void main(String[] args)
+	public static void main(String[] args) throws Exception
 	{
 		testProgressionNoTimeNoGain();
 		testProgressionLevelsUp();
@@ -103,6 +105,7 @@ public class LivingPopulationTest
 		testEconomyReportsDecisions();
 		testEconomyReportsWaits();
 		testStatusIncludesDecisions();
+		testZoneCombat();
 
 		System.out.println("LivingPopulationTest: " + (_checks - _failures) + "/" + _checks + " checks passed.");
 		if (_failures > 0)
@@ -664,6 +667,55 @@ public class LivingPopulationTest
 		final String json = ColdBotStatus.render(bots, 0, 1L);
 		check("snapshot has the decisions newest first", json.contains("\"decisions\":[{\"t\":20,\"m\":\"second\"},{\"t\":10,\"m\":\"first\"}]"));
 		check("snapshot has the position", json.contains("\"x\":") && json.contains("\"z\":"));
+	}
+
+	// ---- zone combat: kill and death rates from gear against the zone's monsters
+	private static final String ZONE_DATA = String.join("\n",
+		"CURVE\tpatk_melee\t38\t112\t190\t236\t305\t342", "CURVE\tpatk_bow\t64\t191\t323\t400\t570\t581", "CURVE\tmatk_mage\t31\t79\t122\t145\t167\t193",
+		"CURVE\tpdef_tank\t170\t400\t519\t666\t724\t885", "CURVE\tpdef_melee\t80\t238\t316\t428\t468\t572", "CURVE\tpdef_light\t116\t176\t245\t378\t395\t446", "CURVE\tpdef_robe\t91\t134\t191\t293\t328\t363",
+		"CURVE\tmdef_heavy\t98\t168\t224\t276\t333\t333", "CURVE\tmdef_light\t98\t168\t224\t276\t346\t346", "CURVE\tmdef_robe\t98\t168\t224\t276\t333\t333",
+		"ZONE\tEasy\t1\t10\t4\t70\t50\t33\t11\t7", "ZONE\tMid\t35\t45\t42\t1200\t180\t120\t400\t250", "ZONE\tMid2\t40\t50\t46\t1500\t200\t130\t450\t280", "ZONE\tHard\t70\t75\t72\t2566\t308\t200\t743\t507");
+
+	private static void testZoneCombat() throws RuntimeException
+	{
+		final ZoneCombat model;
+		try
+		{
+			model = ZoneCombat.parse(new java.io.StringReader(ZONE_DATA), ZoneCombat.Params.defaults());
+		}
+		catch (java.io.IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+		check("zone combat: parsed zones", model.enabled() && (model.zoneCount() == 4));
+		check("zone combat: off model returns the flat rate", ZoneCombat.off().killsPerMinute("Mid", 2, 40, 2, 2, 1.0) == 12.0);
+		check("zone combat: unknown zone returns the flat rate", model.killsPerMinute("Nowhere", 2, 40, 2, 2, 1.0) == 12.0);
+		check("zone combat: unknown zone death factor is 1", model.deathFactor("Nowhere", 2, 2) == 1.0);
+		final double fitted = model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0);
+		final double behind = model.killsPerMinute("Mid", 2, 40, 1, 1, 1.0);
+		final double noSkills = model.killsPerMinute("Mid", 2, 40, 2, 2, 0.0);
+		check("zone combat: worse weapon grade kills slower", behind < fitted);
+		check("zone combat: missing skills kill slower", noSkills < fitted);
+		check("zone combat: skill floor halves damage, not more", noSkills > (fitted * 0.4));
+		check("zone combat: a fitted bot is near the flat rate in the median zone", Math.abs(fitted - 12.0) < 3.0);
+		check("zone combat: kill rate stays inside the limits", (model.killsPerMinute("Easy", 10, 5, 0, 0, 1.0) <= 24.0) && (model.killsPerMinute("Hard", 10, 72, 0, 0, 0.0) >= 3.0));
+		check("zone combat: same stats, tougher zone, slower kills", model.killsPerMinute("Hard", 2, 72, 5, 5, 1.0) < model.killsPerMinute("Easy", 2, 72, 5, 5, 1.0));
+		check("zone combat: more skills never kill slower", model.killsPerMinute("Mid", 2, 40, 2, 2, 0.6) >= model.killsPerMinute("Mid", 2, 40, 2, 2, 0.3));
+		check("zone combat: weaker armor raises the death factor", model.deathFactor("Mid", 2, 0) > model.deathFactor("Mid", 2, 2));
+		check("zone combat: tougher zone raises the death factor", model.deathFactor("Hard", 2, 5) > model.deathFactor("Easy", 2, 5));
+		check("zone combat: death factor stays inside the limits", (model.deathFactor("Hard", 10, 0) <= 4.0) && (model.deathFactor("Easy", 2, 5) >= 0.25));
+		check("zone combat: roles", (ZoneCombat.roleOf(6) == ZoneCombat.Role.TANK) && (ZoneCombat.roleOf(2) == ZoneCombat.Role.MELEE) && (ZoneCombat.roleOf(9) == ZoneCombat.Role.BOW) && (ZoneCombat.roleOf(10) == ZoneCombat.Role.MAGE));
+		check("zone combat: grade of a whole tier", (ZoneCombat.gradeOfTier(0, 10) == 0) && (ZoneCombat.gradeOfTier(2, 10) == 1) && (ZoneCombat.gradeOfTier(5, 10) == 2) && (ZoneCombat.gradeOfTier(3, 0) == 0));
+		check("zone combat: skill fraction counts learned levels", ZoneCombat.skillFraction(java.util.List.of(new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(1, 1, 5, 0, 0, 0, true), new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(2, 1, 5, 0, 0, 0, true), new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(3, 1, 50, 0, 0, 0, true)), java.util.Map.of(1, 1), 10) == 0.5);
+		check("zone combat: untracked skills count as complete", ZoneCombat.skillFraction(java.util.List.of(), null, 10) == 1.0);
+		final ColdRisk.Params risk = new ColdRisk.Params(0.3, 90_000L, 600_000L, 60_000L, 3_600_000L);
+		final double flat = ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 2).deathsPerHour();
+		final double zoned = ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 2, 2.0).deathsPerHour();
+		check("zone combat: old danger unchanged and zone factor multiplies", (Math.abs(flat - 0.3) < 1e-9) && (Math.abs(zoned - 0.6) < 1e-9));
+		final double behindFlat = ColdRisk.danger(risk, 40, 37, 43, 20, 2, 4, 2).deathsPerHour();
+		final double behindZoned = ColdRisk.danger(risk, 40, 37, 43, 20, 2, 4, 2, 1.0).deathsPerHour();
+		check("zone combat: zone factor replaces the gear-behind step", (behindFlat > flat) && (Math.abs(behindZoned - 0.3) < 1e-9));
+		check("zone combat: economy params keep everything but the kill rate", econ().withKillsPerMinute(7.0).killsPerMinute() == 7.0 && econ().withKillsPerMinute(7.0).adenaPerMobLevel() == 5.0);
 	}
 
 	private static void check(String label, boolean condition)

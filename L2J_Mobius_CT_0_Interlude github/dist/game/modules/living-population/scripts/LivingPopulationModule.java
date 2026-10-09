@@ -24,6 +24,7 @@ import org.l2jmobius.gameserver.handler.IVoicedCommandHandler;
 import org.l2jmobius.gameserver.livingpop.LivingPopulationConfig;
 import org.l2jmobius.gameserver.livingpop.LivingPopulationManager;
 import org.l2jmobius.gameserver.livingpop.TravelConfig;
+import org.l2jmobius.gameserver.livingpop.ZoneCombat;
 import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.modules.GameModule;
 import org.l2jmobius.gameserver.modules.ModuleContext;
@@ -124,6 +125,18 @@ public class LivingPopulationModule implements GameModule
 			context.config().getBoolean("GearSlots", true), //
 			context.config().getBoolean("GearTrade", true));
 
+		// Zone combat: each cold bot's kill and death rates come from its gear and skills against its zone's monsters.
+		LivingPopulationManager.getInstance().setZoneCombat(new ZoneCombat.Params( //
+			context.config().getBoolean("ZoneCombat", true), //
+			config.killsPerMinute(), //
+			Math.max(0.05, Math.min(0.95, context.config().getDouble("ColdFightShare", 0.5))), //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("SkillDamageFloor", 0.5))), //
+			Math.max(0.1, context.config().getDouble("MinKillsPerMinute", 3.0)), //
+			Math.max(0.1, context.config().getDouble("MaxKillsPerMinute", 24.0)), //
+			Math.max(0.01, context.config().getDouble("MinDeathFactor", 0.25)), //
+			Math.max(0.01, context.config().getDouble("MaxDeathFactor", 4.0)), //
+			config.gearTierLevelStep()), //
+			context.config().getString("ZoneCombatFile", "modules/living-population/data/zone_combat.tsv"));
 		LivingPopulationManager.getInstance().start(config, travel);
 		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
 		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());

@@ -165,9 +165,15 @@ public final class ColdLife
 	 *            that never change class
 	 * @param skills the skill trees, or null for bots that do not track their skills (a hot one then learns everything)
 	 * @param gear gear kept per slot, or null for bots that buy whole gear tiers
+	 * @param combat the zone combat model for kill and death rates, or null for the flat rates
 	 */
-	public record Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills, GearShop gear)
+	public record Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills, GearShop gear, ZoneCombat combat)
 	{
+		public Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills, GearShop gear)
+		{
+			this(catalog, supply, travel, priceBook, occupancy, random, risk, expToNext, classQuestMs, skills, gear, null);
+		}
+
 		public Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills)
 		{
 			this(catalog, supply, travel, priceBook, occupancy, random, risk, expToNext, classQuestMs, skills, null);
@@ -522,7 +528,9 @@ public final class ColdLife
 		// Gear behind its level: tiers not bought yet, or with gear kept per slot, grades its weapon or chest armor lag.
 		final int gearHave = (shop == null) ? bot.getGearTier() : 0;
 		final int gearWant = (shop == null) ? SupplyPlanner.tierCeiling(bot.getLevel(), context.supply()) : LivingGear.behind(gearOf(bot), bot.getLevel(), shop.items());
-		final ColdRisk.Danger danger = ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId());
+		final ZoneCombat combat = context.combat();
+		final double zoneFactor = ((combat != null) && combat.knows(zone.name())) ? combat.deathFactor(zone.name(), bot.getClassId(), gradesOf(bot, shop, combat.tierStep())[1]) : 0.0;
+		final ColdRisk.Danger danger = ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId(), zoneFactor);
 		if (context.random().nextDouble() >= ColdRisk.deathChance(danger.deathsPerHour(), elapsedMs))
 		{
 			return false;
@@ -1219,6 +1227,25 @@ public final class ColdLife
 	 * @param bot a bot
 	 * @return the gear it wears (empty when not recorded)
 	 */
+	/**
+	 * @param bot a bot
+	 * @param shop the gear shop, or null for bots that buy whole tiers
+	 * @param tierStep levels per whole gear tier
+	 * @return its weapon grade and its armor grade (0 no grade to 5 S)
+	 */
+	static int[] gradesOf(ColdBot bot, GearShop shop, int tierStep)
+	{
+		if ((shop != null) && (bot.getGear() != null))
+		{
+			final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
+			final int weapon = LivingGear.weaponGrade(gear, shop.items());
+			final int armor = Math.max(0, LivingGear.allowedGrade(bot.getLevel()) - LivingGear.behind(gear, bot.getLevel(), shop.items())); // the lower of weapon and chest
+			return new int[] { weapon, armor };
+		}
+		final int grade = ZoneCombat.gradeOfTier(bot.getGearTier(), tierStep);
+		return new int[] { grade, grade };
+	}
+
 	static Map<LivingGear.Slot, Integer> gearOf(ColdBot bot)
 	{
 		final Map<LivingGear.Slot, Integer> gear = LivingGear.decode(bot.getGear());
