@@ -251,12 +251,12 @@
 		<skill id="442" name="Sonic Barrier"      use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="35" />
 		<skill id="121" name="Battle Roar"        use="PANIC"    when="SELF_HP_BELOW" selfHpBelow="40" />
 		<skill id="7"   name="Sonic Storm"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="3" chargesAtLeast="3" />
-		<skill id="9"   name="Sonic Buster"       use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="2" chargesAtLeast="3" />
+		<skill id="8"   name="Sonic Focus"        use="ROTATION" when="CHARGES_BELOW" chargesBelow="4" />
+		<skill id="345" name="Sonic Rage"         use="ROTATION" when="CHARGES_BELOW" chargesBelow="7" />
+		<skill id="9"   name="Sonic Buster"       use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="261" name="Triple Sonic Slash" use="ROTATION" when="CHARGES" chargesAtLeast="4" />
 		<skill id="5"   name="Double Sonic Slash" use="ROTATION" when="CHARGES" chargesAtLeast="3" />
 		<skill id="6"   name="Sonic Blaster"      use="ROTATION" when="CHARGES" chargesAtLeast="3" />
-		<skill id="8"   name="Sonic Focus"        use="ROTATION" when="CHARGES_BELOW" chargesBelow="4" />
-		<skill id="345" name="Sonic Rage"         use="ROTATION" when="CHARGES_BELOW" chargesBelow="7" />
 		<skill id="1"   name="Triple Slash"       use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="100" name="Stun Attack"        use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="260" name="Hammer Crush"       use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
@@ -582,17 +582,17 @@
 		<skill id="292" name="Bison Spirit Totem" use="LIMIT"    when="HEALER_READY,DURABLE_TARGET" />
 		<skill id="420" name="Zealot"             use="LIMIT"    when="HEALER_READY,DURABLE_TARGET" />
 		<skill id="35"  name="Force Storm"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="3" chargesAtLeast="2" />
-		<skill id="17"  name="Force Burst"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="2" chargesAtLeast="2" maxLevel="69" />
-		<skill id="81" name="Punch of Doom" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="55" />
-		<skill id="280" name="Burning Fist" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="40" />
-		<skill id="281" name="Soul Breaker" use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="40" />
+		<skill id="81"  name="Punch of Doom"     use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="55" />
+		<skill id="280" name="Burning Fist"       use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="40" />
+		<skill id="17"  name="Force Burst"        use="ROTATION" when="MP_ABOVE" mpAbove="30" />
+		<skill id="54"  name="Force Blaster"      use="ROTATION" when="CHARGES" chargesAtLeast="1" />
 		<skill id="284" name="Hurricane Assault"  use="ROTATION" when="CHARGES" chargesAtLeast="2" />
-		<skill id="50"  name="Focused Force"      use="ROTATION" when="CHARGES_BELOW" chargesBelow="5" />
 		<skill id="346" name="Raging Force"       use="ROTATION" when="CHARGES_BELOW" chargesBelow="7" />
-		<skill id="54"  name="Force Blaster"      use="ROTATION" when="CHARGES" chargesAtLeast="1" maxLevel="59" />
+		<skill id="50"  name="Focused Force"      use="ROTATION" when="CHARGES_BELOW" chargesBelow="5" />
+		<skill id="281" name="Soul Breaker"       use="ROTATION" when="MP_ABOVE" mpAbove="30" minLevel="40" />
+		<skill id="29"  name="Iron Punch"         use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 		<skill id="120" name="Stunning Fist"      use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" maxLevel="59" />
 		<skill id="95"  name="Cripple"            use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" maxLevel="59" />
-		<skill id="29"  name="Iron Punch"         use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="45" />
 	</playstyle>
 
 	<!-- Bounty Hunter line: economic Spoil followed by corpse Sweeper in managed downtime. Dwarves fight with a
