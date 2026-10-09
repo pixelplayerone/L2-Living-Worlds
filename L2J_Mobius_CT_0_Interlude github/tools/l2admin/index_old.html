@@ -765,7 +765,7 @@ const PANELS = [
   { id:"livingpop", title:"Living Population Settings", file:"living-population/module.ini",
     blurb:"The simulated population of player-like bots that level, shop and travel on their own. Read at server start, so restart the server to apply (the bot count can also be lowered live from the monitor).",
     fields:[
-      {key:"Enabled", label:"Run the simulation", type:"bool", default:"False", help:"Master switch for the whole Living Population. Restart required."},
+      {key:"Enabled", label:"Run the simulation", type:"bool", default:"True", help:"Master switch for the whole Living Population. Restart required."},
       {key:"PopulationSize", label:"Number of bots", type:"int", default:"100", help:"How many bots the world holds. Raising it adds bots in waves (below). Lowering it here removes none: use Reduce in the monitor's Overview to remove bots."},
       {key:"BirthBatch", label:"New bots per wave", type:"int", default:"10", isNew:true, help:"While the population is below the number of bots, this many are born at a time, at level 1 in their starting village. 0 = all at once."},
       {key:"BirthIntervalMinutes", label:"Minutes between waves", type:"int", default:"20", isNew:true, help:"Time between waves of new bots. Waves spread the levels out, like new players joining over time."},

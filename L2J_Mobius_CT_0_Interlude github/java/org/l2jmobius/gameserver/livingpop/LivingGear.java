@@ -348,8 +348,9 @@ public final class LivingGear
 
 	/**
 	 * Shops for gear, slot by slot in {@link #SHOP_ORDER}: for each slot the best upgrade its class uses, its level allows
-	 * and it can afford, a shop's offer before another player's when they are equally good. What it replaces is taken
-	 * off (the caller sells it).
+	 * and it can afford, a shop's offer before another player's when they are equally good. Only an upgrade that is
+	 * {@link #good} is bought, so a bot never pays for a piece that is barely better and sells the old one at half price.
+	 * What it replaces is taken off (the caller sells it).
 	 * @param gear what it wears; updated in place
 	 * @param fit what the class wears
 	 * @param level the bot's level
@@ -360,15 +361,30 @@ public final class LivingGear
 	 */
 	public static List<Change> shop(Map<Slot, Integer> gear, Fit fit, int level, long budget, List<Offer> offers, Items items)
 	{
+		return shop(gear, fit, level, budget, offers, items, Set.of());
+	}
+
+	/**
+	 * As {@link #shop(Map, Fit, int, long, List, Items)}, leaving some slots alone.
+	 * @param locked slots it does not shop for (the pieces it bought earlier in the same visit, so it never buys a piece
+	 *            and sells it again a moment later)
+	 * @return what it bought, in order
+	 */
+	public static List<Change> shop(Map<Slot, Integer> gear, Fit fit, int level, long budget, List<Offer> offers, Items items, Set<Slot> locked)
+	{
 		final List<Change> bought = new ArrayList<>();
 		long left = Math.max(0L, budget);
 		for (Slot slot : SHOP_ORDER)
 		{
+			if (locked.contains(slot))
+			{
+				continue;
+			}
 			Offer best = null;
 			int bestGain = 0;
 			for (Offer offer : offers)
 			{
-				if ((offer.piece().kind() != slot.kind()) || (offer.price() > left) || (target(gear, offer.piece(), fit, level, items) != slot))
+				if ((offer.piece().kind() != slot.kind()) || (offer.price() <= 0) || (offer.price() > left) || (target(gear, offer.piece(), fit, level, items) != slot) || !good(gear, slot, offer.piece(), fit, items))
 				{
 					continue;
 				}
@@ -382,8 +398,7 @@ public final class LivingGear
 			if (best != null)
 			{
 				left -= best.price();
-				final boolean good = good(gear, slot, best.piece(), fit, items);
-				bought.add(new Change(slot, best.piece(), best.price(), best.shop(), bestGain, good, put(gear, slot, best.piece(), items)));
+				bought.add(new Change(slot, best.piece(), best.price(), best.shop(), bestGain, true, put(gear, slot, best.piece(), items)));
 			}
 		}
 		return bought;
@@ -401,7 +416,7 @@ public final class LivingGear
 			Offer cheapest = null;
 			for (Offer offer : offers)
 			{
-				if ((offer.piece().kind() != slot.kind()) || (target(gear, offer.piece(), fit, level, items) != slot) || !good(gear, slot, offer.piece(), fit, items))
+				if ((offer.piece().kind() != slot.kind()) || (offer.price() <= 0) || (target(gear, offer.piece(), fit, level, items) != slot) || !good(gear, slot, offer.piece(), fit, items))
 				{
 					continue;
 				}

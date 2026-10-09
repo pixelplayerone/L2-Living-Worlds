@@ -118,6 +118,16 @@ public final class GoalPlanner
 	 */
 	public static Plan plan(View view, SupplyPlanner.Prices prices, SupplyPlanner.Params params)
 	{
+		return plan(view, prices, params, false);
+	}
+
+	/**
+	 * As {@link #plan(View, SupplyPlanner.Prices, SupplyPlanner.Params)}, for a bot that may fire spiritshots.
+	 * @param spiritshots whether its shots are spiritshots (a caster), for the wording
+	 * @return the plan
+	 */
+	public static Plan plan(View view, SupplyPlanner.Prices prices, SupplyPlanner.Params params, boolean spiritshots)
+	{
 		final List<Candidate> candidates = new ArrayList<>();
 		final long reserve = SupplyPlanner.reserve(view.level(), view.adena(), params);
 		final long spendable = SupplyPlanner.spendable(view.adena(), reserve);
@@ -168,8 +178,8 @@ public final class GoalPlanner
 		{
 			final long target = SupplyPlanner.soulshotTarget(view.rewardClaimed(), params);
 			final long batch = Math.max(1L, target / 2);
-			final String reason = "Soulshots low (" + DecisionLog.num(view.soulshots()) + " of " + DecisionLog.num(target) + ")";
-			candidates.add(new Candidate(Goal.TOWN, 60, reason, (haul.soulshots() >= batch) ? null : "it could only buy " + DecisionLog.num(haul.soulshots()) + " and a trip is worth it from " + DecisionLog.num(batch) + " (" + DecisionLog.num(prices.soulshot()) + " each, it can spend " + DecisionLog.num(spendable) + ")", "soulshots"));
+			final String reason = (spiritshots ? "Spiritshots" : "Soulshots") + " low (" + DecisionLog.num(view.soulshots()) + " of " + DecisionLog.num(target) + ")";
+			candidates.add(new Candidate(Goal.TOWN, 60, reason, (haul.soulshots() >= batch) ? null : ((haul.soulshots() > 0) ? "it could only buy " + DecisionLog.num(haul.soulshots()) : "it cannot afford the smallest batch of " + DecisionLog.num(SupplyPlanner.soulshotMinPurchase(view.rewardClaimed(), params))) + " and a trip is worth it from " + DecisionLog.num(batch) + " (" + DecisionLog.num(prices.soulshot()) + " each, it can spend " + DecisionLog.num(spendable) + ")", "soulshots"));
 		}
 
 		// Zone fit: too weak for the zone is urgent; outleveled means it is time to move on.

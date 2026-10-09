@@ -45,8 +45,9 @@ public final class SupplyPlanner
 	 * @param gearUpgradeCost fallback adena cost of a gear tier upgrade when no real price is known (the next tier then
 	 *            costs this * (tier + 1))
 	 * @param gearTierLevelStep levels per unlocked gear tier; 0 disables upgrades
+	 * @param soulshotMinPurchase smallest batch of soulshots bought at once; a smaller amount is not bought (0 = any)
 	 */
-	public record Params(int potionStock, double potionRestockFraction, int soulshotStockMinutes, double soulshotRestockFraction, int escapeStock, long reserveFloor, long reservePerLevel, double reserveFraction, double killsPerMinute, double soulshotsPerKill, long gearUpgradeCost, int gearTierLevelStep)
+	public record Params(int potionStock, double potionRestockFraction, int soulshotStockMinutes, double soulshotRestockFraction, int escapeStock, long reserveFloor, long reservePerLevel, double reserveFraction, double killsPerMinute, double soulshotsPerKill, long gearUpgradeCost, int gearTierLevelStep, long soulshotMinPurchase)
 	{
 		/**
 		 * @param stock the potion stock for this bot's role
@@ -54,7 +55,16 @@ public final class SupplyPlanner
 		 */
 		public Params withPotionStock(int stock)
 		{
-			return new Params(Math.max(0, stock), potionRestockFraction, soulshotStockMinutes, soulshotRestockFraction, escapeStock, reserveFloor, reservePerLevel, reserveFraction, killsPerMinute, soulshotsPerKill, gearUpgradeCost, gearTierLevelStep);
+			return new Params(Math.max(0, stock), potionRestockFraction, soulshotStockMinutes, soulshotRestockFraction, escapeStock, reserveFloor, reservePerLevel, reserveFraction, killsPerMinute, soulshotsPerKill, gearUpgradeCost, gearTierLevelStep, soulshotMinPurchase);
+		}
+
+		/**
+		 * @param perKill shots fired per kill for this bot (a caster's spiritshots per kill differ from a fighter's soulshots)
+		 * @return the same tuning with that rate
+		 */
+		public Params withSoulshotsPerKill(double perKill)
+		{
+			return new Params(potionStock, potionRestockFraction, soulshotStockMinutes, soulshotRestockFraction, escapeStock, reserveFloor, reservePerLevel, reserveFraction, killsPerMinute, Math.max(0.0, perKill), gearUpgradeCost, gearTierLevelStep, soulshotMinPurchase);
 		}
 
 		/** @return the potion count at or below which the bot restocks (at least 1 when it carries any) */
@@ -132,6 +142,17 @@ public final class SupplyPlanner
 	}
 
 	/**
+	 * @param rewardClaimed whether the bot uses soulshots yet
+	 * @param params the tuning
+	 * @return the smallest batch of soulshots it buys: the configured minimum, but never more than half its stock, so a
+	 *         small stock setting cannot stop it from ever buying shots
+	 */
+	public static long soulshotMinPurchase(boolean rewardClaimed, Params params)
+	{
+		return Math.max(0L, Math.min(params.soulshotMinPurchase(), soulshotTarget(rewardClaimed, params) / 2));
+	}
+
+	/**
 	 * @param potions the bot's potion count
 	 * @param params the tuning
 	 * @return whether it is time to restock potions
@@ -177,7 +198,8 @@ public final class SupplyPlanner
 	/**
 	 * What a bot buys on a town visit, in the order a player would: a spare Scroll of Escape or two (cheap, and the way
 	 * home), then potions up to its stock, then the next gear tier if it can afford it after that, then soulshots with
-	 * what is left. Every purchase respects the operating reserve; partial amounts are fine.
+	 * what is left. Every purchase respects the operating reserve; partial amounts are fine, except that soulshots are
+	 * bought in a batch of at least {@link #soulshotMinPurchase} or not at all, as a player would not buy a handful.
 	 * @param level the bot level
 	 * @param adena the bot's adena
 	 * @param escapes Scrolls of Escape carried
@@ -204,9 +226,15 @@ public final class SupplyPlanner
 			budget -= upgradeCost;
 			upgraded = true;
 		}
-		final long soulshotsBought = buy(Math.max(0L, soulshotTarget(rewardClaimed, params) - soulshots), prices.soulshot(), budget);
+		final long soulshotsBought = atLeast(buy(Math.max(0L, soulshotTarget(rewardClaimed, params) - soulshots), prices.soulshot(), budget), soulshotMinPurchase(rewardClaimed, params));
 		final long cost = (escapesBought * prices.escape()) + (potionsBought * prices.potion()) + upgradeCost + (soulshotsBought * prices.soulshot());
 		return new Purchase(escapesBought, potionsBought, soulshotsBought, upgraded, cost);
+	}
+
+	/** @return the amount, or 0 when it is below the smallest batch worth buying */
+	private static long atLeast(long amount, long minimum)
+	{
+		return (amount < minimum) ? 0L : amount;
 	}
 
 	private static long buy(long wanted, long unitPrice, long budget)

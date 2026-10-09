@@ -30,6 +30,9 @@ package org.l2jmobius.gameserver.livingpop;
  * @param potionRestockFraction restock potions at or below this fraction of the stock
  * @param soulshotStockMinutes minutes of hunting worth of soulshots a bot likes to carry
  * @param soulshotRestockFraction restock soulshots below this fraction of the stock
+ * @param soulshotMinPurchase smallest batch of soulshots a bot buys; it buys none when it cannot or need not buy this many
+ *            (never more than half its stock, so a small stock still restocks)
+ * @param spiritshotsPerKill spiritshots a mystic fires per kill (fighters fire {@code SoulshotsPerKill} soulshots)
  * @param escapeStock Scrolls of Escape a bot likes to carry
  * @param reserveFloor smallest operating reserve of adena
  * @param reservePerLevel operating reserve per level
@@ -61,12 +64,12 @@ package org.l2jmobius.gameserver.livingpop;
  * @param gearTrade whether gear no shop in the bot's town sells can be bought as if from another player, at the item's
  *            reference price (a stand-in until bots trade with each other; see {@code GearCatalog.tradePrice})
  */
-public record TravelConfig(boolean enabled, String zonesFile, int potionStock, double potionRestockFraction, int soulshotStockMinutes, double soulshotRestockFraction, int escapeStock, long reserveFloor, long reservePerLevel, double reserveFraction, double moveSpeed, long escapeCastMs, long errandStopMs, int afkChancePercent, long afkMinMs, long afkMaxMs, double potionsPerHour, int zoneCapacity, long retryMs, double escapeMinDistance, boolean dropIncome, double deathsPerHour, long deathRecoverMs, long restEveryMs, long restMs, long avoidZoneMs, boolean classChanges, long[] classQuestMs, boolean skillTraining, boolean gearSlots, boolean gearTrade)
+public record TravelConfig(boolean enabled, String zonesFile, int potionStock, double potionRestockFraction, int soulshotStockMinutes, double soulshotRestockFraction, long soulshotMinPurchase, double spiritshotsPerKill, int escapeStock, long reserveFloor, long reservePerLevel, double reserveFraction, double moveSpeed, long escapeCastMs, long errandStopMs, int afkChancePercent, long afkMinMs, long afkMaxMs, double potionsPerHour, int zoneCapacity, long retryMs, double escapeMinDistance, boolean dropIncome, double deathsPerHour, long deathRecoverMs, long restEveryMs, long restMs, long avoidZoneMs, boolean classChanges, long[] classQuestMs, boolean skillTraining, boolean gearSlots, boolean gearTrade)
 {
 	/** @return the shipped defaults */
 	public static TravelConfig defaults()
 	{
-		return new TravelConfig(true, "modules/living-population/data/zones.xml", 8, 0.25, 30, 0.2, 2, 500L, 250L, 0.10, 120.0, 20_000L, 15_000L, 15, 120_000L, 600_000L, 4.0, 16, 300_000L, 2500.0, true, 0.3, 90_000L, 600_000L, 60_000L, 3_600_000L, true, new long[]
+		return new TravelConfig(true, "modules/living-population/data/zones.xml", 30, 0.25, 30, 0.2, 200L, ColdLife.Params.DEFAULT_SPIRITSHOTS_PER_KILL, 2, 500L, 250L, 0.10, 120.0, 20_000L, 15_000L, 15, 120_000L, 600_000L, 4.0, 16, 300_000L, 2500.0, true, 0.3, 90_000L, 600_000L, 60_000L, 3_600_000L, true, new long[]
 		{
 			3_600_000L,
 			10_800_000L,
@@ -80,7 +83,7 @@ public record TravelConfig(boolean enabled, String zonesFile, int potionStock, d
 	 */
 	public SupplyPlanner.Params supplyParams(LivingPopulationConfig base)
 	{
-		return new SupplyPlanner.Params(potionStock, potionRestockFraction, soulshotStockMinutes, soulshotRestockFraction, escapeStock, reserveFloor, reservePerLevel, reserveFraction, base.killsPerMinute(), base.soulshotsPerKill(), base.gearUpgradeCost(), gearSlots ? 0 : base.gearTierLevelStep());
+		return new SupplyPlanner.Params(potionStock, potionRestockFraction, soulshotStockMinutes, soulshotRestockFraction, escapeStock, reserveFloor, reservePerLevel, reserveFraction, base.killsPerMinute(), base.soulshotsPerKill(), base.gearUpgradeCost(), gearSlots ? 0 : base.gearTierLevelStep(), soulshotMinPurchase);
 	}
 
 	/** @return the death and rest tuning, or null when cold bots neither die nor rest */
@@ -102,6 +105,6 @@ public record TravelConfig(boolean enabled, String zonesFile, int potionStock, d
 	/** @return the travel tuning */
 	public ColdLife.Params travelParams()
 	{
-		return new ColdLife.Params(moveSpeed, escapeCastMs, errandStopMs, afkChancePercent, afkMinMs, afkMaxMs, potionsPerHour, zoneCapacity, retryMs, escapeMinDistance);
+		return new ColdLife.Params(moveSpeed, escapeCastMs, errandStopMs, afkChancePercent, afkMinMs, afkMaxMs, potionsPerHour, zoneCapacity, retryMs, escapeMinDistance, spiritshotsPerKill);
 	}
 }

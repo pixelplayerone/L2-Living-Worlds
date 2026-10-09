@@ -63,6 +63,14 @@ public final class ColdEconomy
 	 */
 	public record Params(double adenaPerMobLevel, double killsPerMinute, int soulshotMilestoneLevel, long soulshotMilestoneGrant, double soulshotsPerKill, long soulshotRestockThreshold, long soulshotRestockBatch, int soulshotCost, long potionRestockThreshold, long potionRestockBatch, int potionCost, int gearTierLevelStep, long gearUpgradeCost)
 	{
+		/**
+		 * @param perKill shots fired per kill for this bot (a caster's spiritshots per kill differ from a fighter's soulshots)
+		 * @return the same tuning with that rate
+		 */
+		public Params withSoulshotsPerKill(double perKill)
+		{
+			return new Params(adenaPerMobLevel, killsPerMinute, soulshotMilestoneLevel, soulshotMilestoneGrant, Math.max(0.0, perKill), soulshotRestockThreshold, soulshotRestockBatch, soulshotCost, potionRestockThreshold, potionRestockBatch, potionCost, gearTierLevelStep, gearUpgradeCost);
+		}
 	}
 
 	/**

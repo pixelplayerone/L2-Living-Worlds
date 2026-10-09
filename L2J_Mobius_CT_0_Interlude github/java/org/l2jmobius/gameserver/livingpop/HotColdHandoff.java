@@ -103,6 +103,11 @@ public class HotColdHandoff
 	private static final double ROUTE_POINT_RANGE = 100.0;
 	// Within this of a town errand stop (grocer, gatekeeper), the stop counts as reached.
 	private static final double ERRAND_RANGE = 150.0;
+	// Each bot heads for its own spot this far around an errand stop, so several in town at once do not stack on one
+	// point in front of the grocer, and counts it reached within ERRAND_SPOT_RANGE of it.
+	private static final double ERRAND_SPREAD_MIN = 50.0;
+	private static final double ERRAND_SPREAD_MAX = 110.0;
+	private static final double ERRAND_SPOT_RANGE = 40.0;
 	// How long past its estimated errand time a live bot may still be walking to the shops before it moves on anyway.
 	private static final long ERRAND_OVERTIME_MS = 180_000L;
 	// A walk that gains no ground for this long is stuck on terrain: the character is placed at its next waypoint.
@@ -762,12 +767,28 @@ public class HotColdHandoff
 			entry._errandStep++;
 			return;
 		}
+		// Its own spot around the stop; once near the stop it is also there when it stands still (the spot may be behind
+		// a counter or a wall, as far as the path lets it go).
+		final Point spot = errandSpot(bot, stop);
+		final boolean standingNear = !player.isMoving() && (HandoffPolicy.planarDistance(player.getX(), player.getY(), stop.x(), stop.y()) <= ERRAND_RANGE);
 		// The same walking as on the road: an arrival point can be thousands of units from the shops (Dwarven Village).
-		if (walkToward(entry, player, stop, now, ERRAND_RANGE))
+		if (standingNear || walkToward(entry, player, spot, now, ERRAND_SPOT_RANGE))
 		{
 			entry._errandStep++;
 			resetProgress(entry, now);
 		}
+	}
+
+	/**
+	 * @return where around a town errand stop this bot stands: the same spot every visit, at its own angle and distance
+	 *         from the stop
+	 */
+	static Point errandSpot(ColdBot bot, Point stop)
+	{
+		final long mixed = (bot.getId() * 0x9E3779B97F4A7C15L) ^ (bot.getId() >>> 17);
+		final double angle = ((mixed >>> 11) & 0xFFFF) * ((2 * Math.PI) / 0x10000);
+		final double radius = ERRAND_SPREAD_MIN + ((((mixed >>> 33) & 0xFF) / 255.0) * (ERRAND_SPREAD_MAX - ERRAND_SPREAD_MIN));
+		return new Point((int) Math.round(stop.x() + (Math.cos(angle) * radius)), (int) Math.round(stop.y() + (Math.sin(angle) * radius)), stop.z());
 	}
 
 	/**

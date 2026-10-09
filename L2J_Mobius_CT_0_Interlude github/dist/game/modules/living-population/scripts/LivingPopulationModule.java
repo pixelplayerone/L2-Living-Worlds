@@ -40,7 +40,7 @@ public class LivingPopulationModule implements GameModule
 	@Override
 	public void onEnable(ModuleContext context)
 	{
-		if (!context.config().getBoolean("Enabled", false))
+		if (!context.config().getBoolean("Enabled", true))
 		{
 			return; // Switch off: start nothing, behave as stock.
 		}
@@ -56,7 +56,7 @@ public class LivingPopulationModule implements GameModule
 			context.config().getBoolean("DirectorEnabled", true), //
 			Math.max(0, context.config().getInt("DirectorBandRadius", 2)), //
 			Math.max(1.0, context.config().getDouble("DirectorMaxCatchUp", 1.35)), //
-			Math.max(0.0, context.config().getDouble("DirectorSlowdown", 0.85)), //
+			Math.max(0.1, Math.min(1.0, context.config().getDouble("DirectorSlowdown", 0.85))), // 0 would stop leveling
 			Math.max(0.0, context.config().getDouble("DirectorCatchUpSlope", 0.06)), //
 			context.config().getBoolean("HandoffEnabled", true), //
 			Math.max(1000L, context.config().getLong("HandoffCheckSeconds", 5L) * 1000L), //
@@ -87,14 +87,16 @@ public class LivingPopulationModule implements GameModule
 		final TravelConfig travel = new TravelConfig( //
 			context.config().getBoolean("TravelEnabled", true), //
 			context.config().getString("ZonesFile", "modules/living-population/data/zones.xml"), //
-			Math.max(0, context.config().getInt("PotionStock", 8)), //
+			Math.max(0, context.config().getInt("PotionStock", 30)), //
 			Math.max(0.0, Math.min(1.0, context.config().getDouble("PotionRestockFraction", 0.25))), //
 			Math.max(0, context.config().getInt("SoulshotStockMinutes", 30)), //
 			Math.max(0.0, Math.min(1.0, context.config().getDouble("SoulshotRestockFraction", 0.2))), //
+			Math.max(0L, context.config().getLong("SoulshotMinPurchase", 200L)), //
+			Math.max(0.0, context.config().getDouble("SpiritshotsPerKill", 2.0)), //
 			Math.max(0, context.config().getInt("EscapeStock", 2)), //
 			Math.max(0L, context.config().getLong("ReserveFloor", 500L)), //
 			Math.max(0L, context.config().getLong("ReservePerLevel", 250L)), //
-			Math.max(0.0, Math.min(1.0, context.config().getDouble("ReserveFraction", 0.10))), //
+			Math.max(0.0, Math.min(0.5, context.config().getDouble("ReserveFraction", 0.10))), // above half it would hardly spend
 			Math.max(1.0, context.config().getDouble("MoveSpeed", 120.0)), //
 			Math.max(0L, context.config().getLong("EscapeCastSeconds", 20L) * 1000L), //
 			Math.max(0L, context.config().getLong("ErrandStopSeconds", 15L) * 1000L), //
@@ -103,7 +105,7 @@ public class LivingPopulationModule implements GameModule
 			Math.max(0L, context.config().getLong("AfkMaxMinutes", 10L) * 60_000L), //
 			Math.max(0.0, context.config().getDouble("ColdPotionsPerHour", 4.0)), //
 			Math.max(0, context.config().getInt("ZoneCapacity", 16)), //
-			Math.max(1000L, context.config().getLong("RetrySeconds", 300L) * 1000L), //
+			Math.max(30_000L, context.config().getLong("RetrySeconds", 300L) * 1000L), // a shorter wait reruns errands nonstop
 			Math.max(0.0, context.config().getDouble("WalkToTownWithin", 2500.0)), //
 			context.config().getBoolean("DropIncome", true), //
 			Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3)), //

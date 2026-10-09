@@ -1,6 +1,6 @@
 # Living Population (Phases 1-5)
 
-A persistent population of bots that live and progress over time. This is the opt-in module wrapper; the
+A persistent population of bots that live and progress over time. This is the module wrapper (on by default); the
 simulation itself lives in the core package `org.l2jmobius.gameserver.livingpop` and only runs when this
 module is enabled.
 
@@ -68,7 +68,7 @@ re-seeded row's `char_id` stayed 0 on an older jar, bind it by hand:
 
 ## Enable
 
-1. Edit `config/module.ini` and set `Enabled = True` (adjust `PopulationSize`, `BirthBatch` and `BirthIntervalMinutes` if you
+1. `Enabled = True` is the default in `config/module.ini` (adjust `PopulationSize`, `BirthBatch` and `BirthIntervalMinutes` if you
    want).
 2. Make sure the framework master switch is on (`config/Modules.ini`).
 3. Restart the server. On first enable the install script creates the table and the seeder runs.
@@ -103,7 +103,7 @@ keeps it.
 
 | Key | Meaning |
 |---|---|
-| `Enabled` | Master on/off switch. |
+| `Enabled` | Master on/off switch (default `True`). |
 | `PopulationSize` | Target number of bots (default 100). Raising it adds bots on the next start; lowering it removes none. |
 | `BirthBatch` | New bots born per wave while the population grows (0 = all at once). Default 10. |
 | `BirthIntervalMinutes` | Minutes between waves of new bots. Default 20. |
@@ -128,16 +128,18 @@ keeps it.
 | `GearTierLevelStep` / `GearUpgradeCost` | Levels per unlocked gear tier, and the base adena cost of an upgrade (with travel on, only a fallback: a tier costs a full set of its grade from the item data). With `GearSlots` on no tiers are bought; the tier then follows the weapon's grade. |
 | `TravelEnabled` | Phase 5 switch for travel, town visits and shopping only in town (needs `EconomyEnabled`). |
 | `ZonesFile` | The zone and town catalog. |
-| `PotionStock` / `PotionRestockFraction` | Healing potions a melee bot carries (tanks x1.5, casters, archers and healers x0.5), and the fraction of that at which it restocks. |
+| `PotionStock` / `PotionRestockFraction` | Healing potions a melee bot carries (default 30; tanks x1.5, casters, archers and healers x0.5), and the fraction of that at which it restocks. |
 | `SoulshotStockMinutes` / `SoulshotRestockFraction` | Minutes of hunting worth of soulshots to carry, and the fraction at which it restocks. |
+| `SoulshotMinPurchase` | Smallest batch of soulshots a bot buys in town (default 200); it buys this many or more, or none on that visit. 0 = any amount. Never more than half the soulshot stock. |
+| `SpiritshotsPerKill` | Spiritshots a mystic (mage, summoner, healer, buffer) fires per cold kill (default 2), in place of `SoulshotsPerKill`. Mystics buy spiritshots of their grade. |
 | `EscapeStock` | Scrolls of Escape a bot likes to carry. |
-| `ReserveFloor` / `ReservePerLevel` / `ReserveFraction` | The adena reserve a bot never spends on supplies. |
+| `ReserveFloor` / `ReservePerLevel` / `ReserveFraction` | The adena reserve a bot never spends on supplies, gear or spellbooks (`ReserveFraction` at most 0.5). |
 | `MoveSpeed` | Cold walking speed (units per second). |
 | `EscapeCastSeconds` / `ErrandStopSeconds` | Scroll of Escape cast time, and time spent at each town NPC. |
 | `AfkChancePercent` / `AfkMinMinutes` / `AfkMaxMinutes` | Chance and length of an AFK break per town visit. |
-| `ColdPotionsPerHour` | Potions a cold bot drinks per hour of hunting. |
-| `ZoneCapacity` | Bots per zone before it counts as full (0 = no limit). |
-| `RetrySeconds` | How long a bot that cannot afford the way on waits in town before trying again. |
+| `ColdPotionsPerHour` | Potions a cold melee bot drinks per hour of hunting; tanks drink half again as many, casters, archers and healers half as many. |
+| `ZoneCapacity` | Bots per zone before it counts as full (0 = no limit). A bot already there moves on only once it is a quarter over. |
+| `RetrySeconds` | How long a bot with no way on waits in town before trying again (at least 30). A bot too poor for a gatekeeper walks to the nearest fitting zone instead. |
 | `WalkToTownWithin` | A town closer than this is walked to even with a Scroll of Escape. |
 | `DropIncome` | Cold kills pay from the zone monsters' real drop lists at this server's rates: adena, plus loot sold at half price on the next town visit. |
 | `ColdDeathsPerHour` / `DeathRecoverSeconds` | How often a cold bot dies in the middle of a fitting zone (riskier at the bottom, without potions, with old gear, as a caster), and how long it recovers in town. |
