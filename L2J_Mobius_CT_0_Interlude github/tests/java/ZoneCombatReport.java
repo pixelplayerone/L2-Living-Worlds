@@ -30,6 +30,7 @@ public class ZoneCombatReport
 		final ColdRisk.Params risk = new ColdRisk.Params(0.3, 90_000L, 600_000L, 60_000L, 3_600_000L);
 		model.setAggroRisk(1.0);
 		model.setRotationTtk(true);
+		model.setRotationWindow(60);
 		model.setRest(true);
 		model.setEvasion(true);
 		model.setStartingBuffs(true);
@@ -44,6 +45,7 @@ public class ZoneCombatReport
 		System.out.println();
 		rotationCompare(model);
 		model.setRotationTtk(true);
+		model.setRotationWindow(60);
 		System.out.println();
 		levelAveragesBack(model, risk);
 		System.out.println();
@@ -261,6 +263,7 @@ public class ZoneCombatReport
 					model.setRotationTtk(false);
 					rel[r] += Math.max(0.3, Math.min(model.killsPerMinute(z.name(), classes[r], level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
 					model.setRotationTtk(true);
+		model.setRotationWindow(60);
 					rot[r] += Math.max(0.3, Math.min(model.killsPerMinute(z.name(), classes[r], level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
 				}
 			}
