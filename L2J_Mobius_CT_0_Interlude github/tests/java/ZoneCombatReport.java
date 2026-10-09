@@ -32,6 +32,8 @@ public class ZoneCombatReport
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
 		levelAverages(model, risk);
 		System.out.println();
+		rotationCompare(model);
+		System.out.println();
 		levelAveragesBack(model, risk);
 		System.out.println();
 		System.out.println("| zone | role | bot | kills/min old>new | deaths/hr old>new | exp/hr old (L*13) | exp/hr new | exp/hr new+ZoneExp |");
@@ -142,5 +144,45 @@ public class ZoneCombatReport
 			case BOW -> new ZoneCombat.Stats(16, 84, 41);
 			default -> new ZoneCombat.Stats(8, 84, 41);
 		};
+	}
+
+	/** Kills/min of the relative model (calibrated to 12) against the rotation model (real seconds), fitted third-class bots: Phoenix Knight 90, Duelist 88, Sagittarius 92, Archmage 94. */
+	static void rotationCompare(ZoneCombat model)
+	{
+		System.out.println("| level | zones | tank rel > rot | melee rel > rot | bow rel > rot | mage rel > rot | avg rel > rot |");
+		System.out.println("|---|---|---|---|---|---|---|");
+		final int[] classes = { 90, 88, 92, 94 };
+		for (int level : new int[] { 1, 20, 40, 52, 61, 76, 80 })
+		{
+			final int grade = LivingSupplies.gradeFor(level);
+			final double[] rel = new double[4], rot = new double[4];
+			int zones = 0;
+			for (ZoneCombat.ZoneStats z : model.zones())
+			{
+				if ((level < z.minLevel()) || (level > z.maxLevel()))
+				{
+					continue;
+				}
+				zones++;
+				for (int r = 0; r < 4; r++)
+				{
+					final ZoneCombat.Stats st = model.curveStats(ZoneCombat.roleOf(classes[r]), grade, grade);
+					model.setRotationTtk(false);
+					rel[r] += Math.max(0.3, Math.min(model.killsPerMinute(z.name(), classes[r], level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
+					model.setRotationTtk(true);
+					rot[r] += Math.max(0.3, Math.min(model.killsPerMinute(z.name(), classes[r], level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
+				}
+			}
+			model.setRotationTtk(false);
+			double ra = 0, oa = 0;
+			final StringBuilder sb = new StringBuilder("| " + level + " | " + zones + " |");
+			for (int r = 0; r < 4; r++)
+			{
+				sb.append(String.format(" %.1f > %.1f |", rel[r] / zones, rot[r] / zones));
+				ra += rel[r] / zones / 4;
+				oa += rot[r] / zones / 4;
+			}
+			System.out.println(sb + String.format(" %.1f > %.1f |", ra, oa));
+		}
 	}
 }

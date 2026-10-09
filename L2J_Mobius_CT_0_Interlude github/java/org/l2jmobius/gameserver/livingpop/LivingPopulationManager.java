@@ -109,6 +109,7 @@ public class LivingPopulationManager
 	private volatile double _soulshotDamage = 2.0; // zone combat: damage with soulshots over without
 	private volatile double _spiritshotDamage = Math.sqrt(2.0);
 	private volatile double _blessedDamage = 2.0; // zone combat: damage with blessed spiritshots over without
+	private volatile boolean _rotationTtk = true; // zone combat: time to kill from the sim rotations (real seconds)
 	private volatile double _blessedShare; // share of mages that fire blessed spiritshots (until buying decides it per bot)
 	private volatile double[] _buffShares = new double[4]; // buffed leveling: share of the full buffer party, per role
 	private volatile boolean _combatRates = true; // kill and death rates from the zone model
@@ -158,6 +159,11 @@ public class LivingPopulationManager
 		_respawnLimit = respawnLimit;
 		_respawnShare = respawnShare;
 		_aggroRisk = aggroRisk;
+	}
+
+	public void setRotationTtk(boolean on)
+	{
+		_rotationTtk = on;
 	}
 
 	public void setBlessedSpiritshots(double damage, double share)
@@ -248,6 +254,7 @@ public class LivingPopulationManager
 				_combat.setBuffShares(_buffShares);
 				_combat.setShotDamage(_soulshotDamage, _spiritshotDamage);
 				_combat.setBlessedDamage(_blessedDamage);
+				_combat.setRotationTtk(_rotationTtk);
 				_combat.setAggroRisk(_aggroRisk);
 				if (!_combat.enabled())
 				{

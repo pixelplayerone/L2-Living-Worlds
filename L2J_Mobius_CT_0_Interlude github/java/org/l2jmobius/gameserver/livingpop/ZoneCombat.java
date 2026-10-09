@@ -111,6 +111,12 @@ public final class ZoneCombat
 	private volatile double _blessedDamage = 2.0; // damage with blessed spiritshots over without (M.Atk x4, damage grows with its square root)
 	private volatile double _spiritshotDamage = Math.sqrt(2.0); // damage with spiritshots over without (M.Atk x2, damage grows with its square root)
 	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
+	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotations = new HashMap<>(); // line -> level -> {auto dps, dps over 5, 15, 30, 45, 60, 90, 120 s} against the sim's dummy
+	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
+	private static final int[] ROTATION_WINDOWS = { 5, 15, 30, 45, 60, 90, 120 };
+	private static final double SIM_PDEF = 400.0;
+	private static final double SIM_MDEF = 300.0;
+	private volatile boolean _rotationTtk; // time to kill from the sim's rotations in real seconds, not the calibrated relative model
 	private final Map<Long, Double> _killCache = new ConcurrentHashMap<>();
 	private final Map<Long, Double> _deathCache = new ConcurrentHashMap<>();
 
@@ -144,6 +150,8 @@ public final class ZoneCombat
 		final Map<String, double[]> curves = new HashMap<>();
 		final List<ZoneStats> zones = new ArrayList<>();
 		final Map<Role, double[][]> buffs = new java.util.EnumMap<>(Role.class);
+		final Map<String, java.util.TreeMap<Integer, double[]>> rotations = new HashMap<>();
+		final Map<Integer, String> rotationLine = new HashMap<>();
 		try (BufferedReader in = new BufferedReader(reader))
 		{
 			String line;
@@ -177,6 +185,19 @@ public final class ZoneCombat
 							table[2][level] = Double.parseDouble(f[5]);
 						}
 					}
+					else if (f[0].equals("ROT") && (f.length >= 11))
+					{
+						final double[] values = new double[1 + ROTATION_WINDOWS.length];
+						for (int i = 0; i < values.length; i++)
+						{
+							values[i] = Double.parseDouble(f[3 + i]);
+						}
+						rotations.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), values);
+					}
+					else if (f[0].equals("ROTCLASS") && (f.length >= 3))
+					{
+						rotationLine.put(Integer.parseInt(f[1]), f[2]);
+					}
 					else if (f[0].equals("ZONE") && (f.length >= 10))
 					{
 						final boolean more = f.length >= 14; // older data files stop at M.Atk, or before the experience
@@ -191,7 +212,67 @@ public final class ZoneCombat
 		}
 		final boolean usable = !zones.isEmpty() && curves.keySet().containsAll(List.of("patk_melee", "patk_bow", "matk_mage", "pdef_tank", "pdef_melee", "pdef_light", "pdef_robe", "mdef_heavy", "mdef_light", "mdef_robe"));
 		final Params use = usable ? params : new Params(false, params.baseKillsPerMinute(), params.fightShare(), params.skillFloor(), params.minKillsPerMinute(), params.maxKillsPerMinute(), params.minDeathFactor(), params.maxDeathFactor(), params.gearTierLevelStep());
-		return new ZoneCombat(use, curves, zones, buffs);
+		final ZoneCombat model = new ZoneCombat(use, curves, zones, buffs);
+		model._rotations.putAll(rotations);
+		model._rotationLine.putAll(rotationLine);
+		return model;
+	}
+
+	/**
+	 * Time to kill from the sim's best rotation per class line and level, in real seconds, instead of the calibrated relative model.
+	 * A class without a rotation line keeps the relative model.
+	 * @param on whether to use the rotations
+	 */
+	public void setRotationTtk(boolean on)
+	{
+		_rotationTtk = on;
+		_killCache.clear();
+	}
+
+	/** @return whether this class has a rotation line */
+	public boolean hasRotation(int classId)
+	{
+		final String line = _rotationLine.get(classId);
+		return (line != null) && _rotations.containsKey(line);
+	}
+
+	/**
+	 * Seconds of fighting per kill from the rotation data: zone HP over the rotation's damage per second against the zone's defence.
+	 * The rotation is the sim's best at the level (its best gear), scaled by the bot's weapon over the best weapon of its grade;
+	 * skills the bot has not learned are skipped (their share of the rotation's damage is lost, auto-attacks stay).
+	 */
+	private double rotationFightSeconds(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction)
+	{
+		final java.util.TreeMap<Integer, double[]> table = _rotations.get(_rotationLine.get(classId));
+		final java.util.Map.Entry<Integer, double[]> entry = (table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry();
+		final double[] r = entry.getValue();
+		final double scale = (role == Role.MAGE) ? (SIM_MDEF / Math.max(1.0, zone.mDef())) : (SIM_PDEF / Math.max(1.0, zone.pDef()));
+		final double refAttack = curve(role == Role.MAGE ? "matk_mage" : (role == Role.BOW ? "patk_bow" : "patk_melee"), LivingSupplies.gradeFor(level));
+		final double ratio = (refAttack <= 0) ? 1.0 : Math.max(0.1, Math.min(1.5, weaponAttack / refAttack));
+		final double gear = (role == Role.MAGE) ? Math.sqrt(ratio) : ratio;
+		final double skills = (role == Role.MAGE) ? Math.max(0.1, skillFraction) : Math.max(0.0, Math.min(1.0, skillFraction));
+		double seconds = 0.0;
+		for (int pass = 0; pass < 2; pass++)
+		{
+			final int w = (pass == 0) ? 0 : nearestWindow(seconds);
+			final double auto = Math.min(r[0], r[1 + w]);
+			final double dps = (auto + ((r[1 + w] - auto) * skills)) * scale * gear;
+			seconds = zone.hp() / Math.max(1e-6, dps);
+		}
+		return seconds;
+	}
+
+	private static int nearestWindow(double seconds)
+	{
+		int best = 0;
+		for (int i = 1; i < ROTATION_WINDOWS.length; i++)
+		{
+			if (Math.abs(ROTATION_WINDOWS[i] - seconds) < Math.abs(ROTATION_WINDOWS[best] - seconds))
+			{
+				best = i;
+			}
+		}
+		return best;
 	}
 
 	/**
@@ -438,10 +519,11 @@ public final class ZoneCombat
 		final int skills = (int) Math.round(Math.max(0.0, Math.min(1.0, skillFraction)) * 10.0);
 		final int shots = (int) Math.round(Math.max(0.0, Math.min(1.0, shotFraction)) * 10.0);
 		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
-		final long key = (((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 22L + (skills * 22L) + (shots * 2L) + ((blessed && (role == Role.MAGE)) ? 1L : 0L);
+		final boolean rotation = _rotationTtk && hasRotation(classId);
+		final long key = ((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 22L + (skills * 22L) + (shots * 2L) + ((blessed && (role == Role.MAGE)) ? 1L : 0L)) * 128L + (rotation ? (classId & 127) + 0L : 0L) + (rotation ? 0L : 0L);
 		return _killCache.computeIfAbsent(key, k ->
 		{
-			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
+			final double fightSeconds = (rotation ? rotationFightSeconds(_zones.get(zi), role, classId, level, attack, skills / 10.0) : (_killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0))) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
 			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), 60.0 / (overhead + fightSeconds)));
 		});

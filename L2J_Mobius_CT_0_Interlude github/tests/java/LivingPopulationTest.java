@@ -750,6 +750,25 @@ public class LivingPopulationTest
 		model.setShotDamage(1.0, 1.0);
 		check("shots: a bonus of 1 turns the check off", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0) - fitted) < 1e-9);
 		model.setShotDamage(2.0, Math.sqrt(2.0));
+		final String rotData = "CURVE\tpatk_melee\t10\t20\t30\t40\t50\t60\nCURVE\tpatk_bow\t10\t20\t30\t40\t50\t60\nCURVE\tmatk_mage\t10\t20\t30\t40\t50\t60\n" + "CURVE\tpdef_tank\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_melee\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_light\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_robe\t100\t120\t140\t160\t180\t200\n" + "CURVE\tmdef_heavy\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_light\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_robe\t50\t60\t70\t80\t90\t100\n" + "ZONE\tRot\t38\t42\t40\t400\t400\t300\t50\t50\t10\t5\t0\t100\n" + "ROT\tduelist\t40\t10\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t88\tduelist\n";
+		try
+		{
+			final ZoneCombat rot = ZoneCombat.parse(new java.io.StringReader(rotData), ZoneCombat.Params.defaults());
+			rot.setRotationTtk(true);
+			final ZoneCombat.Stats fit = rot.curveStats(ZoneCombat.Role.MELEE, 2, 2);
+			final double full = rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double none = rot.killsPerMinute("Rot", 88, 40, fit, 0.0, 1.0);
+			check("rotation ttk: a class with a rotation line gets its own rate", rot.hasRotation(88) && !rot.hasRotation(2));
+			check("rotation ttk: 100 dps (x 400/400) kills a 400 HP monster in 4 s, plus 2.5 s of overhead", Math.abs(full - (60.0 / 6.5)) < 0.05);
+			check("rotation ttk: skipping all skills falls back to the auto-attack rate", Math.abs(none - (60.0 / (400.0 / 10.0 + 2.5))) < 0.05 || none <= full);
+			check("rotation ttk: a worse weapon kills slower", rot.killsPerMinute("Rot", 88, 40, new ZoneCombat.Stats(fit.attack() / 2, fit.pDef(), fit.mDef()), 1.0, 1.0) < full);
+			rot.setRotationTtk(false);
+			check("rotation ttk: off uses the relative model", Math.abs(rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - full) > 1e-9);
+		}
+		catch (java.io.IOException e)
+		{
+			throw new RuntimeException(e);
+		}
 		final ZoneCombat.Stats mageGear = model.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 		final double plainSps = model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 1.0, false);
 		final double blessedSps = model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 1.0, true);
