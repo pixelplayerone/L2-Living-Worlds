@@ -46,6 +46,16 @@ def passive_mul(skill_list, stat):
             out *= float(vals[min(lvl, len(vals)) - 1]) if vals else float(ref)
     return out
 
+def shot_prob(n):
+    """Share of a monster's physical hits that carry a soulshot, as the engine rolls it (Npc.rechargeShots): it needs shots in stock (<shots soul=..>) and rolls Rnd.get(100) <= shotChance (0 when the chance is not given)."""
+    sh = n.find("shots")
+    if sh is None:
+        return 0.0
+    amount = int(sh.get("soul", 0) or 0)
+    chance = int(sh.get("shotChance", 0) or 0)
+    return min(1.0, (chance + 1) / 100.0) if amount > 0 else 0.0
+
+
 npcs = {}
 for p in glob.glob(os.path.join(L.DATA, "stats/npcs/*.xml")):
     for n in ET.parse(p).getroot().iter("npc"):
@@ -56,7 +66,7 @@ for p in glob.glob(os.path.join(L.DATA, "stats/npcs/*.xml")):
         sl = list(n.iter("skill")); sl = [x for x in sl if x.get("id") and x.get("level")]
         sb = lambda nm: S.bonus(nm, int(st.get(nm.lower())))
         npcs[int(n.get("id"))] = dict(name=n.get("name"), level=int(n.get("level")), type=n.get("type"), hp=float(v.get("hp")) * passive_mul(sl, "maxHp") * sb("CON"), mp=float(v.get("mp")),
-            patk=float(a.get("physical")) * passive_mul(sl, "pAtk") * sb("STR") * lm, matk=float(a.get("magical")) * passive_mul(sl, "mAtk") * sb("INT") ** 2 * lm ** 2, aspd=float(a.get("attackSpeed")) * sb("DEX"), crit=float(a.get("critical", 0)), acc=float(a.get("accuracy", 0)),
+            patk=float(a.get("physical")) * passive_mul(sl, "pAtk") * sb("STR") * lm, matk=float(a.get("magical")) * passive_mul(sl, "mAtk") * sb("INT") ** 2 * lm ** 2, aspd=float(a.get("attackSpeed")) * sb("DEX"), crit=float(a.get("critical", 0)) * sb("DEX"), shotp=shot_prob(n), acc=float(a.get("accuracy", 0)),
             pdef=float(d.get("physical")) * passive_mul(sl, "pDef") * lm, mdef=float(d.get("magical")) * passive_mul(sl, "mDef") * sb("MEN") * lm, exp=float(acq.get("exp", 0)) if acq is not None else 0, sp=float(acq.get("sp", 0)) if acq is not None else 0,
             race=((n.findtext("race") or "").strip().upper()), aggro=(ai is not None and float(ai.get("aggroRange", 0) or 0) > 0 and ai.get("isAggressive") != "false"), run=float((st.find("speed/run") or ET.Element("x")).get("ground", 0) or 0))
 root = ET.parse(zones_file).getroot()
@@ -77,7 +87,7 @@ for z in root.iter("zone"):
     rows.append(dict(zone=z.get("name"), min_level=z.get("minLevel"), max_level=z.get("maxLevel"), starter_race=z.get("starterRace") or "",
         monster_types=len(known), spawn_count=tw, mob_level_min=min(lv), mob_level_avg=round(wm("level"), 1), mob_level_max=max(lv),
         hp=round(wm("hp")), p_def=round(wm("pdef"), 1), m_def=round(wm("mdef"), 1), p_atk=round(wm("patk"), 1), m_atk=round(wm("matk"), 1),
-        atk_speed=round(wm("aspd")), crit=round(wm("crit"), 1), accuracy=round(wm("acc"), 1), exp=round(wm("exp")), sp=round(wm("sp"), 1),
+        atk_speed=round(wm("aspd")), crit=round(wm("crit"), 2), shot_prob=round(wm("shotp"), 3), accuracy=round(wm("acc"), 1), exp=round(wm("exp")), sp=round(wm("sp"), 1),
         aggressive_pct=round(100 * sum(c for m, c in known if m["aggro"]) / tw), non_monster_pct=round(100 * other / tw),
         undead_pct=round(100 * sum(c for m, c in known if m["race"] == "UNDEAD") / tw), spots=len(z.findall("spot")), respawn_per_min=round(per_s * 60, 1)))
 rows.sort(key=lambda r: (int(r["min_level"]), int(r["max_level"]), r["zone"]))

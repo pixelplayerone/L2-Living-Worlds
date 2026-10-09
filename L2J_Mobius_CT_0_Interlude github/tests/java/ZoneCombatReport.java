@@ -31,6 +31,7 @@ public class ZoneCombatReport
 		model.setAggroRisk(1.0);
 		model.setRotationTtk(true);
 		model.setRotationWindow(60);
+		model.setHpDeaths(true, Double.parseDouble(System.getProperty("sigmas", "2.0")), 0.3);
 		model.setRest(true);
 		model.setEvasion(true);
 		model.setStartingBuffs(true);
@@ -46,6 +47,7 @@ public class ZoneCombatReport
 		rotationCompare(model);
 		model.setRotationTtk(true);
 		model.setRotationWindow(60);
+		model.setHpDeaths(true, Double.parseDouble(System.getProperty("margin", "1.0")), 0.3);
 		System.out.println();
 		levelAveragesBack(model, risk);
 		System.out.println();
@@ -264,6 +266,7 @@ public class ZoneCombatReport
 					rel[r] += Math.max(0.3, Math.min(model.killsPerMinute(z.name(), classes[r], level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
 					model.setRotationTtk(true);
 		model.setRotationWindow(60);
+		model.setHpDeaths(true, Double.parseDouble(System.getProperty("margin", "1.0")), 0.3);
 					rot[r] += Math.max(0.3, Math.min(model.killsPerMinute(z.name(), classes[r], level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
 				}
 			}

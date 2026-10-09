@@ -58,7 +58,7 @@ def estimate(role, zone_name, level):
     w0 = min(windows)
     dps0 = windows[w0]["dps"] * scale
     tk = hp_z / max(1e-6, dps0)
-    w = min(windows, key=lambda x: abs(x - tk))
+    w = min(windows, key=lambda x: abs(x - 60))       # the module reads the one-minute average (ZoneRotationWindowSeconds = 60)
     dps = windows[w]["dps"] * scale
     tk = hp_z / max(1e-6, dps)
     mp_per_s = windows[w].get("mp_used", 0.0) / w
@@ -74,7 +74,8 @@ def estimate(role, zone_name, level):
         tk = hp_z / max(1e-6, dps)
         mp_per_s = mp_per_s * skill_share
     mp_loss = mp_per_s * tk
-    hp_dmg = max(70.0 * float(z["p_atk"]) / pdef(pdef_curve, level), 0.0)
+    # a monster's hit: 76 x P.Atk x (1 + shot share) x (1 + crit share) / P.Def (the server's formula; a crit doubles, a soulshot doubles P.Atk)
+    hp_dmg = max(76.0 * float(z["p_atk"]) * (1.0 + float(z.get("shot_prob") or 0.0)) * (1.0 + float(z.get("crit") or 0.0) / 100.0) / pdef(pdef_curve, level), 0.0)
     hits_per_s = float(z["atk_speed"]) / 500.0
     hp_loss = hits_per_s * hp_dmg * HIT * tk * ENGAGED
     cycle = tk + OVERHEAD
