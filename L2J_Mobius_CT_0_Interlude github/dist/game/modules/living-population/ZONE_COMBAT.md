@@ -104,3 +104,7 @@ Healers cannot level alone (their rotation is weak), and at the highest levels a
 - A party spoils when the bot is a spoiler (Scavenger, Bounty Hunter, Fortune Seeker) or the random damage dealer is a Fortune Seeker. The spoil drops are then split like the rest (a quarter to the bot).
 - Spoil mana: only a spoiler *bot* pays it. Each kill takes one Spoil cast (skill 254: 12 mana at level 10 up to 67 at 72), refilled by sitting with the class's MP sit regen (`REST` column 9). A spoiler in the simulated party costs the bot nothing.
 - Not modeled: Spoil/Sweeper cast time, spoil failure.
+
+## Undead zones
+
+Zones record the share of their monsters that are undead (`ZUNDEAD`, 19 zones have some, 7 are half or more). The healer lines (Cardinal, Hierophant, Eva's Saint, Shillien Saint) and Phoenix Knight (the party's reference tank) have a second rotation against undead (`ROTU`: Turn Undead style skills, about 3x a Cardinal's damage at level 40). A line with one uses it for the undead share of the kills and the plain rotation for the rest, averaging the seconds per kill. Other lines, and zones without undead, are unchanged.

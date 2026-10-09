@@ -118,6 +118,8 @@ public final class ZoneCombat
 	private volatile double _blessedDamage = 2.0; // damage with blessed spiritshots over without (M.Atk x4, damage grows with its square root)
 	private volatile double _spiritshotDamage = Math.sqrt(2.0); // damage with spiritshots over without (M.Atk x2, damage grows with its square root)
 	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
+	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotationsUndead = new HashMap<>(); // the same against undead monsters (healer lines with Turn Undead style skills, Phoenix Knight)
+	private final Map<String, Double> _undeadShare = new HashMap<>(); // zone -> share (0 to 1) of its monsters that are undead
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotations = new HashMap<>(); // line -> level -> {auto dps, dps over 5, 15, 30, 45, 60, 90, 120 s} against the sim's dummy
 	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotSelf = new HashMap<>(); // line -> level -> {dps ratio over 5 .. 120 s with the self buffs, P.Def mul, M.Def mul}
@@ -176,6 +178,8 @@ public final class ZoneCombat
 		final List<ZoneStats> zones = new ArrayList<>();
 		final Map<Role, double[][]> buffs = new java.util.EnumMap<>(Role.class);
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotations = new HashMap<>();
+		final Map<String, java.util.TreeMap<Integer, double[]>> rotationsUndead = new HashMap<>();
+		final Map<String, Double> undeadShare = new HashMap<>();
 		final Map<Integer, String> rotationLine = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotSelf = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, int[]>> rotSelfIds = new HashMap<>();
@@ -225,6 +229,19 @@ public final class ZoneCombat
 							values[i] = Double.parseDouble(f[3 + i]);
 						}
 						rotations.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), values);
+					}
+					else if (f[0].equals("ROTU") && (f.length >= 11))
+					{
+						final double[] values = new double[1 + ROTATION_WINDOWS.length];
+						for (int i = 0; i < values.length; i++)
+						{
+							values[i] = Double.parseDouble(f[3 + i]);
+						}
+						rotationsUndead.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), values);
+					}
+					else if (f[0].equals("ZUNDEAD") && (f.length >= 3))
+					{
+						undeadShare.put(f[1], Double.parseDouble(f[2]));
 					}
 					else if (f[0].equals("ROTSELF") && (f.length >= 12))
 					{
@@ -295,6 +312,8 @@ public final class ZoneCombat
 		final Params use = usable ? params : new Params(false, params.baseKillsPerMinute(), params.fightShare(), params.skillFloor(), params.minKillsPerMinute(), params.maxKillsPerMinute(), params.minDeathFactor(), params.maxDeathFactor(), params.gearTierLevelStep());
 		final ZoneCombat model = new ZoneCombat(use, curves, zones, buffs);
 		model._rotations.putAll(rotations);
+		model._rotationsUndead.putAll(rotationsUndead);
+		model._undeadShare.putAll(undeadShare);
 		model._rotationLine.putAll(rotationLine);
 		model._rotSelf.putAll(rotSelf);
 		model._rotSelfIds.putAll(rotSelfIds);
@@ -635,10 +654,26 @@ public final class ZoneCombat
 		return seconds;
 	}
 
-	/** Damage per second of the class's rotation against the zone's defence over a window (0 to 6), scaled by the weapon and the skills it has. */
+	/**
+	 * Damage per second of the class's rotation against the zone's defence over a window (0 to 6), scaled by the weapon and the skills it has.
+	 * In a zone with undead monsters, a line that has an undead rotation (the healers' Turn Undead style skills, Phoenix Knight) uses it for the undead share of the kills.
+	 */
 	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, int window)
 	{
-		final java.util.TreeMap<Integer, double[]> table = _rotations.get(_rotationLine.get(classId));
+		final String line = _rotationLine.get(classId);
+		final double plain = rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, _rotations.get(line));
+		final double undead = _undeadShare.getOrDefault(zone.name(), 0.0);
+		final java.util.TreeMap<Integer, double[]> undeadTable = (line == null) ? null : _rotationsUndead.get(line);
+		if ((undead <= 0.0) || (undeadTable == null))
+		{
+			return plain;
+		}
+		final double against = rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, undeadTable);
+		return 1.0 / (((1.0 - undead) / Math.max(1e-9, plain)) + (undead / Math.max(1e-9, against))); // kills take the time of their own kind: average the seconds, not the damage
+	}
+
+	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, int window, java.util.TreeMap<Integer, double[]> table)
+	{
 		if (table == null)
 		{
 			return zone.hp() / Math.max(1e-6, _killScale[role.ordinal()] * rawTimeToKill(zone, role, level, weaponAttack, skillFraction)); // no rotation line: the relative model

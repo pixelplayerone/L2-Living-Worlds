@@ -847,6 +847,18 @@ public class LivingPopulationTest
 			}
 			check("party spoiling: a Fortune Seeker among the random damage dealers makes the party spoil", anySpoil && anyClean);
 			check("party spoiling: a spoiler bot's party spoils, and its spoil mana is its own cost", rot.party("Rot", 117, 40, fit, 1.0, 1.0, false, 3).spoils());
+			final String undeadRow = "ROTU\tduelist\t40\t0\t300\t300\t300\t300\t300\t300\t300\n";
+			final ZoneCombat noUndead = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", undeadRow + "ROT\tduelist")), ZoneCombat.Params.defaults());
+			final ZoneCombat halfUndead = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", undeadRow + "ZUNDEAD\tRot\t0.5\nROT\tduelist")), ZoneCombat.Params.defaults());
+			final ZoneCombat allUndead = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", undeadRow + "ZUNDEAD\tRot\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			noUndead.setRotationTtk(true);
+			halfUndead.setRotationTtk(true);
+			allUndead.setRotationTtk(true);
+			final double undeadNone = noUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double undeadHalf = halfUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double undeadFull = allUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			check("undead rotation: a zone of undead uses the line's undead rotation, a mixed zone in between, a zone without undead the plain one", (undeadNone < undeadHalf) && (undeadHalf < undeadFull));
+			check("undead rotation: a line without one is unchanged", Math.abs(allUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0) - noUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0)) < 1e-9);
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.0));
