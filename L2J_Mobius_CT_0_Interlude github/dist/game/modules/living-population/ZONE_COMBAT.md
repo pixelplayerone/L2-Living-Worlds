@@ -13,7 +13,7 @@ A flat `ColdKillsPerMinute` (12), a flat `ColdDeathsPerHour` (0.3) and `level x 
 - Defence: P.Def = 4 (underwear) + chest + legs (a full-body chest covers them) + head + gloves + feet + shield; M.Def = necklace + 2 earrings + 2 rings. Empty slots count at their naked values (fighter chest 31, legs 18, head 12, gloves 8, feet 7; mystic chest 15, legs 8; jewelry 13/9/9/5/5). Set bonuses and enchants are not counted. A bot with no gear record uses the grade curves.
 - Role: tank, melee, bow or mage (`ZoneCombat.roleOf`).
 
-**Per zone** (spawn-weighted averages from the datapack, `ZONE` rows): level range, average monster level, HP, P.Def, M.Def, P.Atk, M.Atk, respawns per minute, spawn spots, share of aggressive monsters, experience per kill.
+**Per zone** (spawn-weighted averages from the datapack, `ZONE` rows): level range, average monster level, HP, P.Def, M.Def, P.Atk, M.Atk, respawns per minute, spawn spots, share of aggressive monsters, experience per kill. A monster's P.Atk, M.Atk, P.Def and M.Def are the datapack values times (monster level + 89) / 100, as the engine does for every creature (`FuncPDefMod` and the others); a level 48 monster has 1.37 times its listed defence, a level 80 one 1.69 times. Without this, fights ran 25-40% too short and monsters hit too softly.
 
 **Curves** (`CURVE` rows): the best +0 weapon attack and armor/jewelry defence of each grade (no grade, D 20, C 40, B 52, A 61, S 76).
 

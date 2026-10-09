@@ -24,9 +24,10 @@ for p in glob.glob(os.path.join(L.DATA, "stats/npcs/*.xml")):
         st = n.find("stats"); a = st.find("attack") if st is not None else None; d = st.find("defence") if st is not None else None; v = st.find("vitals") if st is not None else None
         if a is None or d is None or v is None: continue
         acq = n.find("acquire"); ai = n.find("ai")
+        lm = (int(n.get("level")) + 89) / 100.0      # the engine multiplies every creature's P.Atk, M.Atk, P.Def and M.Def by (level + 89) / 100 (FuncPAtkMod / FuncPDefMod ...), NPCs included; the datapack holds the base values
         npcs[int(n.get("id"))] = dict(name=n.get("name"), level=int(n.get("level")), type=n.get("type"), hp=float(v.get("hp")), mp=float(v.get("mp")),
-            patk=float(a.get("physical")), matk=float(a.get("magical")), aspd=float(a.get("attackSpeed")), crit=float(a.get("critical", 0)), acc=float(a.get("accuracy", 0)),
-            pdef=float(d.get("physical")), mdef=float(d.get("magical")), exp=float(acq.get("exp", 0)) if acq is not None else 0, sp=float(acq.get("sp", 0)) if acq is not None else 0,
+            patk=float(a.get("physical")) * lm, matk=float(a.get("magical")) * lm, aspd=float(a.get("attackSpeed")), crit=float(a.get("critical", 0)), acc=float(a.get("accuracy", 0)),
+            pdef=float(d.get("physical")) * lm, mdef=float(d.get("magical")) * lm, exp=float(acq.get("exp", 0)) if acq is not None else 0, sp=float(acq.get("sp", 0)) if acq is not None else 0,
             race=((n.findtext("race") or "").strip().upper()), aggro=(ai is not None and float(ai.get("aggroRange", 0) or 0) > 0 and ai.get("isAggressive") != "false"), run=float((st.find("speed/run") or ET.Element("x")).get("ground", 0) or 0))
 root = ET.parse(zones_file).getroot()
 rows = []
