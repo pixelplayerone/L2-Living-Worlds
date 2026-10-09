@@ -108,6 +108,7 @@ public final class ZoneCombat
 	private final Map<Role, double[][]> _buffs = new java.util.EnumMap<>(Role.class); // role -> {damage, pDef, mDef} multipliers by level, full buffer party
 	private volatile double _aggroRisk; // extra death multiple in a zone where every monster attacks on sight (0 = off)
 	private volatile double _soulshotDamage = 2.0; // damage with soulshots over without (auto-attack: P.Atk x2)
+	private volatile double _blessedDamage = 2.0; // damage with blessed spiritshots over without (M.Atk x4, damage grows with its square root)
 	private volatile double _spiritshotDamage = Math.sqrt(2.0); // damage with spiritshots over without (M.Atk x2, damage grows with its square root)
 	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
 	private final Map<Long, Double> _killCache = new ConcurrentHashMap<>();
@@ -279,6 +280,11 @@ public final class ZoneCombat
 	 * @param soulshot damage with soulshots over without, for physical roles (at least 1)
 	 * @param spiritshot damage with spiritshots over without, for mages (at least 1)
 	 */
+	public void setBlessedDamage(double blessedSpiritshot)
+	{
+		_blessedDamage = Math.max(1.0, blessedSpiritshot);
+	}
+
 	public void setShotDamage(double soulshot, double spiritshot)
 	{
 		_soulshotDamage = Math.max(1.0, soulshot);
@@ -413,6 +419,16 @@ public final class ZoneCombat
 	 */
 	public double killsPerMinute(String zone, int classId, int level, Stats stats, double skillFraction, double shotFraction)
 	{
+		return killsPerMinute(zone, classId, level, stats, skillFraction, shotFraction, false);
+	}
+
+	/**
+	 * Like the stats version, saying which spiritshot a mage fires.
+	 * @param blessed true when the bot fires blessed spiritshots (a mage only; M.Atk x4 instead of x2)
+	 * @return kills per minute
+	 */
+	public double killsPerMinute(String zone, int classId, int level, Stats stats, double skillFraction, double shotFraction, boolean blessed)
+	{
 		final Integer zi = knows(zone) ? _zoneIndex.get(zone) : null;
 		if (zi == null)
 		{
@@ -422,10 +438,10 @@ public final class ZoneCombat
 		final int skills = (int) Math.round(Math.max(0.0, Math.min(1.0, skillFraction)) * 10.0);
 		final int shots = (int) Math.round(Math.max(0.0, Math.min(1.0, shotFraction)) * 10.0);
 		final long attack = Math.max(0, Math.min(8191, Math.round(stats.attack())));
-		final long key = (((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 11L + (skills * 11L) + shots;
+		final long key = (((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + attack) * 16L * 22L + (skills * 22L) + (shots * 2L) + ((blessed && (role == Role.MAGE)) ? 1L : 0L);
 		return _killCache.computeIfAbsent(key, k ->
 		{
-			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0) / buff(role, 0, level) / shotDamage(role, shots / 10.0);
+			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, attack, skills / 10.0) / buff(role, 0, level) / shotDamage(role, shots / 10.0, blessed);
 			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), 60.0 / (overhead + fightSeconds)));
 		});
@@ -550,11 +566,15 @@ public final class ZoneCombat
 		return Math.max(physical, magical);
 	}
 
-	/** @return damage relative to a fully shot bot: 1 with shots all the time, down to 1 / (the shots' bonus) with none */
-	private double shotDamage(Role role, double fraction)
+	/**
+	 * @return damage relative to a bot that fires its plain shots all the time (what the calibration assumes): 1 with plain shots all
+	 *         the time, down to 1 / (the shots' bonus) with none, and above 1 for a mage firing blessed spiritshots
+	 */
+	private double shotDamage(Role role, double fraction, boolean blessed)
 	{
-		final double bonus = (role == Role.MAGE) ? _spiritshotDamage : _soulshotDamage;
-		return fraction + ((1.0 - fraction) / bonus);
+		final double base = (role == Role.MAGE) ? _spiritshotDamage : _soulshotDamage;
+		final double bonus = (blessed && (role == Role.MAGE)) ? Math.max(base, _blessedDamage) : base;
+		return ((fraction * bonus) + (1.0 - fraction)) / base;
 	}
 
 	/** @return the blended buff multiplier (kind 0 damage, 1 P.Def, 2 M.Def) for a role at a level: 1 with no share or no data */

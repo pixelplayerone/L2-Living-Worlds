@@ -108,6 +108,8 @@ public class LivingPopulationManager
 	private volatile double _aggroRisk = 1.0; // zone combat: extra death multiple where every monster is aggressive
 	private volatile double _soulshotDamage = 2.0; // zone combat: damage with soulshots over without
 	private volatile double _spiritshotDamage = Math.sqrt(2.0);
+	private volatile double _blessedDamage = 2.0; // zone combat: damage with blessed spiritshots over without
+	private volatile double _blessedShare; // share of mages that fire blessed spiritshots (until buying decides it per bot)
 	private volatile double[] _buffShares = new double[4]; // buffed leveling: share of the full buffer party, per role
 	private volatile boolean _combatRates = true; // kill and death rates from the zone model
 	private volatile boolean _expGap = true; // no hunting experience when outleveled for the zone, like the server
@@ -156,6 +158,18 @@ public class LivingPopulationManager
 		_respawnLimit = respawnLimit;
 		_respawnShare = respawnShare;
 		_aggroRisk = aggroRisk;
+	}
+
+	public void setBlessedSpiritshots(double damage, double share)
+	{
+		_blessedDamage = damage;
+		_blessedShare = Math.max(0.0, Math.min(1.0, share));
+	}
+
+	/** @return whether this bot fires blessed spiritshots: a fixed share of the mages by bot id (a stand-in until a bot's purchases decide it) */
+	private boolean usesBlessed(ColdBot bot)
+	{
+		return (_blessedShare > 0.0) && (Math.floorMod(bot.getId() * 2654435761L, 100L) < Math.round(_blessedShare * 100.0));
 	}
 
 	public void setShotDamage(double soulshot, double spiritshot)
@@ -233,6 +247,7 @@ public class LivingPopulationManager
 				_combat = ZoneCombat.parse(reader, new ZoneCombat.Params(true, Math.max(0.01, config.killsPerMinute()), _combatParams.fightShare(), _combatParams.skillFloor(), _combatParams.minKillsPerMinute(), _combatParams.maxKillsPerMinute(), _combatParams.minDeathFactor(), _combatParams.maxDeathFactor(), config.gearTierLevelStep()));
 				_combat.setBuffShares(_buffShares);
 				_combat.setShotDamage(_soulshotDamage, _spiritshotDamage);
+				_combat.setBlessedDamage(_blessedDamage);
 				_combat.setAggroRisk(_aggroRisk);
 				if (!_combat.enabled())
 				{
@@ -729,7 +744,7 @@ public class LivingPopulationManager
 		{
 			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
 		}
-		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, stats, skills, shotFraction);
+		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, stats, skills, shotFraction, usesBlessed(bot));
 	}
 
 	/**

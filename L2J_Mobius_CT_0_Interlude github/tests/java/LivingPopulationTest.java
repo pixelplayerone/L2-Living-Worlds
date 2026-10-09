@@ -750,6 +750,12 @@ public class LivingPopulationTest
 		model.setShotDamage(1.0, 1.0);
 		check("shots: a bonus of 1 turns the check off", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0) - fitted) < 1e-9);
 		model.setShotDamage(2.0, Math.sqrt(2.0));
+		final ZoneCombat.Stats mageGear = model.curveStats(ZoneCombat.Role.MAGE, 2, 2);
+		final double plainSps = model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 1.0, false);
+		final double blessedSps = model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 1.0, true);
+		check("blessed spiritshots: a mage firing them kills faster than with plain ones", blessedSps > plainSps);
+		check("blessed spiritshots: a fighter is unaffected by the flag", Math.abs(model.killsPerMinute("Mid", 2, 40, model.curveStats(ZoneCombat.Role.MELEE, 2, 2), 1.0, 1.0, true) - model.killsPerMinute("Mid", 2, 40, model.curveStats(ZoneCombat.Role.MELEE, 2, 2), 1.0, 1.0, false)) < 1e-9);
+		check("blessed spiritshots: with none in stock the flag changes nothing", Math.abs(model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 0.0, true) - model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 0.0, false)) < 1e-9);
 		check("zone exp: the zone's average exp per kill is read, unknown is -1", (Math.abs(model.expPerKill("Crowded") - 3940.0) < 1e-9) && (model.expPerKill("Mid") < 0) && (model.expPerKill("Nowhere") < 0));
 		// respawn limit and aggressive zones
 		check("respawn: a lone bot gets the usable share of the zone (30 a minute, half usable)", Math.abs(model.respawnCap("Crowded", 1, 0.5) - 15.0) < 1e-9);

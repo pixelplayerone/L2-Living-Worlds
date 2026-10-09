@@ -153,6 +153,9 @@ public class LivingPopulationModule implements GameModule
 		LivingPopulationManager.getInstance().setShotDamage( //
 			shotsMatter ? Math.max(1.0, context.config().getDouble("SoulshotDamage", 2.0)) : 1.0, //
 			shotsMatter ? Math.max(1.0, context.config().getDouble("SpiritshotDamage", 1.41)) : 1.0);
+		LivingPopulationManager.getInstance().setBlessedSpiritshots( //
+			shotsMatter ? Math.max(1.0, context.config().getDouble("BlessedSpiritshotDamage", 2.0)) : 1.0, //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("BlessedSpiritshotShare", 0.0))));
 		// Zone limits: the zone's respawns cap what its bots can kill; aggressive zones are riskier (packs, pulls).
 		LivingPopulationManager.getInstance().setZoneLimits( //
 			context.config().getBoolean("RespawnLimit", true), //
