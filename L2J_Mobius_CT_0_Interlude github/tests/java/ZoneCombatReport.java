@@ -34,7 +34,9 @@ public class ZoneCombatReport
 		model.setEvasion(true);
 		model.setStartingBuffs(true);
 		model.setRangedWalk(0.5);
-		model.setSelfHeal(0.6, 0.12);
+		model.setSelfHeal(true);
+		final java.util.Map<Integer, Double> expTotals = readTable(args[2], "tolevel");
+		model.setExpModel(l -> Math.round(expTotals.getOrDefault(l + 1, 0.0) - expTotals.getOrDefault(l, 0.0)), 1.0);
 		final String[][] zones = { { "Talking Island newbie grounds", "5" }, { "Cruma Tower", "45" }, { "Blazing Swamp", "72" } };
 		levelAverages(model, risk, args[1], args[2]);
 		System.out.println();

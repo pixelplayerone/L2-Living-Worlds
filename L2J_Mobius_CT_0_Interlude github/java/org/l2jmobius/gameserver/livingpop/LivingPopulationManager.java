@@ -172,8 +172,7 @@ public class LivingPopulationManager
 
 	private volatile boolean _startingBuffs = true;
 	private volatile double _rangedWalk = 0.5;
-	private volatile double _selfHeal = 0.6;
-	private volatile double _selfHealMpPerHp = 0.12;
+	private volatile boolean _selfHeal = true;
 
 	public void setParty(boolean on, double chance, boolean healers, ZoneCombat.PartyParams params)
 	{
@@ -204,14 +203,10 @@ public class LivingPopulationManager
 		_rangedWalk = factor;
 	}
 
-	/**
-	 * @param coverage the share of the HP lost that mages, healers and summoners heal themselves (and of the servitor's damage Servitor Heal repairs); 0 turns it off
-	 * @param mpPerHp the mana a heal costs per HP
-	 */
-	public void setSelfHeal(double coverage, double mpPerHp)
+	/** @param on whether mages, healers and summoners heal themselves (and summoners their servitor) with the heals they have learned */
+	public void setSelfHeal(boolean on)
 	{
-		_selfHeal = coverage;
-		_selfHealMpPerHp = mpPerHp;
+		_selfHeal = on;
 	}
 
 	public void setBlessedSpiritshots(double damage, double share)
@@ -306,7 +301,7 @@ public class LivingPopulationManager
 				_combat.setRest(_zoneRest);
 				_combat.setStartingBuffs(_startingBuffs);
 				_combat.setRangedWalk(_rangedWalk);
-				_combat.setSelfHeal(_selfHeal, _selfHealMpPerHp);
+				_combat.setSelfHeal(_selfHeal);
 				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour(), _partyParams.gearPenalty()));
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);
@@ -626,6 +621,7 @@ public class LivingPopulationManager
 		final double rate = Math.max(0.01, RatesConfig.RATE_XP);
 		final int maxLevel = Math.min(_config.maxLevel(), experience.getMaxLevel());
 		final IntToLongFunction expToNextLevel = level -> Math.max(1L, experience.getExpForLevel(level + 1) - experience.getExpForLevel(level));
+		_combat.setExpModel(expToNextLevel, rate);
 
 		// Population director: bias leveling toward the online players' level so the world stays peered to them. With
 		// the director off or no players online the target is 0 (neutral). It is folded per level into the experience
