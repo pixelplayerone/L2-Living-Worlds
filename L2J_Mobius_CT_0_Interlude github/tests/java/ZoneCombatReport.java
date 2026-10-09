@@ -57,7 +57,7 @@ public class ZoneCombatReport
 		final double flatKills = 12.0;
 		final double kills = model.killsPerMinute(zone, classId, level, weapon, armor, skills);
 		final double flatDeaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - tiersBehind, 5, classId).deathsPerHour();
-		final double deaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - tiersBehind, 5, classId, model.deathFactor(zone, classId, armor)).deathsPerHour();
+		final double deaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - tiersBehind, 5, classId, model.deathFactor(zone, classId, level, armor)).deathsPerHour();
 		System.out.printf("| %s | %s | %s | %.1f | %.1f | %.0f | %.0f | %.2f | %.2f |%n", zone, role, bot, flatKills, kills, level * 13.0 * flatKills * 60, level * 13.0 * kills * 60, flatDeaths, deaths);
 	}
 }

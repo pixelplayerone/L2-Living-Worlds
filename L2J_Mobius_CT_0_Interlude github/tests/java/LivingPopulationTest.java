@@ -690,7 +690,7 @@ public class LivingPopulationTest
 		check("zone combat: parsed zones", model.enabled() && (model.zoneCount() == 4));
 		check("zone combat: off model returns the flat rate", ZoneCombat.off().killsPerMinute("Mid", 2, 40, 2, 2, 1.0) == 12.0);
 		check("zone combat: unknown zone returns the flat rate", model.killsPerMinute("Nowhere", 2, 40, 2, 2, 1.0) == 12.0);
-		check("zone combat: unknown zone death factor is 1", model.deathFactor("Nowhere", 2, 2) == 1.0);
+		check("zone combat: unknown zone death factor is 1", model.deathFactor("Nowhere", 2, 40, 2) == 1.0);
 		final double fitted = model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0);
 		final double behind = model.killsPerMinute("Mid", 2, 40, 1, 1, 1.0);
 		final double noSkills = model.killsPerMinute("Mid", 2, 40, 2, 2, 0.0);
@@ -701,9 +701,9 @@ public class LivingPopulationTest
 		check("zone combat: kill rate stays inside the limits", (model.killsPerMinute("Easy", 10, 5, 0, 0, 1.0) <= 24.0) && (model.killsPerMinute("Hard", 10, 72, 0, 0, 0.0) >= 3.0));
 		check("zone combat: same stats, tougher zone, slower kills", model.killsPerMinute("Hard", 2, 72, 5, 5, 1.0) < model.killsPerMinute("Easy", 2, 72, 5, 5, 1.0));
 		check("zone combat: more skills never kill slower", model.killsPerMinute("Mid", 2, 40, 2, 2, 0.6) >= model.killsPerMinute("Mid", 2, 40, 2, 2, 0.3));
-		check("zone combat: weaker armor raises the death factor", model.deathFactor("Mid", 2, 0) > model.deathFactor("Mid", 2, 2));
-		check("zone combat: tougher zone raises the death factor", model.deathFactor("Hard", 2, 5) > model.deathFactor("Easy", 2, 5));
-		check("zone combat: death factor stays inside the limits", (model.deathFactor("Hard", 10, 0) <= 4.0) && (model.deathFactor("Easy", 2, 5) >= 0.25));
+		check("zone combat: weaker armor raises the death factor", model.deathFactor("Mid", 2, 40, 0) > model.deathFactor("Mid", 2, 40, 2));
+		check("zone combat: tougher zone raises the death factor", model.deathFactor("Hard", 2, 40, 5) > model.deathFactor("Easy", 2, 40, 5));
+		check("zone combat: death factor stays inside the limits", (model.deathFactor("Hard", 10, 40, 0) <= 4.0) && (model.deathFactor("Easy", 2, 40, 5) >= 0.25));
 		check("zone combat: roles", (ZoneCombat.roleOf(6) == ZoneCombat.Role.TANK) && (ZoneCombat.roleOf(2) == ZoneCombat.Role.MELEE) && (ZoneCombat.roleOf(9) == ZoneCombat.Role.BOW) && (ZoneCombat.roleOf(10) == ZoneCombat.Role.MAGE));
 		check("zone combat: grade of a whole tier", (ZoneCombat.gradeOfTier(0, 10) == 0) && (ZoneCombat.gradeOfTier(2, 10) == 1) && (ZoneCombat.gradeOfTier(5, 10) == 2) && (ZoneCombat.gradeOfTier(3, 0) == 0));
 		check("zone combat: skill fraction counts learned levels", ZoneCombat.skillFraction(java.util.List.of(new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(1, 1, 5, 0, 0, 0, true), new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(2, 1, 5, 0, 0, 0, true), new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(3, 1, 50, 0, 0, 0, true)), java.util.Map.of(1, 1), 10) == 0.5);
@@ -720,6 +720,27 @@ public class LivingPopulationTest
 		check("exp gap: inside the limit earns", !ZoneCombat.outleveled(14, 4.0, 11) && !ZoneCombat.outleveled(42, 42.0, 11));
 		check("exp gap: far below the zone earns nothing too", ZoneCombat.outleveled(20, 42.0, 11) && !ZoneCombat.outleveled(35, 42.0, 11));
 		check("exp gap: unknown zone or no limit never blocks", !ZoneCombat.outleveled(80, -1.0, 11) && !ZoneCombat.outleveled(80, 4.0, 0));
+		// buffed leveling: a share of the full buffer party, per role
+		final String withBuffs = ZONE_DATA + "\nBUFF\tmelee\t40\t1.25\t1.10\t1.40\nBUFF\tmage\t40\t1.60\t1.10\t1.40";
+		final ZoneCombat buffed;
+		try
+		{
+			buffed = ZoneCombat.parse(new java.io.StringReader(withBuffs), ZoneCombat.Params.defaults());
+		}
+		catch (java.io.IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+		final double unbuffedKills = buffed.killsPerMinute("Mid", 2, 40, 2, 2, 1.0);
+		buffed.setBuffShares(new double[] { 0.0, 1.0, 0.0, 0.5 });
+		check("buffs: share 1 kills faster", buffed.killsPerMinute("Mid", 2, 40, 2, 2, 1.0) > unbuffedKills);
+		check("buffs: a role with share 0 is unchanged", Math.abs(buffed.killsPerMinute("Mid", 6, 40, 2, 2, 1.0) - model.killsPerMinute("Mid", 6, 40, 2, 2, 1.0)) < 1e-9);
+		check("buffs: half share sits between none and full", buffed.killsPerMinute("Mid", 10, 40, 2, 2, 1.0) > model.killsPerMinute("Mid", 10, 40, 2, 2, 1.0));
+		final double buffedDeaths = buffed.deathFactor("Hard", 2, 40, 2);
+		check("buffs: defence lowers the death factor", buffedDeaths < model.deathFactor("Hard", 2, 40, 2));
+		check("buffs: a level without a row has no effect", Math.abs(buffed.killsPerMinute("Mid", 2, 41, 2, 2, 1.0) - model.killsPerMinute("Mid", 2, 41, 2, 2, 1.0)) < 1e-9);
+		buffed.setBuffShares(null);
+		check("buffs: shares cleared returns to the baseline", Math.abs(buffed.killsPerMinute("Mid", 2, 40, 2, 2, 1.0) - unbuffedKills) < 1e-9);
 		check("zone combat: economy params keep everything but the kill rate", econ().withKillsPerMinute(7.0).killsPerMinute() == 7.0 && econ().withKillsPerMinute(7.0).adenaPerMobLevel() == 5.0);
 	}
 

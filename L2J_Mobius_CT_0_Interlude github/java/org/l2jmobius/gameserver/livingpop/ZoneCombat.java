@@ -81,6 +81,7 @@ public final class ZoneCombat
 	}
 
 	private static final int GRADES = 6;
+	private static final int MAX_BUFF_LEVEL = 90;
 
 	private final Params _params;
 	private final Map<String, double[]> _curves;
@@ -88,12 +89,15 @@ public final class ZoneCombat
 	private final List<ZoneStats> _zones;
 	private final double[] _killScale = new double[Role.values().length]; // seconds of fighting per unit of raw time-to-kill
 	private final double[] _threatMedian = new double[Role.values().length];
+	private final Map<Role, double[][]> _buffs = new java.util.EnumMap<>(Role.class); // role -> {damage, pDef, mDef} multipliers by level, full buffer party
+	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
 	private final Map<Long, Double> _killCache = new ConcurrentHashMap<>();
 	private final Map<Long, Double> _deathCache = new ConcurrentHashMap<>();
 
-	private ZoneCombat(Params params, Map<String, double[]> curves, List<ZoneStats> zones)
+	private ZoneCombat(Params params, Map<String, double[]> curves, List<ZoneStats> zones, Map<Role, double[][]> buffs)
 	{
 		_params = params;
+		_buffs.putAll(buffs);
 		_curves = curves;
 		_zones = zones;
 		for (int i = 0; i < zones.size(); i++)
@@ -106,7 +110,7 @@ public final class ZoneCombat
 	/** @return a model that does nothing: every lookup returns the flat rates */
 	public static ZoneCombat off()
 	{
-		return new ZoneCombat(new Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10), Map.of(), List.of());
+		return new ZoneCombat(new Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10), Map.of(), List.of(), Map.of());
 	}
 
 	/**
@@ -119,6 +123,7 @@ public final class ZoneCombat
 	{
 		final Map<String, double[]> curves = new HashMap<>();
 		final List<ZoneStats> zones = new ArrayList<>();
+		final Map<Role, double[][]> buffs = new java.util.EnumMap<>(Role.class);
 		try (BufferedReader in = new BufferedReader(reader))
 		{
 			String line;
@@ -140,6 +145,18 @@ public final class ZoneCombat
 						}
 						curves.put(f[1], values);
 					}
+					else if (f[0].equals("BUFF") && (f.length >= 6))
+					{
+						final Role role = Role.valueOf(f[1].toUpperCase(java.util.Locale.ROOT));
+						final int level = Integer.parseInt(f[2]);
+						final double[][] table = buffs.computeIfAbsent(role, r -> new double[3][MAX_BUFF_LEVEL + 1]);
+						if ((level >= 0) && (level <= MAX_BUFF_LEVEL))
+						{
+							table[0][level] = Double.parseDouble(f[3]);
+							table[1][level] = Double.parseDouble(f[4]);
+							table[2][level] = Double.parseDouble(f[5]);
+						}
+					}
 					else if (f[0].equals("ZONE") && (f.length >= 10))
 					{
 						zones.add(new ZoneStats(f[1], Integer.parseInt(f[2]), Integer.parseInt(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]), Double.parseDouble(f[8]), Double.parseDouble(f[9])));
@@ -153,7 +170,7 @@ public final class ZoneCombat
 		}
 		final boolean usable = !zones.isEmpty() && curves.keySet().containsAll(List.of("patk_melee", "patk_bow", "matk_mage", "pdef_tank", "pdef_melee", "pdef_light", "pdef_robe", "mdef_heavy", "mdef_light", "mdef_robe"));
 		final Params use = usable ? params : new Params(false, params.baseKillsPerMinute(), params.fightShare(), params.skillFloor(), params.minKillsPerMinute(), params.maxKillsPerMinute(), params.minDeathFactor(), params.maxDeathFactor(), params.gearTierLevelStep());
-		return new ZoneCombat(use, curves, zones);
+		return new ZoneCombat(use, curves, zones, buffs);
 	}
 
 	/**
@@ -216,6 +233,25 @@ public final class ZoneCombat
 			}
 		}
 		return (allowed == 0) ? 1.0 : ((double) have / allowed);
+	}
+
+	/**
+	 * Emulates buffers keeping the bots buffed while they level. Each role has a share from 0 (no buffs) to 1 (the full
+	 * buffer party of its level: Might, Haste, the songs and dances, Shield ...); a share blends the full multipliers in
+	 * proportionally. Needs the BUFF rows of the data file; without them the shares do nothing. Calibration stays unbuffed, so
+	 * buffs lift a bot above the baseline.
+	 * @param shares per {@link Role} ordinal (TANK, MELEE, BOW, MAGE), each clamped to 0..1
+	 */
+	public void setBuffShares(double[] shares)
+	{
+		final double[] use = new double[Role.values().length];
+		for (int i = 0; (i < use.length) && (shares != null) && (i < shares.length); i++)
+		{
+			use[i] = Math.max(0.0, Math.min(1.0, shares[i]));
+		}
+		_buffShare = use;
+		_killCache.clear();
+		_deathCache.clear();
 	}
 
 	/** @return levels per gear tier */
@@ -291,7 +327,7 @@ public final class ZoneCombat
 		final long key = ((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8L + clamp(weaponGrade)) * 8L + clamp(armorGrade)) * 16L + skills;
 		return _killCache.computeIfAbsent(key, k ->
 		{
-			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, clamp(weaponGrade), skills / 10.0);
+			final double fightSeconds = _killScale[role.ordinal()] * rawTimeToKill(_zones.get(zi), role, level, clamp(weaponGrade), skills / 10.0) / buff(role, 0, level);
 			final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare());
 			return Math.max(_params.minKillsPerMinute(), Math.min(_params.maxKillsPerMinute(), 60.0 / (overhead + fightSeconds)));
 		});
@@ -300,10 +336,11 @@ public final class ZoneCombat
 	/**
 	 * @param zone the zone it hunts in
 	 * @param classId its class
+	 * @param level its level (for its buffs)
 	 * @param armorGrade the grade of its armor
 	 * @return the multiple of the base death rate for this zone and armor (1.0 when the model is off or does not know the zone)
 	 */
-	public double deathFactor(String zone, int classId, int armorGrade)
+	public double deathFactor(String zone, int classId, int level, int armorGrade)
 	{
 		final Integer zi = knows(zone) ? _zoneIndex.get(zone) : null;
 		if (zi == null)
@@ -311,11 +348,11 @@ public final class ZoneCombat
 			return 1.0;
 		}
 		final Role role = roleOf(classId);
-		final long key = ((zi * 4L) + role.ordinal()) * 8L + clamp(armorGrade);
+		final long key = ((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8L + clamp(armorGrade);
 		return _deathCache.computeIfAbsent(key, k ->
 		{
 			final double mean = _threatMedian[role.ordinal()];
-			return (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(_zones.get(zi), role, clamp(armorGrade)) / mean));
+			return (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(_zones.get(zi), role, clamp(armorGrade), buff(role, 1, level), buff(role, 2, level)) / mean));
 		});
 	}
 
@@ -337,7 +374,7 @@ public final class ZoneCombat
 				final int level = Math.max(1, zone.midLevel());
 				final int grade = LivingSupplies.gradeFor(level);
 				raw[i] = rawTimeToKill(zone, role, level, grade, 1.0);
-				threats[i] = threat(zone, role, grade);
+				threats[i] = threat(zone, role, grade, 1.0, 1.0);
 			}
 			// The median zone is the anchor, so a few extreme zones (newbie grounds, the highest levels) do not pull the baseline.
 			final double medianRaw = median(raw);
@@ -373,13 +410,26 @@ public final class ZoneCombat
 	}
 
 	/** How hard the zone's monsters hit a bot of this role in armor of this grade: their attack over its defence. */
-	private double threat(ZoneStats zone, Role role, int armorGrade)
+	private double threat(ZoneStats zone, Role role, int armorGrade, double pDefBuff, double mDefBuff)
 	{
 		final String pdef = (role == Role.TANK) ? "pdef_tank" : (role == Role.MELEE) ? "pdef_melee" : (role == Role.BOW) ? "pdef_light" : "pdef_robe";
 		final String mdef = (role == Role.MAGE) ? "mdef_robe" : (role == Role.BOW) ? "mdef_light" : "mdef_heavy";
-		final double physical = zone.pAtk() / Math.max(1.0, curve(pdef, armorGrade));
-		final double magical = zone.mAtk() / Math.max(1.0, curve(mdef, armorGrade));
+		final double physical = zone.pAtk() / Math.max(1.0, curve(pdef, armorGrade) * pDefBuff);
+		final double magical = zone.mAtk() / Math.max(1.0, curve(mdef, armorGrade) * mDefBuff);
 		return Math.max(physical, magical);
+	}
+
+	/** @return the blended buff multiplier (kind 0 damage, 1 P.Def, 2 M.Def) for a role at a level: 1 with no share or no data */
+	private double buff(Role role, int kind, int level)
+	{
+		final double share = _buffShare[role.ordinal()];
+		final double[][] table = _buffs.get(role);
+		if ((share <= 0.0) || (table == null))
+		{
+			return 1.0;
+		}
+		final double full = table[kind][Math.max(0, Math.min(MAX_BUFF_LEVEL, level))];
+		return (full <= 0.0) ? 1.0 : (1.0 + (share * (full - 1.0)));
 	}
 
 	private double curve(String name, int grade)

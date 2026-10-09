@@ -137,7 +137,17 @@ public class LivingPopulationModule implements GameModule
 			Math.max(0.01, context.config().getDouble("MaxDeathFactor", 4.0)), //
 			config.gearTierLevelStep()), //
 			context.config().getString("ZoneCombatFile", "modules/living-population/data/zone_combat.tsv"), //
-			context.config().getBoolean("ExpLevelGap", true));
+			context.config().getBoolean("ExpLevelGap", true), //
+			// Buffed leveling: emulate buffers keeping the bots buffed. Off gives every role a share of 0.
+			context.config().getBoolean("BuffedLeveling", false)
+				? new double[]
+				{
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareTank", 1.0))),
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareMelee", 1.0))),
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareBow", 1.0))),
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareMage", 1.0)))
+				}
+				: new double[4]);
 		LivingPopulationManager.getInstance().start(config, travel);
 		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
 		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());

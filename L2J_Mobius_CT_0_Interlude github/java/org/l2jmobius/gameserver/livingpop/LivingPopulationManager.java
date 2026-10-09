@@ -101,6 +101,7 @@ public class LivingPopulationManager
 	private volatile ZoneCatalog _catalog = ZoneCatalog.empty();
 	private volatile ZoneCombat _combat = ZoneCombat.off(); // zone-based kill and death rates, or off for the flat ones
 	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 3.0, 24.0, 0.25, 4.0, 10);
+	private volatile double[] _buffShares = new double[4]; // buffed leveling: share of the full buffer party, per role
 	private volatile boolean _combatRates = true; // kill and death rates from the zone model
 	private volatile boolean _expGap = true; // no hunting experience when outleveled for the zone, like the server
 	private volatile String _combatFile = "modules/living-population/data/zone_combat.tsv";
@@ -139,10 +140,12 @@ public class LivingPopulationManager
 	 * Sets the zone combat model's tuning and data file. Call before {@link #start(LivingPopulationConfig, TravelConfig)}.
 	 * @param params the tuning ({@code enabled} false keeps the flat kill and death rates)
 	 * @param dataFile the generated zone_combat.tsv
+	 * @param buffShares per role (tank, melee, bow, mage) the share of the buffer party's buffs the bots have while leveling, 0 to 1 (null or zeros = unbuffed)
 	 * @param expLevelGap whether hunting gives no experience when the bot is {@code MonsterExpMaxLevelDifference} or more levels away from the zone's monsters (uses the same data file)
 	 */
-	public void setZoneCombat(ZoneCombat.Params params, String dataFile, boolean expLevelGap)
+	public void setZoneCombat(ZoneCombat.Params params, String dataFile, boolean expLevelGap, double[] buffShares)
 	{
+		_buffShares = (buffShares == null) ? new double[4] : buffShares.clone();
 		_expGap = expLevelGap;
 		_combatRates = (params != null) && params.enabled();
 		_combatParams = (params == null) ? _combatParams : params;
@@ -207,6 +210,7 @@ public class LivingPopulationManager
 			try (Reader reader = Files.newBufferedReader(Path.of(_combatFile), StandardCharsets.UTF_8))
 			{
 				_combat = ZoneCombat.parse(reader, new ZoneCombat.Params(true, Math.max(0.01, config.killsPerMinute()), _combatParams.fightShare(), _combatParams.skillFloor(), _combatParams.minKillsPerMinute(), _combatParams.maxKillsPerMinute(), _combatParams.minDeathFactor(), _combatParams.maxDeathFactor(), config.gearTierLevelStep()));
+				_combat.setBuffShares(_buffShares);
 				if (!_combat.enabled())
 				{
 					LOGGER.warning("LivingPopulation: " + _combatFile + " has no usable zone data; cold bots keep the flat kill and death rates.");
