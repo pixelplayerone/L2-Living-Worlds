@@ -656,7 +656,7 @@ public final class ZoneCombat
 				factor = cycle / (cycle + Math.max(sitHp, Math.max(sitMp, sitSpoil)));
 			}
 		}
-		// Deaths: the mobs hit the tank (it holds their attention) and the healer heals a share of its damage as it comes in. The tank rests by the HP model, so a party death needs a burst the heals do not cover, or more monsters at once.
+		// Deaths: the mobs hit the tank (it holds their attention) and the healer heals a share of its damage as it comes in. The healer tops the tank up to full between fights and the party waits when the healer is out of mana (the rest factor above), so every fight starts at full HP: a party death needs a burst the heals do not cover, or more monsters at once.
 		final double pBuff = partyBuff(buffer, Role.TANK, 1, level);
 		final double[] hpRow = restRow(z.name(), Role.TANK, level);
 		final double chain = Math.pow(p.chainChance(), slot); // when the tank dies the next in line may follow
@@ -664,7 +664,7 @@ public final class ZoneCombat
 		double events;
 		if (_hpDeaths && (hpRow != null) && (hpRow.length >= 6) && (hpRow[5] > 0.0))
 		{
-			deathsPerHour = hpDeathRate(z, hpRow, Role.TANK, level, Math.max(1.0, tankStats.pDef() * pBuff), fight, kills * factor * 60.0, p.healCoverage());
+			deathsPerHour = hpDeathRate(z, hpRow, Role.TANK, level, Math.max(1.0, tankStats.pDef() * pBuff), fight, kills * factor * 60.0, p.healCoverage(), true);
 			events = deathsPerHour / Math.max(1e-6, p.baseDeathsPerHour());
 			deathsPerHour = Math.max(1e-9, deathsPerHour * chain);
 		}
@@ -1675,9 +1675,10 @@ public final class ZoneCombat
 	 * @param r the fighter's rest row (HP pool and sitting regen)
 	 * @param defence the fighter's P.Def with buffs
 	 * @param healCoverage the share of the average damage a healer heals as it comes in (0 = none); the spread of the damage is not healed
+	 * @param startsFull whether every fight starts at full HP (a party: the healer tops the tank up and the party waits while the healer rests for mana), else the fighter sits only below its threshold
 	 * @return deaths per hour
 	 */
-	private double hpDeathRate(ZoneStats z, double[] r, Role role, int level, double defence, double fight, double killsPerHour, double healCoverage)
+	private double hpDeathRate(ZoneStats z, double[] r, Role role, int level, double defence, double fight, double killsPerHour, double healCoverage, boolean startsFull)
 	{
 		final double pool = r[5];
 		final double[] d = fightDamage(z, role, level, defence, fight);
@@ -1705,7 +1706,7 @@ public final class ZoneCombat
 			}
 			fights++;
 			hp -= loss;
-			if ((loss <= 1e-9) || (hp < sitBelow) || (fights >= 5000))
+			if (startsFull || (loss <= 1e-9) || (hp < sitBelow) || (fights >= 5000))
 			{
 				break;
 			}
@@ -1745,7 +1746,7 @@ public final class ZoneCombat
 			final double mean = fightDamage(z, role, level, defence, fight)[0];
 			cover = (mean <= 0.0) ? 0.0 : Math.min(1.0, healPlan(_rotationLine.get(classId), level, stats.attack(), false, false, fight, mean, 0.0)[0] / mean);
 		}
-		double rate = hpDeathRate(z, r, role, level, defence, fight, killsPerHour, cover);
+		double rate = hpDeathRate(z, r, role, level, defence, fight, killsPerHour, cover, false);
 		final double[] pet = (_rotationTtk && hasRotation(classId)) ? servitor(classId, level) : null;
 		if (pet != null)
 		{
