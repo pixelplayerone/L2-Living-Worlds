@@ -862,6 +862,11 @@ public class LivingPopulationTest
 			worse.setRotationTtk(true);
 			check("undead rotation: used only when it is faster than the plain one", Math.abs(worse.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - undeadNone) < 1e-9);
 			check("undead rotation: a line without one is unchanged", Math.abs(allUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0) - noUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0)) < 1e-9);
+			final ZoneCombat tankLines = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROT\tpk\t40\t0\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t90\tpk\nROT\thk\t40\t0\t400\t400\t400\t400\t400\t400\t400\nROTCLASS\t91\thk\nROT\tduelist")), ZoneCombat.Params.defaults());
+			tankLines.setRotationTtk(true);
+			final double tankFirst = tankLines.party("Rot", 97, 40, mage, 1.0, 1.0, false, 0).killsPerMinute();
+			final double tankSecond = tankLines.party("Rot", 97, 40, mage, 1.0, 1.0, false, 38).killsPerMinute();
+			check("party: the reference tank is drawn at random from the tank classes (Phoenix Knight, Hell Knight, the Templars)", tankSecond > tankFirst);
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.0));

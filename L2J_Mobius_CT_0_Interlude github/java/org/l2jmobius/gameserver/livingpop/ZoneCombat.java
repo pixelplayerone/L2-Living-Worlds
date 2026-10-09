@@ -466,6 +466,7 @@ public final class ZoneCombat
 	private static final Map<Integer, String> BUFFER_OF = Map.ofEntries(Map.entry(17, "hierophant"), Map.entry(98, "hierophant"), Map.entry(21, "sword_muse"), Map.entry(100, "sword_muse"), Map.entry(34, "spectral_dancer"), Map.entry(107, "spectral_dancer"), Map.entry(51, "dominator"), Map.entry(115, "dominator"), Map.entry(52, "doom_cryer"), Map.entry(116, "doom_cryer"));
 	/** Every damage dealer line a party can have: Duelist, Dreadnought, Titan, Grand Khavatari, Fortune Seeker, Maestro, Adventurer, Wind Rider, Ghost Hunter, Sagittarius, Moonlight and Ghost Sentinel, Archmage, Soultaker, Arcana Lord, Mystic Muse, Elemental Master, Storm Screamer, Spectral Master. */
 	private static final int[] DPS_CLASSES = { 88, 89, 113, 114, 117, 118, 93, 101, 108, 92, 102, 109, 94, 95, 96, 103, 104, 110, 111 };
+	private static final int[] TANK_CLASSES = { 90, 91, 99, 106 }; // Phoenix Knight, Hell Knight, Eva's Templar, Shillien Templar: the reference tank a party draws from at random
 	private static final String[] BUFFERS = { "hierophant", "doom_cryer" }; // the two main buffers a party picks from at random (a bot that is itself a buffer brings its own line)
 	private final Map<String, Map<Role, double[][]>> _partyBuffs = new HashMap<>(); // buffer line -> role -> {damage, pDef, mDef} by level
 	private volatile PartyParams _partyParams = PartyParams.defaults();
@@ -545,6 +546,7 @@ public final class ZoneCombat
 		final String buffer = ((slot == 2) && BUFFER_OF.containsKey(classId)) ? BUFFER_OF.get(classId) : BUFFERS[Math.floorMod(variant, BUFFERS.length)];
 		// The tank: the bot's own when it is one, else a reference Phoenix Knight in the bot's grade of gear.
 		final boolean botTank = slot == 0;
+		final int tankClass = botTank ? classId : TANK_CLASSES[Math.floorMod(variant / (BUFFERS.length * DPS_CLASSES.length), TANK_CLASSES.length)];
 		final Stats tankStats = botTank ? stats : curveStats(Role.TANK, grade, grade);
 		final double tankSkills = botTank ? skillFraction : 1.0;
 		// The damage dealer: the bot's own, the healer's mage that wears its gear, or a reference one chosen by the variant.
@@ -582,7 +584,7 @@ public final class ZoneCombat
 		for (int pass = 0; pass < 2; pass++)
 		{
 			final int w = (pass == 0) ? 0 : nearestWindow(fight);
-			final double dps = (rotationDps(z, Role.TANK, 90, level, tankStats.attack(), tankSkills, 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
+			final double dps = (rotationDps(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
 			fight = z.hp() / Math.max(1e-6, dps * gearCut);
 		}
 		// A ranged damage dealer (archer or mage, the healer's mage included) pulls the mob for the group, so the party walks less between kills.
