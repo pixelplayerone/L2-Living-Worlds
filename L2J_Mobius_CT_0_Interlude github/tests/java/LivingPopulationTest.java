@@ -794,7 +794,7 @@ public class LivingPopulationTest
 			check("party: a healer gets a party outcome with the party bonus over four of the experience", (healerParty != null) && (healerParty.slot() == 3) && Math.abs(healerParty.expShare() - 1.3 / 4.0) < 1e-9);
 			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
 			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
-			check("party: the party is cheaper to die in than going alone", tankParty.deathFactor() < rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)));
+			check("party: the party is no worse to die in than going alone (without HP data the tank has the solo rate)", tankParty.deathFactor() <= rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)) + 1e-9);
 			final ZoneCombat starting = ZoneCombat.parse(new java.io.StringReader(rotData + "NBUFF\tMELEE\t16\t1.15\t1.15\t1.0\t1.2\t0.09\t1.275\nNBUFF\tMELEE\t12\t1.0\t1.0\t1.0\t1.0\t0.0\t1.275\nPBUFF\thierophant\tmelee\t30\t1.4\t1.1\t1.0\nPBUFF\tdoom_cryer\tmelee\t30\t1.2\t1.1\t1.0\n"), ZoneCombat.Params.defaults());
 			starting.setRotationTtk(true);
 			final double unbuffedL16 = starting.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0);
@@ -879,12 +879,6 @@ public class LivingPopulationTest
 			check("party: the reference tank is drawn at random from the tank classes (Phoenix Knight, Hell Knight, the Templars)", tankSecond > tankFirst);
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
-			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.0));
-			final double fullGearKills = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3).killsPerMinute();
-			final double fullGearDeaths = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3).deathFactor();
-			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.15));
-			final ZoneCombat.PartyOutcome cut = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3);
-			check("party gear penalty: members hit softer and die more", (cut.killsPerMinute() < fullGearKills) && (cut.deathFactor() >= fullGearDeaths));
 			final ZoneCombat selfBuffed = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROTSELF\tduelist\t40\t2\t2\t2\t2\t2\t2\t2\t0.8\t1.0\t94,312\nROT\tduelist")), ZoneCombat.Params.defaults());
 			selfBuffed.setRotationTtk(true);
 			final double withSelf = selfBuffed.killsPerMinute("Rot", 88, 40, new ZoneCombat.Stats(fit.attack(), fit.pDef(), fit.mDef(), 1.0), 1.0, 1.0);
@@ -927,7 +921,7 @@ public class LivingPopulationTest
 			final double exposureBefore = noPetHeal.deathFactor("Rot", 94, 40, mageFit);
 			noPetHeal.setSelfHeal(true);
 			check("servitor heal: a healed servitor holds longer, so its summoner is exposed less", noPetHeal.deathFactor("Rot", 94, 40, mageFit) < exposureBefore);
-			rot.setParty(new ZoneCombat.PartyParams(false, 1.0, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.15));
+			rot.setParty(new ZoneCombat.PartyParams(false, 1.0, 0.75, 0.3, 45.0, 0.12, 0.3));
 			check("party: off gives no outcome", rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3) == null);
 			rot.setParty(ZoneCombat.PartyParams.defaults());
 			rot.setRotationTtk(false);
@@ -954,6 +948,29 @@ public class LivingPopulationTest
 		check("aggro: a zone with no aggressive monsters is unchanged", Math.abs(model.deathFactor("Mid", 2, 40, 2) - model.deathFactor("Mid", 2, 40, 2)) < 1e-9);
 		model.setAggroRisk(0.0);
 		check("aggro: risk 0 turns it off", Math.abs(model.deathFactor("Crowded", 2, 40, 2) - calm) < 1e-9);
+		// HP-model deaths with more monsters joining a fight (a rest row with an HP pool turns the model on for the zone)
+		try
+		{
+			final String hpData = ZONE_DATA + "\nREST\tCrowded\tmelee\t40\t6.5\t200\t10\t0\t1.0\t4000\nREST\tMid\tmelee\t40\t6.5\t200\t10\t0\t1.0\t4000";
+			final ZoneCombat hp = ZoneCombat.parse(new java.io.StringReader(hpData), ZoneCombat.Params.defaults());
+			hp.setRest(true);
+			hp.setHpDeaths(true, 1.5, 0.3);
+			final ZoneCombat.Stats hpStats = hp.curveStats(ZoneCombat.Role.MELEE, 2, 2);
+			check("hp deaths: a zone without rest data has none (-1)", hp.deathsPerHour("Easy", 2, 40, hpStats) < 0.0);
+			hp.setExtraMonsters(new double[] { 0, 0, 0, 0, 0 });
+			final double alone = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			hp.setExtraMonsters(new double[] { 0.15, 0.075, 0.04, 0.02, 0.01 });
+			final double crowd = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			check("hp deaths: monsters joining the fight add deaths", crowd >= alone);
+			hp.setAggroRisk(1.0);
+			check("hp deaths: a zone full of aggressive monsters sees them join more often", hp.deathsPerHour("Crowded", 2, 40, hpStats) >= hp.deathsPerHour("Mid", 2, 40, hpStats));
+			hp.setExtraMonsters(new double[] { 1, 1, 1, 1, 1 });
+			check("hp deaths: six monsters at once are far deadlier", hp.deathsPerHour("Mid", 2, 40, hpStats) > crowd);
+		}
+		catch (Exception e)
+		{
+			check("hp deaths: the test model parses (" + e.getMessage() + ")", false);
+		}
 		check("zone combat: economy params keep everything but the kill rate", econ().withKillsPerMinute(7.0).killsPerMinute() == 7.0 && econ().withKillsPerMinute(7.0).adenaPerMobLevel() == 5.0);
 	}
 

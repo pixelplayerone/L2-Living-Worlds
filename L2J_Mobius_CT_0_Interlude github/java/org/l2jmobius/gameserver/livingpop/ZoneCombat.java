@@ -172,6 +172,8 @@ public final class ZoneCombat
 	private volatile boolean _rotationTtk; // time to kill from the sim's rotations in real seconds, not the calibrated relative model
 	private final Map<Long, Double> _killCache = new ConcurrentHashMap<>();
 	private final Map<Long, Double> _deathCache = new ConcurrentHashMap<>();
+	private final Map<Long, Double> _rateCache = new ConcurrentHashMap<>(); // deaths an hour from the HP model (-1 where it has no data)
+	private volatile double[] _extraMonsters = { 0.15, 0.075, 0.04, 0.02, 0.01 }; // the chance a 2nd, 3rd ... 6th monster joins a fight (before the zone's aggressive share raises them)
 
 	private ZoneCombat(Params params, Map<String, double[]> curves, List<ZoneStats> zones, Map<Role, double[][]> buffs)
 	{
@@ -393,6 +395,7 @@ public final class ZoneCombat
 	{
 		_evasionOn = on;
 		_deathCache.clear();
+		_rateCache.clear();
 		calibrate();
 	}
 
@@ -473,33 +476,32 @@ public final class ZoneCombat
 	 * The rough party model: a virtual party of a tank, a damage dealer, a buffer and a healer, of which the bot is one (by its class).
 	 * @param enabled whether bots may party
 	 * @param expBonus the party's experience bonus; the bot gets expBonus / 4 of a kill's experience (the server gives 1.30 for 4, so 32.5%; 1.0 would be a quarter)
-	 * @param healReduction how much of the solo tank death rate remains with a healer behind it (0.2 = a fifth)
 	 * @param healCoverage the share of the tank's HP loss the healer heals (so the tank sits less)
 	 * @param chainChance when a member dies, the chance the next in line (tank, damage dealer, buffer, healer) dies before the mob does
 	 * @param resetSeconds how long the party takes to resurrect and get going after a death
 	 * @param healMpPerHp mana the healer spends per HP it heals (the healer only heals; Greater Heal and Battle Heal run about 0.1), for its resting
 	 * @param baseDeathsPerHour the death rate a death factor of 1 means
-	 * @param gearPenalty stop-gap: party members are rarely in the best gear of their level, so their damage and defence are cut by this share (0.15 = 15%)
 	 */
-	public record PartyParams(boolean enabled, double expBonus, double healReduction, double healCoverage, double chainChance, double resetSeconds, double healMpPerHp, double baseDeathsPerHour, double gearPenalty)
+	public record PartyParams(boolean enabled, double expBonus, double healCoverage, double chainChance, double resetSeconds, double healMpPerHp, double baseDeathsPerHour)
 	{
 		public static PartyParams defaults()
 		{
-			return new PartyParams(true, 1.3, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.15);
+			return new PartyParams(true, 1.3, 0.75, 0.3, 45.0, 0.12, 0.3);
 		}
 	}
 
 	/**
 	 * What a bot gets from hunting in the virtual party.
 	 * @param killsPerMinute the party's kills per minute (after resting and resets)
-	 * @param deathFactor the bot's death rate relative to the base rate (the zone factor)
+	 * @param deathFactor the bot's death rate relative to the base rate (only where the HP model has no data; else see deathsPerHour)
+	 * @param deathsPerHour the bot's deaths an hour in the party from the HP model, or -1 where the zone has no rest data
 	 * @param expShare the share of a kill's experience the bot gets
 	 * @param slot 0 tank, 1 damage dealer, 2 buffer, 3 healer
 	 * @param buffer the buffer line giving the buffs
 	 * @param lootShare the share of each drop (adena, items) the bot gets: one over the party size
 	 * @param spoils whether the party spoils its kills (the bot or the damage dealer is a Scavenger, Bounty Hunter or Fortune Seeker): the spoil drops are shared too
 	 */
-	public record PartyOutcome(double killsPerMinute, double deathFactor, double expShare, int slot, String buffer, double lootShare, boolean spoils)
+	public record PartyOutcome(double killsPerMinute, double deathFactor, double deathsPerHour, double expShare, int slot, String buffer, double lootShare, boolean spoils)
 	{
 	}
 
@@ -623,13 +625,12 @@ public final class ZoneCombat
 		final double dpsShots = (slot == 1) ? shotDamage(role, shotFraction, blessed) : 1.0;
 		final double tankBuff = partyBuff(buffer, Role.TANK, 0, level);
 		final double dpsBuff = partyBuff(buffer, dpsRole, 0, level);
-		final double gearCut = Math.max(0.0, 1.0 - p.gearPenalty());
 		double fight = 0.0;
 		for (int pass = 0; pass < 2; pass++)
 		{
 			final int w = windowFor(pass, fight);
 			final double dps = (rotationDps(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
-			fight = z.hp() / Math.max(1e-6, dps * gearCut);
+			fight = z.hp() / Math.max(1e-6, dps);
 		}
 		// A ranged damage dealer (archer or mage, the healer's mage included) pulls the mob for the group, so the party walks less between kills.
 		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) * ((dpsRole == Role.BOW || dpsRole == Role.MAGE) ? _rangedWalk : 1.0);
@@ -655,28 +656,31 @@ public final class ZoneCombat
 				factor = cycle / (cycle + Math.max(sitHp, Math.max(sitMp, sitSpoil)));
 			}
 		}
-		// Deaths: the mobs hit the tank (it holds their attention) and the healer heals a share of its damage as it comes in. The tank rests by the HP model, so a party death needs a burst the heals do not cover, or more monsters at once (aggressive zones).
+		// Deaths: the mobs hit the tank (it holds their attention) and the healer heals a share of its damage as it comes in. The tank rests by the HP model, so a party death needs a burst the heals do not cover, or more monsters at once.
 		final double pBuff = partyBuff(buffer, Role.TANK, 1, level);
-		final double aggro = 1.0 + (_aggroRisk * z.aggressivePercent() / 100.0);
-		double events;
 		final double[] hpRow = restRow(z.name(), Role.TANK, level);
+		final double chain = Math.pow(p.chainChance(), slot); // when the tank dies the next in line may follow
+		double deathsPerHour = -1.0;
+		double events;
 		if (_hpDeaths && (hpRow != null) && (hpRow.length >= 6) && (hpRow[5] > 0.0))
 		{
-			final double deathsPerHour = hpDeathRate(z, hpRow, Role.TANK, level, Math.max(1.0, tankStats.pDef() * gearCut * pBuff), fight, kills * factor * 60.0, p.healCoverage());
-			events = (deathsPerHour / Math.max(1e-6, p.baseDeathsPerHour())) * aggro;
+			deathsPerHour = hpDeathRate(z, hpRow, Role.TANK, level, Math.max(1.0, tankStats.pDef() * pBuff), fight, kills * factor * 60.0, p.healCoverage());
+			events = deathsPerHour / Math.max(1e-6, p.baseDeathsPerHour());
+			deathsPerHour = Math.max(1e-9, deathsPerHour * chain);
 		}
 		else
 		{
+			// No rest data for the zone: the old threat formula.
 			final double mean = _threatMedian[Role.TANK.ordinal()];
 			final double mBuff = partyBuff(buffer, Role.TANK, 2, level);
-			final double tankThreat = threat(z, tankStats.pDef() * gearCut, tankStats.mDef() * gearCut, pBuff, mBuff, hitChance(z, Role.TANK, level));
+			final double tankThreat = threat(z, tankStats.pDef(), tankStats.mDef(), pBuff, mBuff, hitChance(z, Role.TANK, level));
 			final double tankFactor = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), tankThreat / mean));
-			events = tankFactor * aggro * p.healReduction(); // party deaths relative to the base rate
+			events = tankFactor * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0)); // party deaths relative to the base rate
 		}
-		final double deathFactor = Math.max(1e-6, events * Math.pow(p.chainChance(), slot));
+		final double deathFactor = Math.max(1e-6, events * chain);
 		final double resetShare = Math.min(0.9, (events * p.baseDeathsPerHour() * p.resetSeconds()) / 3600.0);
 		kills = Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare));
-		return new PartyOutcome(kills, deathFactor, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE, LivingSupplies.isSpoiler(classId) || LivingSupplies.isSpoiler(dpsClass));
+		return new PartyOutcome(kills, deathFactor, deathsPerHour, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE, LivingSupplies.isSpoiler(classId) || LivingSupplies.isSpoiler(dpsClass));
 	}
 
 	private double[] restRow(String zone, Role role, int level)
@@ -999,6 +1003,7 @@ public final class ZoneCombat
 		_buffShare = use;
 		_killCache.clear();
 		_deathCache.clear();
+		_rateCache.clear();
 	}
 
 	/**
@@ -1027,6 +1032,7 @@ public final class ZoneCombat
 	{
 		_aggroRisk = Math.max(0.0, risk);
 		_deathCache.clear();
+		_rateCache.clear();
 	}
 
 	/**
@@ -1279,13 +1285,13 @@ public final class ZoneCombat
 		final double selfP = (self == null) ? 1.0 : (1.0 + ((self.getValue()[ROTATION_WINDOWS.length] - 1.0) * share));
 		final double selfM = (self == null) ? 1.0 : (1.0 + ((self.getValue()[ROTATION_WINDOWS.length + 1] - 1.0) * share));
 		double gear = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(z, pDef, mDef, buff(role, 1, level) * selfP, buff(role, 2, level) * selfM, hitChance(z, role, level)) / mean));
-		final double hpDeaths = _hpDeaths ? hpDeathsPerHour(zi, role, classId, level, stats, buff(role, 1, level) * selfP) : -1.0;
+		final double hpDeaths = _hpDeaths ? hpRate(zi, role, classId, level, stats, heal) : -1.0;
 		if (hpDeaths >= 0.0)
 		{
-			// The HP model gives deaths an hour outright; the cold risk multiplies the base by the zone factor and by where the level sits in the zone's range, so divide that out here.
+			// The HP model gives deaths an hour outright; this factor is only for callers that still multiply the base rate by it, so divide the base and the level position out.
 			final double half = Math.max(1.0, (z.maxLevel() - z.minLevel()) / 2.0);
 			final double weakness = Math.max(-1.5, Math.min(1.5, (((z.minLevel() + z.maxLevel()) / 2.0) - level) / half));
-			gear = hpDeaths / (_deathBase * Math.pow(2.0, weakness));
+			return hpDeaths / (_deathBase * Math.pow(2.0, weakness));
 		}
 		final double[] pet = (_rotationTtk && hasRotation(classId)) ? servitor(classId, level) : null;
 		if (pet != null)
@@ -1347,6 +1353,7 @@ public final class ZoneCombat
 			_expRate = rate;
 			_killCache.clear();
 			_deathCache.clear();
+		_rateCache.clear();
 			_healCache.clear();
 			_partyCache.clear();
 		}
@@ -1516,6 +1523,7 @@ public final class ZoneCombat
 		_restSigmas = Math.max(0.0, sigmas);
 		_deathBase = Math.max(1e-6, baseDeathsPerHour);
 		_deathCache.clear();
+		_rateCache.clear();
 	}
 
 	/** Shots one attack (a cast for a mage) fires, by weapon grade (none, D, C, B, A, S): the datapack's median of weapons with that grade. */
@@ -1619,12 +1627,106 @@ public final class ZoneCombat
 	}
 
 	/**
-	 * Deaths an hour from the HP model. One monster at a time: its hits (76 x P.Atk / P.Def, times shots and crits, times the chance it hits) add up over the fight to a damage with a mean
-	 * and a spread (hits are random, so the damage of a fight is compound Poisson). A bot sits when its HP falls below an average fight's damage plus {@code ZoneRestSigmas} standard deviations of it, so it starts its fights
-	 * with HP from full down to about that, falling by what a fight costs beyond its standing regen; it dies when a fight's damage is more than the HP it started with.
+	 * @param chances the chance that a 2nd, 3rd, 4th, 5th and 6th monster joins a fight (each only after the one before it joined; a zone's aggressive share raises them, see {@link #setAggroRisk})
+	 */
+	public void setExtraMonsters(double[] chances)
+	{
+		_extraMonsters = chances.clone();
+		_deathCache.clear();
+		_rateCache.clear();
+		_partyCache.clear();
+	}
+
+	/** @return the chance of fighting exactly 1, 2 ... 6 monsters at once in this zone (index 0 is one monster) */
+	private double[] monsterCounts(ZoneStats z)
+	{
+		final double scale = 1.0 + (_aggroRisk * z.aggressivePercent() / 100.0);
+		final double[] reach = new double[8]; // reach[n] = the chance the fight has at least n monsters
+		reach[1] = 1.0;
+		for (int n = 2; n <= 6; n++)
+		{
+			reach[n] = reach[n - 1] * ((n - 2 < _extraMonsters.length) ? Math.min(1.0, _extraMonsters[n - 2] * scale) : 0.0);
+		}
+		final double[] exactly = new double[6];
+		for (int n = 1; n <= 6; n++)
+		{
+			exactly[n - 1] = reach[n] - reach[n + 1];
+		}
+		return exactly;
+	}
+
+	/** @return {mean, standard deviation} of the damage one monster does to a fighter in a fight of this length: its hits (76 x P.Atk / P.Def, with crits and shots, times the chance it hits) are compound Poisson */
+	private double[] fightDamage(ZoneStats z, Role role, int level, double defence, double fight)
+	{
+		final double plain = (MOB_DAMAGE * z.pAtk()) / defence;
+		final double hit = hitChance(z, role, level);
+		final double crit = z.critPercent() / 100.0;
+		final double randomPct = 5.0 + Math.sqrt(Math.max(1.0, z.mobLevel()));
+		final double meanHit = hit * plain * z.hitMultiple();
+		final double secondHit = hit * plain * plain * (1.0 + (3.0 * z.shotShare())) * (1.0 + (3.0 * crit)) * (1.0 + ((randomPct * randomPct) / 30000.0));
+		final double lambda = z.hitsPerSecond() * fight;
+		return new double[] { lambda * meanHit, Math.sqrt(Math.max(1e-9, lambda * secondHit)) };
+	}
+
+	/**
+	 * The HP model's death rate for a fighter taking monsters' hits for {@code fight} seconds per kill. A fight starts with one monster, and a 2nd, 3rd ... up to a 6th can join it (see {@link #setExtraMonsters});
+	 * they all attack from the start and die one after another, so n monsters do n(n+1)/2 times one monster's damage. The fighter sits when its HP falls below one monster's average damage plus {@code ZoneRestSigmas}
+	 * standard deviations of it (it does not know more are coming), sits until full, and dies in a fight whose damage is more than the HP it started with.
+	 * @param r the fighter's rest row (HP pool and sitting regen)
+	 * @param defence the fighter's P.Def with buffs
+	 * @param healCoverage the share of the average damage a healer heals as it comes in (0 = none); the spread of the damage is not healed
+	 * @return deaths per hour
+	 */
+	private double hpDeathRate(ZoneStats z, double[] r, Role role, int level, double defence, double fight, double killsPerHour, double healCoverage)
+	{
+		final double pool = r[5];
+		final double[] d = fightDamage(z, role, level, defence, fight);
+		final double mean = d[0];
+		final double sigma = d[1];
+		final double[] counts = monsterCounts(z);
+		double averageWeight = 0.0;
+		for (int n = 1; n <= 6; n++)
+		{
+			averageWeight += counts[n - 1] * (n * (n + 1) / 2.0);
+		}
+		final double taken = 1.0 - healCoverage;
+		final double standing = r[2] * 1.1 / 1.5; // the rest row holds the sitting regen (standing x 1.5 / 1.1)
+		final double loss = Math.max(0.0, (mean * averageWeight * taken) - (standing * (fight + 2.5)));
+		final double sitBelow = Math.min(pool * 0.9, (mean * taken) + (_restSigmas * sigma));
+		double hp = pool;
+		double sum = 0.0;
+		int fights = 0;
+		while (true)
+		{
+			for (int n = 1; n <= 6; n++)
+			{
+				final double weight = n * (n + 1) / 2.0;
+				sum += counts[n - 1] * normalTail((hp - (mean * weight * taken)) / (sigma * Math.sqrt(weight)));
+			}
+			fights++;
+			hp -= loss;
+			if ((loss <= 1e-9) || (hp < sitBelow) || (fights >= 5000))
+			{
+				break;
+			}
+		}
+		return killsPerHour * (sum / fights);
+	}
+
+	/** Self buffs that raise P.Def (Majesty, Iron Will, Rage's penalty ...), in proportion to the share the bot has learned: the multiple of its P.Def. */
+	private double selfPDef(int classId, int level, Stats stats)
+	{
+		final java.util.Map.Entry<Integer, double[]> self = _rotationTtk ? selfEntry(_rotationLine.get(classId), level) : null;
+		final double share = (stats.selfBuffs() < 0) ? 1.0 : Math.min(1.0, stats.selfBuffs());
+		return (self == null) ? 1.0 : (1.0 + ((self.getValue()[ROTATION_WINDOWS.length] - 1.0) * share));
+	}
+
+	/**
+	 * Deaths an hour of a solo bot from the HP model: monsters one at a time with more joining at the zone's chances, the bot resting by its threshold, its own heals covering a share of the damage,
+	 * and a servitor taking the hits first.
 	 * @return deaths per hour, or -1 when the zone has no rest data (the HP pool comes from it)
 	 */
-	private double hpDeathsPerHour(int zi, Role role, int classId, int level, Stats stats, double pDefBuff)
+	private double hpRate(int zi, Role role, int classId, int level, Stats stats, boolean heal)
 	{
 		final ZoneStats z = _zones.get(zi);
 		final double[] r = restRow(z.name(), role, level);
@@ -1635,45 +1737,43 @@ public final class ZoneCombat
 		final double fight = fightSecondsWithShots(zi, role, classId, level, stats, 1.0, false);
 		final long attackRounded = Math.max(0, Math.min(8191, Math.round(stats.attack())));
 		final double killsPerHour = killRate(zi, role, classId, level, attackRounded, 10, 10, false, 0.0, stats.selfBuffs(), _rotationTtk && hasRotation(classId), false) * 60.0; // uncached: this runs inside the death and heal caches
-		return hpDeathRate(z, r, role, level, Math.max(1.0, Math.round(stats.pDef()) * pDefBuff), fight, killsPerHour, 0.0);
+		final double defence = Math.max(1.0, Math.round(stats.pDef()) * buff(role, 1, level) * selfPDef(classId, level, stats));
+		double cover = 0.0;
+		if (heal)
+		{
+			// Self heals keep it up in the middle of a fight: the share of an average fight's damage that its heals cover.
+			final double mean = fightDamage(z, role, level, defence, fight)[0];
+			cover = (mean <= 0.0) ? 0.0 : Math.min(1.0, healPlan(_rotationLine.get(classId), level, stats.attack(), false, false, fight, mean, 0.0)[0] / mean);
+		}
+		double rate = hpDeathRate(z, r, role, level, defence, fight, killsPerHour, cover);
+		final double[] pet = (_rotationTtk && hasRotation(classId)) ? servitor(classId, level) : null;
+		if (pet != null)
+		{
+			// The servitor takes the hits first: the summoner is only exposed while it is down (plus a base share of attacks that still reach the master).
+			final double petFight = rotationFightSeconds(z, role, classId, level, curve(role == Role.MAGE ? "matk_mage" : "patk_melee", LivingSupplies.gradeFor(level)), 1.0, 1.0);
+			final double[] petPlan = heal ? healPlan(_rotationLine.get(classId), level, stats.attack(), false, false, petFight, 0.0, servitorHit(z, pet, level, petFight)) : new double[4];
+			rate *= servitorShield(z, pet, level, petFight, killsPerHour / 60.0, petPlan[1])[1];
+		}
+		return rate;
 	}
 
 	/**
-	 * The HP model's death rate for a fighter taking one monster's hits for {@code fight} seconds per kill.
-	 * @param r the fighter's rest row (HP pool and sitting regen)
-	 * @param defence the fighter's P.Def with buffs
-	 * @param healCoverage the share of an average fight's damage a healer heals as it comes in (0 = none); the spread of the damage is not healed
-	 * @return deaths per hour
+	 * @param zone the zone it hunts in
+	 * @param classId its class
+	 * @param level its level
+	 * @param stats its worn gear
+	 * @return its deaths an hour hunting alone, straight from the HP model; -1 when the model is off or the zone has no rest data (then {@link #deathFactor} and the cold risk's base rate apply)
 	 */
-	private double hpDeathRate(ZoneStats z, double[] r, Role role, int level, double defence, double fight, double killsPerHour, double healCoverage)
+	public double deathsPerHour(String zone, int classId, int level, Stats stats)
 	{
-		final double pool = r[5];
-		final double plain = (MOB_DAMAGE * z.pAtk()) / defence;
-		final double hit = hitChance(z, role, level);
-		final double crit = z.critPercent() / 100.0;
-		final double randomPct = 5.0 + Math.sqrt(Math.max(1.0, z.mobLevel()));
-		final double meanHit = hit * plain * z.hitMultiple();
-		final double secondHit = hit * plain * plain * (1.0 + (3.0 * z.shotShare())) * (1.0 + (3.0 * crit)) * (1.0 + ((randomPct * randomPct) / 30000.0));
-		final double lambda = z.hitsPerSecond() * fight;
-		final double mean = lambda * meanHit;
-		final double sigma = Math.sqrt(Math.max(1e-9, lambda * secondHit));
-		final double standing = r[2] * 1.1 / 1.5; // the rest row holds the sitting regen (standing x 1.5 / 1.1)
-		final double loss = Math.max(0.0, (mean * (1.0 - healCoverage)) - (standing * (fight + 2.5)));
-		final double sitBelow = Math.min(pool * 0.9, (mean * (1.0 - healCoverage)) + (_restSigmas * sigma));
-		double hp = pool;
-		double sum = 0.0;
-		int fights = 0;
-		while (true)
+		final Integer zi = (_hpDeaths && knows(zone)) ? _zoneIndex.get(zone) : null;
+		if (zi == null)
 		{
-			sum += normalTail((hp - (mean * (1.0 - healCoverage))) / sigma);
-			fights++;
-			hp -= loss;
-			if ((loss <= 1e-9) || (hp < sitBelow) || (fights >= 5000))
-			{
-				break;
-			}
+			return -1.0;
 		}
-		return killsPerHour * (sum / fights);
+		final Role role = roleOf(classId);
+		final long key = ((((((zi * 4L) + role.ordinal()) * 128L) + Math.min(127, level)) * 8192L + Math.max(0, Math.min(8191, Math.round(stats.pDef())))) * 8192L + Math.max(0, Math.min(8191, Math.round(stats.mDef())))) * 12L * 128L + ((stats.selfBuffs() < 0 ? 11L : Math.round(Math.min(1.0, stats.selfBuffs()) * 10.0)) * 128L) + (classId & 127);
+		return _rateCache.computeIfAbsent(key, k -> hpRate(zi, role, classId, level, stats, healsHelp(zi, role, classId, level, stats)));
 	}
 
 	/** @param factor the share of the walk and targeting time between monsters that ranged classes (archers and mages) keep: 0.5 halves it, 1 turns it off */
@@ -1691,6 +1791,7 @@ public final class ZoneCombat
 		_healCache.clear();
 		_killCache.clear();
 		_deathCache.clear();
+		_rateCache.clear();
 		_partyCache.clear();
 	}
 
@@ -1700,6 +1801,7 @@ public final class ZoneCombat
 		_startingBuffs = on;
 		_killCache.clear();
 		_deathCache.clear();
+		_rateCache.clear();
 	}
 
 	private double curve(String name, int grade)

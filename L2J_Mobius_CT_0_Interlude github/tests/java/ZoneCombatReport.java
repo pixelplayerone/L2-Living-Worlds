@@ -67,13 +67,31 @@ public class ZoneCombatReport
 		}
 	}
 
+	/** Deaths an hour from the HP model, else the old factor through the cold risk (the same as the module does). */
+	private static double deathsOf(ZoneCombat model, ColdRisk.Params risk, String zone, int classId, int level, ZoneCombat.Stats st, int gearTier)
+	{
+		final double rate = model.deathsPerHour(zone, classId, level, st);
+		return (rate >= 0.0) ? ColdRisk.fromRate(rate, 20).deathsPerHour() : ColdRisk.danger(risk, level, level - 3, level + 3, 20, gearTier, 5, classId, model.deathFactor(zone, classId, level, st)).deathsPerHour();
+	}
+
+	private static double soloDeaths(ZoneCombat model, String zone, int classId, int level, ZoneCombat.Stats st)
+	{
+		final double rate = model.deathsPerHour(zone, classId, level, st);
+		return (rate >= 0.0) ? rate : 0.3 * model.deathFactor(zone, classId, level, st);
+	}
+
+	private static double partyDeaths(ZoneCombat.PartyOutcome o)
+	{
+		return (o.deathsPerHour() >= 0.0) ? o.deathsPerHour() : 0.3 * o.deathFactor();
+	}
+
 	private static void row(ZoneCombat model, ColdRisk.Params risk, String zone, String role, String bot, int classId, int level, int grade, double skills, int behind)
 	{
 		final double flatKills = 12.0;
 		double kills = model.killsPerMinute(zone, classId, level, grade, grade, skills, 1.0);
 		kills = Math.max(0.3, Math.min(kills, model.respawnCap(zone, 4, 0.5)));   // 4 bots sharing the zone
 		final double flatDeaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, classId).deathsPerHour();
-		final double deaths = ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, classId, model.deathFactor(zone, classId, level, grade)).deathsPerHour();
+		final double deaths = deathsOf(model, risk, zone, classId, level, model.curveStats(ZoneCombat.roleOf(classId), 0, grade), 5 - behind);
 		System.out.printf("| %s | %s | %s | %.1f > %.1f | %.2f > %.2f | %.0f | %.0f | %.0f |%n", zone, role, bot, flatKills, kills, flatDeaths, deaths, level * 13.0 * flatKills * 60, level * 13.0 * kills * 60, model.expPerKill(zone) * kills * 60);
 	}
 
@@ -114,7 +132,7 @@ public class ZoneCombatReport
 					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), c, level, st, 1.0, 1.0, false, 4.0), model.respawnCap(z.name(), 4, 0.5)));
 					kills += k;
 					zoneExp += k * z.expPerKill();
-					deaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5, 5, c, model.deathFactor(z.name(), c, level, st)).deathsPerHour();
+					deaths += deathsOf(model, risk, z.name(), c, level, st, 5);
 					flatDeaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5, 5, c).deathsPerHour();
 					n++;
 				}
@@ -164,7 +182,7 @@ public class ZoneCombatReport
 					}
 					final ZoneCombat.Stats st = model.curveStats(ZoneCombat.roleOf(id), grade, grade);
 					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), id, level, st, 1.0, 1.0, false, 4.0), model.respawnCap(z.name(), 4, 0.5)));
-					final double d = 0.3 * model.deathFactor(z.name(), id, level, st);
+					final double d = soloDeaths(model, z.name(), id, level, st);
 					double ppk = 0, ppd = 0, ppn = 0;
 					for (int v = 0; v < 40; v++)
 					{
@@ -174,8 +192,8 @@ public class ZoneCombatReport
 							continue;
 						}
 						ppk += o.killsPerMinute() / 40;
-						ppd += 0.3 * o.deathFactor() / 40;
-						ppn += ((o.killsPerMinute() * 60.0 * z.expPerKill() * o.expShare()) - (0.3 * o.deathFactor() * lossPerDeath)) / 40;
+						ppd += partyDeaths(o) / 40;
+						ppn += ((o.killsPerMinute() * 60.0 * z.expPerKill() * o.expShare()) - (partyDeaths(o) * lossPerDeath)) / 40;
 					}
 					sk += k;
 					sd += d;
@@ -221,7 +239,7 @@ public class ZoneCombatReport
 					final double k = Math.max(0.3, Math.min(model.killsPerMinute(z.name(), c, level, st, 1.0, 1.0), model.respawnCap(z.name(), 4, 0.5)));
 					kills += k;
 					zoneExp += k * z.expPerKill();
-					deaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, c, model.deathFactor(z.name(), c, level, st)).deathsPerHour();
+					deaths += deathsOf(model, risk, z.name(), c, level, st, 5 - behind);
 					flatDeaths += ColdRisk.danger(risk, level, level - 3, level + 3, 20, 5 - behind, 5, c).deathsPerHour();
 					n++;
 				}

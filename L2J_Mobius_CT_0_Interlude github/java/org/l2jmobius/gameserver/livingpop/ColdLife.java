@@ -535,8 +535,11 @@ public final class ColdLife
 		final int gearHave = (shop == null) ? bot.getGearTier() : 0;
 		final int gearWant = (shop == null) ? SupplyPlanner.tierCeiling(bot.getLevel(), context.supply()) : LivingGear.behind(gearOf(bot), bot.getLevel(), shop.items());
 		final ZoneCombat combat = context.combat();
-		final double zoneFactor = (bot.getPartyDeathFactor() > 0.0) ? bot.getPartyDeathFactor() : ((combat != null) && combat.knows(zone.name())) ? combat.deathFactor(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : 0.0;
-		final ColdRisk.Danger danger = ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId(), zoneFactor);
+		// The HP model's deaths an hour, in the party or alone, are the answer as they are; without rest data for the zone the old factor times the base rate applies.
+		final boolean zoned = (combat != null) && combat.knows(zone.name());
+		final double modelRate = (bot.getPartyDeathsPerHour() >= 0.0) ? bot.getPartyDeathsPerHour() : ((bot.getPartyDeathFactor() <= 0.0) && zoned) ? combat.deathsPerHour(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : -1.0;
+		final double zoneFactor = (bot.getPartyDeathFactor() > 0.0) ? bot.getPartyDeathFactor() : zoned ? combat.deathFactor(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : 0.0;
+		final ColdRisk.Danger danger = (modelRate >= 0.0) ? ColdRisk.fromRate(modelRate, bot.getPotions()) : ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId(), zoneFactor);
 		if (context.random().nextDouble() >= ColdRisk.deathChance(danger.deathsPerHour(), elapsedMs))
 		{
 			return false;

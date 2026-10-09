@@ -207,6 +207,24 @@ public final class ColdRisk
 	}
 
 	/**
+	 * A death rate that is already the answer (the zone model's HP model, which knows the gear, the level against the zone and the monsters): only running out of potions still doubles it.
+	 * @param deathsPerHour the model's deaths an hour
+	 * @param potions healing potions carried
+	 * @return its death rate and why
+	 */
+	public static Danger fromRate(double deathsPerHour, long potions)
+	{
+		final List<String> reasons = new ArrayList<>();
+		double rate = Math.max(0.0, deathsPerHour);
+		if (potions <= 0)
+		{
+			rate *= 2.0;
+			reasons.add("out of potions");
+		}
+		return new Danger(rate, List.copyOf(reasons));
+	}
+
+	/**
 	 * @param deathsPerHour a death rate
 	 * @param elapsedMs hunting time
 	 * @return the chance of at least one death in that time

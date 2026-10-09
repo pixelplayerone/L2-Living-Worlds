@@ -174,6 +174,7 @@ public class LivingPopulationManager
 	private volatile double _rangedWalk = 0.5;
 	private volatile int _rotationWindow = 60;
 	private volatile double[] _hpDeaths = { 0.0, 2.0 };
+	private volatile double[] _extraMonsters = { 0.15, 0.075, 0.04, 0.02, 0.01 };
 	private volatile double[] _shotModel = { 0.0, 1.4, 2.4, 2.2 };
 	private volatile boolean _selfHeal = true;
 
@@ -208,6 +209,11 @@ public class LivingPopulationManager
 
 	/** @param on whether a kill's shots follow its hits; the seconds between attacks of melee, archers and mage casts */
 	/** @param on whether cold deaths come from the HP model; how many standard deviations above an average fight's damage a bot keeps in HP before it sits */
+	public void setExtraMonsters(double[] chances)
+	{
+		_extraMonsters = chances.clone();
+	}
+
 	public void setHpDeaths(boolean on, double sigmas)
 	{
 		_hpDeaths = new double[] { on ? 1.0 : 0.0, sigmas };
@@ -326,7 +332,8 @@ public class LivingPopulationManager
 				_combat.setHpDeaths(_hpDeaths[0] > 0.0, _hpDeaths[1], _travelConfig.deathsPerHour());
 				_combat.setShotModel(_shotModel[0] > 0.0, _shotModel[1], _shotModel[2], _shotModel[3]);
 				_combat.setSelfHeal(_selfHeal);
-				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healReduction(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour(), _partyParams.gearPenalty()));
+				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour()));
+				_combat.setExtraMonsters(_extraMonsters);
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);
 				if (!_combat.enabled())
@@ -737,7 +744,7 @@ public class LivingPopulationManager
 			// Kills at the modeled kill rate (a monitor counter), and the experience this span added (it earns SP).
 			final double huntKills = botKillsPerMinute * (huntedMs / 60_000.0);
 			final ZoneCombat.PartyOutcome partyNow = partyChoice(combat, bot, progress.level(), perKillAt.applyAsDouble(progress.level()), botKillsPerMinute, now, expToNextLevel);
-			bot.setPartyDeathFactor((partyNow == null) ? 0.0 : partyNow.deathFactor());
+			bot.setPartyDeaths((partyNow == null) ? 0.0 : partyNow.deathFactor(), (partyNow == null) ? -1.0 : partyNow.deathsPerHour());
 			// A solo bot spoils when its class does; in a party it is the party's damage dealer that spoils (a spoiler that is only a simulated member does not).
 			final boolean spoils = (partyNow != null) ? partyNow.spoils() : LivingSupplies.isSpoiler(bot.getClassId());
 			// In a party the kills are the party's, and each drop is split four ways: the bot gets a quarter of the adena and a quarter of the chance at each item.
@@ -870,8 +877,11 @@ public class LivingPopulationManager
 		}
 		final double base = _partyParams.baseDeathsPerHour();
 		final double loss = (ColdRisk.expLossPercent(level) / 100.0) * Math.max(1L, expToNextLevel.applyAsLong(level));
-		final double soloNet = (perKill * soloKills * 60.0) - (base * combat.deathFactor(bot.getZone(), bot.getClassId(), level, stats) * loss);
-		final double partyNet = (perKill * outcome.expShare() * outcome.killsPerMinute() * 60.0) - (base * outcome.deathFactor() * loss);
+		final double soloModel = combat.deathsPerHour(bot.getZone(), bot.getClassId(), level, stats); // deaths an hour from the HP model, or -1 without it
+		final double soloDeaths = (soloModel >= 0.0) ? soloModel : (base * combat.deathFactor(bot.getZone(), bot.getClassId(), level, stats));
+		final double partyDeaths = (outcome.deathsPerHour() >= 0.0) ? outcome.deathsPerHour() : (base * outcome.deathFactor());
+		final double soloNet = (perKill * soloKills * 60.0) - (soloDeaths * loss);
+		final double partyNet = (perKill * outcome.expShare() * outcome.killsPerMinute() * 60.0) - (partyDeaths * loss);
 		return (partyNet > soloNet) ? outcome : null;
 	}
 

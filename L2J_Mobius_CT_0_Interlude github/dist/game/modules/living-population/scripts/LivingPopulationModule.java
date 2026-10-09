@@ -156,9 +156,10 @@ public class LivingPopulationModule implements GameModule
 			context.config().getBoolean("ColdParty", true), //
 			Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChance", 0.5))), //
 			context.config().getBoolean("PartyHealers", true), //
-			new ZoneCombat.PartyParams(true, Math.max(0.0, context.config().getDouble("PartyExpBonus", 1.3)), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealReduction", 0.2))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealCoverage", 0.75))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChainChance", 0.3))), Math.max(0.0, context.config().getDouble("PartyResetSeconds", 45.0)), Math.max(0.0, context.config().getDouble("PartyHealMpPerHp", 0.12)), Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3)), Math.max(0.0, Math.min(0.9, context.config().getDouble("PartyGearPenalty", 0.15)))));
+			new ZoneCombat.PartyParams(true, Math.max(0.0, context.config().getDouble("PartyExpBonus", 1.3)), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealCoverage", 0.75))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChainChance", 0.3))), Math.max(0.0, context.config().getDouble("PartyResetSeconds", 45.0)), Math.max(0.0, context.config().getDouble("PartyHealMpPerHp", 0.12)), Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3))));
 		LivingPopulationManager.getInstance().setRangedWalk(context.config().getDouble("ZoneRangedWalk", 0.5));
 		LivingPopulationManager.getInstance().setHpDeaths(context.config().getBoolean("ZoneHpDeaths", true), context.config().getDouble("ZoneRestSigmas", 1.5));
+		LivingPopulationManager.getInstance().setExtraMonsters(chancesOf(context.config().getString("ZoneExtraMonsterChances", "0.15,0.075,0.04,0.02,0.01")));
 		LivingPopulationManager.getInstance().setRotationWindow(context.config().getInt("ZoneRotationWindowSeconds", 60));
 		LivingPopulationManager.getInstance().setShotModel(context.config().getBoolean("ShotsFromHits", true), context.config().getDouble("MeleeAttackSeconds", 1.4), context.config().getDouble("BowAttackSeconds", 2.4), context.config().getDouble("CastSeconds", 2.2));
 		LivingPopulationManager.getInstance().setSelfHeal(context.config().getBoolean("SelfHeal", true));
@@ -177,6 +178,25 @@ public class LivingPopulationModule implements GameModule
 		LivingPopulationManager.getInstance().start(config, travel);
 		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
 		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());
+	}
+
+	/** @return the chances in a comma list ("0.15,0.075,..."), each between 0 and 1; a bad entry counts as 0 */
+	private static double[] chancesOf(String list)
+	{
+		final String[] parts = list.split(",");
+		final double[] chances = new double[parts.length];
+		for (int i = 0; i < parts.length; i++)
+		{
+			try
+			{
+				chances[i] = Math.max(0.0, Math.min(1.0, Double.parseDouble(parts[i].trim())));
+			}
+			catch (NumberFormatException e)
+			{
+				chances[i] = 0.0;
+			}
+		}
+		return chances;
 	}
 
 	private static class LivingPopulationStatusCommand implements IVoicedCommandHandler
