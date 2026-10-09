@@ -433,15 +433,15 @@ public final class ZoneCombat
 	 * @param healCoverage the share of the tank's HP loss the healer heals (so the tank sits less)
 	 * @param chainChance when a member dies, the chance the next in line (tank, damage dealer, buffer, healer) dies before the mob does
 	 * @param resetSeconds how long the party takes to resurrect and get going after a death
-	 * @param healerMpFactor how much more MP a healer burns than a mage that attacks (healing as well), for its resting
+	 * @param healMpPerHp mana the healer spends per HP it heals (the healer only heals; Greater Heal and Battle Heal run about 0.1), for its resting
 	 * @param baseDeathsPerHour the death rate a death factor of 1 means
 	 * @param gearPenalty stop-gap: party members are rarely in the best gear of their level, so their damage and defence are cut by this share (0.15 = 15%)
 	 */
-	public record PartyParams(boolean enabled, double expBonus, double healReduction, double healCoverage, double chainChance, double resetSeconds, double healerMpFactor, double baseDeathsPerHour, double gearPenalty)
+	public record PartyParams(boolean enabled, double expBonus, double healReduction, double healCoverage, double chainChance, double resetSeconds, double healMpPerHp, double baseDeathsPerHour, double gearPenalty)
 	{
 		public static PartyParams defaults()
 		{
-			return new PartyParams(true, 1.3, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.15);
+			return new PartyParams(true, 1.3, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.15);
 		}
 	}
 
@@ -604,9 +604,10 @@ public final class ZoneCombat
 			final double[] mageRow = restRow(z.name(), Role.MAGE, level);
 			if ((tankRow != null) && (mageRow != null))
 			{
-				final double hp = tankRow[1] * (fight / Math.max(1e-6, tankRow[0] - 2.5)) * (1.0 - p.healCoverage());
-				final double sitHp = hp / Math.max(1e-9, tankRow[2]);
-				final double sitMp = mageRow[3] * (fight / Math.max(1e-6, mageRow[0] - 2.5)) * p.healerMpFactor();
+				final double lost = tankRow[1] * (fight / Math.max(1e-6, tankRow[0] - 2.5)); // HP the mobs take off the tank per kill, beyond its standing regen
+				final double sitHp = (lost * (1.0 - p.healCoverage())) / Math.max(1e-9, tankRow[2]);
+				// The healer only heals: its mana goes to the HP it heals (no attack spells), and it refills by sitting at a mage's MP regen.
+				final double sitMp = (mageRow.length >= 5 && mageRow[4] > 0.0) ? ((lost * p.healCoverage() * p.healMpPerHp()) / mageRow[4]) : (mageRow[3] * (fight / Math.max(1e-6, mageRow[0] - 2.5)) * 1.5);
 				final double cycle = fight + 2.5;
 				final double[] ownRow = restRow(z.name(), role, level);
 				final double sitSpoil = LivingSupplies.isSpoiler(classId) && (ownRow != null) ? spoilSitSeconds(ownRow, level, true) : 0.0; // only when the bot itself spoils

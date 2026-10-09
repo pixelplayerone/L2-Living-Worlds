@@ -864,10 +864,10 @@ public class LivingPopulationTest
 			check("undead rotation: a line without one is unchanged", Math.abs(allUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0) - noUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0)) < 1e-9);
 			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
-			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.0));
+			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.0));
 			final double fullGearKills = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3).killsPerMinute();
 			final double fullGearDeaths = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3).deathFactor();
-			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.15));
+			rot.setParty(new ZoneCombat.PartyParams(true, 1.0, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.15));
 			final ZoneCombat.PartyOutcome cut = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3);
 			check("party gear penalty: members hit softer and die more", (cut.killsPerMinute() < fullGearKills) && (cut.deathFactor() >= fullGearDeaths));
 			final ZoneCombat selfBuffed = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROTSELF\tduelist\t40\t2\t2\t2\t2\t2\t2\t2\t0.8\t1.0\t94,312\nROT\tduelist")), ZoneCombat.Params.defaults());
@@ -882,7 +882,7 @@ public class LivingPopulationTest
 			summoner.setRotationTtk(true);
 			check("servitor: its damage kills faster than the summoner alone", summoner.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0) > rot.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0));
 			check("servitor: it takes the hits first, so the summoner dies less", summoner.deathFactor("Rot", 94, 40, mageFit) < rot.deathFactor("Rot", 94, 40, mageFit));
-			rot.setParty(new ZoneCombat.PartyParams(false, 1.0, 0.2, 0.75, 0.3, 45.0, 1.5, 0.3, 0.15));
+			rot.setParty(new ZoneCombat.PartyParams(false, 1.0, 0.2, 0.75, 0.3, 45.0, 0.12, 0.3, 0.15));
 			check("party: off gives no outcome", rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3) == null);
 			rot.setParty(ZoneCombat.PartyParams.defaults());
 			rot.setRotationTtk(false);
