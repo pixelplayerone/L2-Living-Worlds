@@ -71,8 +71,13 @@ public final class ZoneCombat
 		}
 	}
 
-	/** A zone's average monster. */
-	public record ZoneStats(String name, int minLevel, int maxLevel, double mobLevel, double hp, double pDef, double mDef, double pAtk, double mAtk)
+	/**
+	 * A zone's average monster, and what the zone can supply.
+	 * @param respawnPerMinute monsters the whole zone can supply per minute (each spawn returns after its respawn delay); 0 = unknown
+	 * @param spots how many hunting spots the zone has
+	 * @param aggressivePercent the share of its spawns that attack on sight, in percent
+	 */
+	public record ZoneStats(String name, int minLevel, int maxLevel, double mobLevel, double hp, double pDef, double mDef, double pAtk, double mAtk, double respawnPerMinute, int spots, double aggressivePercent)
 	{
 		int midLevel()
 		{
@@ -90,6 +95,7 @@ public final class ZoneCombat
 	private final double[] _killScale = new double[Role.values().length]; // seconds of fighting per unit of raw time-to-kill
 	private final double[] _threatMedian = new double[Role.values().length];
 	private final Map<Role, double[][]> _buffs = new java.util.EnumMap<>(Role.class); // role -> {damage, pDef, mDef} multipliers by level, full buffer party
+	private volatile double _aggroRisk; // extra death multiple in a zone where every monster attacks on sight (0 = off)
 	private volatile double _soulshotDamage = 2.0; // damage with soulshots over without (auto-attack: P.Atk x2)
 	private volatile double _spiritshotDamage = Math.sqrt(2.0); // damage with spiritshots over without (M.Atk x2, damage grows with its square root)
 	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
@@ -161,7 +167,8 @@ public final class ZoneCombat
 					}
 					else if (f[0].equals("ZONE") && (f.length >= 10))
 					{
-						zones.add(new ZoneStats(f[1], Integer.parseInt(f[2]), Integer.parseInt(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]), Double.parseDouble(f[8]), Double.parseDouble(f[9])));
+						final boolean more = f.length >= 13; // older data files stop at M.Atk
+						zones.add(new ZoneStats(f[1], Integer.parseInt(f[2]), Integer.parseInt(f[3]), Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6]), Double.parseDouble(f[7]), Double.parseDouble(f[8]), Double.parseDouble(f[9]), more ? Double.parseDouble(f[10]) : 0.0, more ? Integer.parseInt(f[11]) : 0, more ? Double.parseDouble(f[12]) : 0.0));
 					}
 				}
 				catch (RuntimeException e)
@@ -266,6 +273,40 @@ public final class ZoneCombat
 		_soulshotDamage = Math.max(1.0, soulshot);
 		_spiritshotDamage = Math.max(1.0, spiritshot);
 		_killCache.clear();
+	}
+
+	/**
+	 * Things go wrong where the monsters attack on sight: they come in packs and pull while the bot fights. The death rate
+	 * gets {@code 1 + risk x aggressive share} on top of the gear model.
+	 * @param risk the extra death multiple in a zone where every monster is aggressive (0 = off)
+	 */
+	public void setAggroRisk(double risk)
+	{
+		_aggroRisk = Math.max(0.0, risk);
+		_deathCache.clear();
+	}
+
+	/**
+	 * The most kills per minute a bot can get from the zone's respawns. The zone supplies a fixed number of monsters per
+	 * minute; its bots share them, and a lone bot only reaches its spot's share of them.
+	 * @param zone the zone
+	 * @param occupants bots in the zone, this one included
+	 * @param usableShare the share of the zone's spawns a bot can practically reach (0 to 1)
+	 * @return kills per minute, or infinity when the zone's respawns are unknown
+	 */
+	public double respawnCap(String zone, int occupants, double usableShare)
+	{
+		final Integer zi = (zone == null) ? null : _zoneIndex.get(zone);
+		if (zi == null)
+		{
+			return Double.POSITIVE_INFINITY;
+		}
+		final ZoneStats z = _zones.get(zi);
+		if (z.respawnPerMinute() <= 0.0)
+		{
+			return Double.POSITIVE_INFINITY;
+		}
+		return (z.respawnPerMinute() * Math.max(0.0, Math.min(1.0, usableShare))) / Math.max(1, Math.max(z.spots(), occupants));
 	}
 
 	/** @return levels per gear tier */
@@ -377,7 +418,9 @@ public final class ZoneCombat
 		return _deathCache.computeIfAbsent(key, k ->
 		{
 			final double mean = _threatMedian[role.ordinal()];
-			return (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(_zones.get(zi), role, clamp(armorGrade), buff(role, 1, level), buff(role, 2, level)) / mean));
+			final ZoneStats z = _zones.get(zi);
+			final double gear = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), threat(z, role, clamp(armorGrade), buff(role, 1, level), buff(role, 2, level)) / mean));
+			return gear * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0));
 		});
 	}
 
