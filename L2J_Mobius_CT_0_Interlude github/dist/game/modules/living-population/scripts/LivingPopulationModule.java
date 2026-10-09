@@ -63,7 +63,7 @@ public class LivingPopulationModule implements GameModule
 			Math.max(0.0, context.config().getDouble("HandoffActivationRadius", 3000.0)), //
 			Math.max(0.0, context.config().getDouble("HandoffDeactivationRadius", 4000.0)), //
 			Math.max(0L, context.config().getLong("HandoffCooldownGraceSeconds", 30L) * 1000L), //
-			Math.max(0, context.config().getInt("HandoffMaxHotBots", 40)), //
+			Math.max(0, context.config().getInt("HandoffMaxHotBots", 0)), // 0 = same as PopulationSize
 			context.config().getBoolean("EconomyEnabled", true), //
 			Math.max(0.0, context.config().getDouble("AdenaPerMobLevel", 5.0)), //
 			Math.max(1, context.config().getInt("SoulshotMilestoneLevel", 6)), //

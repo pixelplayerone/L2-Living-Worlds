@@ -32,7 +32,7 @@ import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Zone;
 /**
  * Picks the hunting zone a bot goes to next and how it gets there, the way L2Solo's spot selection does: newbies stay in
  * their race's newbie grounds, a bot keeps its zone while it still fits and is not crowded, and otherwise it picks among
- * the zones that fit its level best, skipping full ones and ones it cannot afford to reach. Pure (randomness comes from
+ * the zones that fit its level best, skipping full ones (unless all are full, then the least crowded) and ones it cannot afford to reach. Pure (randomness comes from
  * the caller's {@link Random}).
  */
 public final class ZoneChooser
@@ -139,21 +139,29 @@ public final class ZoneChooser
 		}
 
 		final List<Choice> options = new ArrayList<>();
+		final List<Choice> crowded = new ArrayList<>();
 		for (Zone zone : catalog.zones())
 		{
-			if (zone.isStarter() || !zone.fits(situation.level()) || full(zone, situation) || situation.avoids(zone))
+			if (zone.isStarter() || !zone.fits(situation.level()) || situation.avoids(zone))
 			{
 				continue;
 			}
 			final Choice choice = route(zone, town, catalog);
 			if ((choice != null) && (choice.fee() <= situation.budget()))
 			{
-				options.add(choice);
+				(full(zone, situation) ? crowded : options).add(choice);
 			}
 		}
 		if (options.isEmpty())
 		{
-			return null;
+			// The zone limit is a preference, not a wall: when every zone that fits is full, the bot still travels the
+			// normal way, to the least crowded of them, so a large population spreads out instead of piling up.
+			if (crowded.isEmpty())
+			{
+				return null;
+			}
+			crowded.sort(Comparator.comparingInt((Choice c) -> occupancy(c.zone(), situation)).thenComparingDouble(c -> fitScore(c.zone(), situation.level())).thenComparingLong(Choice::fee));
+			return crowded.get(0);
 		}
 
 		// Young bots stay near home when there is anything suitable there, instead of crossing the map at level 11.
@@ -275,6 +283,12 @@ public final class ZoneChooser
 			}
 		}
 		return null;
+	}
+
+	private static int occupancy(Zone zone, Situation situation)
+	{
+		final Integer count = (situation.occupancy() == null) ? null : situation.occupancy().get(zone.name());
+		return (count == null) ? 0 : count.intValue();
 	}
 
 	private static boolean full(Zone zone, Situation situation)

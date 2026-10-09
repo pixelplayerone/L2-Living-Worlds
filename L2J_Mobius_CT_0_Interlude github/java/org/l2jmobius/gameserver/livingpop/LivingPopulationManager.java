@@ -248,7 +248,7 @@ public class LivingPopulationManager
 		{
 			_handoff.configure(config.handoffParams(), config.gearTierLevelStep());
 			_executor.scheduleWithFixedDelay(this::safeHandoffTick, config.handoffIntervalMs(), config.handoffIntervalMs(), TimeUnit.MILLISECONDS);
-			LOGGER.info("LivingPopulation: hot/cold handoff enabled (activation " + (int) config.handoffActivationRadius() + "u, cool grace " + (config.handoffCooldownGraceMs() / 1000L) + "s, max hot " + config.handoffMaxHotBots() + ").");
+			LOGGER.info("LivingPopulation: hot/cold handoff enabled (activation " + (int) config.handoffActivationRadius() + "u, cool grace " + (config.handoffCooldownGraceMs() / 1000L) + "s, max hot " + config.effectiveMaxHotBots() + ").");
 		}
 	}
 
@@ -290,8 +290,9 @@ public class LivingPopulationManager
 
 	private void seed(long now)
 	{
-		// Grow toward the target in waves, like new players arriving: at most BirthBatch bots now, the next wave after
-		// BirthIntervalMinutes. Every bot starts at level 1, so the waves spread the population's levels out over time.
+		// Grow toward the target in waves, like new players arriving: at least BirthBatch bots now (more for a large
+		// population, so all arrive within about three hours), the next wave after BirthIntervalMinutes. Every bot starts
+		// at level 1, so the waves spread the population's levels out over time.
 		// New bots take the starting classes the population has least of and a random name no character uses.
 		final int wanted = Math.max(0, _populationTarget);
 		final int missing = wanted - _bots.size();
@@ -299,7 +300,7 @@ public class LivingPopulationManager
 		{
 			return;
 		}
-		final int needed = (_config.birthBatch() > 0) ? Math.min(missing, _config.birthBatch()) : missing;
+		final int needed = LivingPopulationConfig.birthWave(_config.birthBatch(), _config.birthIntervalMs(), wanted, missing);
 		_nextBirthAt = now + _config.birthIntervalMs();
 		final Set<String> existing = new HashSet<>();
 		final Map<Integer, Integer> classes = new HashMap<>();

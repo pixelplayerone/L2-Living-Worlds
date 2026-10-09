@@ -344,7 +344,12 @@ public class LivingPopulationTest
 		check("default activation radius 3000", defaults.handoffActivationRadius() == 3000.0);
 		check("default deactivation radius 4000", defaults.handoffDeactivationRadius() == 4000.0);
 		check("default cooldown grace 30s", defaults.handoffCooldownGraceMs() == 30_000L);
-		check("default max hot bots 40", defaults.handoffMaxHotBots() == 40);
+		check("default max hot bots follow the population", (defaults.handoffMaxHotBots() == 0) && (defaults.effectiveMaxHotBots() == defaults.populationSize()));
+		check("a set max hot bots is kept", new LivingPopulationConfig(true, 500, 30_000L, 64, 13.0, 12.0, 80, true, 2, 1.35, 0.85, 0.06, true, 5_000L, 3000.0, 4000.0, 30_000L, 40, true, 5.0, 6, 1000L, 6.0, 500L, 1000L, 12, 100L, 500L, 60, 10, 50_000L, 5_000L, "x", 10, 1_200_000L, 0).effectiveMaxHotBots() == 40);
+		check("birth wave keeps the batch for a small population", LivingPopulationConfig.birthWave(10, 1_200_000L, 60, 60) == 10);
+		check("birth wave grows for a large population", LivingPopulationConfig.birthWave(10, 1_200_000L, 500, 500) == 56);
+		check("birth wave never exceeds what is missing", LivingPopulationConfig.birthWave(10, 1_200_000L, 500, 3) == 3);
+		check("birth batch 0 creates everything at once", LivingPopulationConfig.birthWave(0, 1_200_000L, 500, 420) == 420);
 		check("handoff params expose activation radius", defaults.handoffParams().activationRadius() == 3000.0);
 		check("handoff params never let deactivation fall below activation", defaults.handoffParams().deactivationRadius() >= defaults.handoffParams().activationRadius());
 		check("economy on by default", defaults.economyEnabled());

@@ -283,6 +283,13 @@ public class LivingTravelTest
 		crowded.put("Beyond", 8);
 		final ZoneChooser.Choice avoid = ZoneChooser.choose(new ZoneChooser.Situation(21, "Elf", null, alpha, 100_000L, crowded, 8), catalog, null);
 		check("skips a full zone", "Far Hills".equals(avoid.zone().name()));
+		final Map<String, Integer> allFull = new HashMap<>();
+		allFull.put("Near Woods", 20);
+		allFull.put("Far Hills", 12);
+		allFull.put("Beyond", 9);
+		final ZoneChooser.Choice spill = ZoneChooser.choose(new ZoneChooser.Situation(21, "Elf", null, alpha, 100_000L, allFull, 8), catalog, null);
+		check("when every zone that fits is full it goes to the least crowded one", (spill != null) && "Beyond".equals(spill.zone().name()));
+		check("but still not to one it cannot afford", ZoneChooser.choose(new ZoneChooser.Situation(21, "Elf", null, alpha, 100L, allFull, 8), catalog, null) == null);
 	}
 
 	private static void testTravelLeg()
