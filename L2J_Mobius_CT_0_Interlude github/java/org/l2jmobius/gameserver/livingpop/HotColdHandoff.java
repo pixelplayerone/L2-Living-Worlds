@@ -1696,14 +1696,15 @@ public class HotColdHandoff
 		{
 			bot.getDecisions().add(now, null, "Picked up " + LivingGear.describe(change, fit) + " and put it on");
 		}
-		if (bag.loot() > 0)
+		final TownStock townStock = _townStock;
+		if ((townStock != null) && (bot.getTown() != null))
+		{
+			// The items go to the town's stock; their owner is paid when they sell in a shop or the stock clears.
+			bag.items().forEach((itemId, count) -> townStock.add(bot.getTown(), bot.getId(), itemId, count));
+		}
+		else if (bag.loot() > 0)
 		{
 			bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + bag.loot()));
-			final TownStock townStock = _townStock;
-			if ((townStock != null) && (bot.getTown() != null))
-			{
-				bag.items().forEach((itemId, count) -> townStock.add(bot.getTown(), bot.getId(), itemId, count));
-			}
 		}
 		ColdLife.setGear(bot, PhantomManager.getInstance().livingGearOf(player), shop);
 	}

@@ -132,6 +132,43 @@ public final class TownStock
 	}
 
 	/**
+	 * Removes a share of every listing, as the town clearing out its unsold goods: each listing loses its count times
+	 * the fraction, rounded up or down at random.
+	 * @param fraction the share to remove (0 to 1)
+	 * @param random the rounding source
+	 * @return what was removed, so the owners can be paid for it
+	 */
+	public synchronized List<Listing> decay(double fraction, Random random)
+	{
+		final List<Listing> removed = new ArrayList<>();
+		for (Listing listing : listings())
+		{
+			final double expected = listing.count() * Math.max(0.0, Math.min(1.0, fraction));
+			final long whole = (long) expected;
+			final long count = Math.min(listing.count(), whole + ((random.nextDouble() < (expected - whole)) ? 1 : 0));
+			if (count < 1)
+			{
+				continue;
+			}
+			final Key key = new Key(listing.town(), listing.owner(), listing.itemId());
+			if (count == listing.count())
+			{
+				_listings.remove(key);
+			}
+			else
+			{
+				_listings.put(key, listing.count() - count);
+			}
+			removed.add(new Listing(listing.town(), listing.owner(), listing.itemId(), count));
+		}
+		if (!removed.isEmpty())
+		{
+			_dirty = true;
+		}
+		return removed;
+	}
+
+	/**
 	 * Puts back what {@link #take} took, to the same owners.
 	 * @param taken the listings it returned
 	 */

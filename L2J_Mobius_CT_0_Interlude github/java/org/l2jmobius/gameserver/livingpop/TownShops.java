@@ -72,6 +72,12 @@ public final class TownShops implements FakePlayerStoreSupply
 	}
 
 	@Override
+	public int available(Object source, int itemId)
+	{
+		return (int) Math.min(Integer.MAX_VALUE, _stock.count((String) source, itemId));
+	}
+
+	@Override
 	public Object withdraw(Object source, int itemId, int count)
 	{
 		return _stock.take((String) source, itemId, count);

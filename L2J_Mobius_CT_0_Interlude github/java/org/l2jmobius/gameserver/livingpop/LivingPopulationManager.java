@@ -129,6 +129,8 @@ public class LivingPopulationManager
 	private final Map<String, Map<Integer, Double>> _zoneItems = new ConcurrentHashMap<>(); // zone|level|spoiler -> sellable items per kill
 	private final TownStock _townStock = new TownStock(); // the items each town holds (what cold bots hunted and sold there)
 	private final TownStockDao _townStockDao = new TownStockDao();
+	private volatile double _stockHalfLifeHours = 6.0; // unsold town stock: half of it is cleared (paid at the vendor price) in this long
+	private volatile long _lastStockSweep; // when the town stock last cleared, 0 until the first tick
 	private volatile boolean _stockSaving; // false when the saved stock could not be read, so a save never overwrites it
 	private final Map<String, Map<Integer, Double>> _zoneGear = new ConcurrentHashMap<>(); // zone|level|spoiler -> gear drop chances
 	private volatile GearCatalog _gear; // gear kept per slot (travel and GearSlots on), else null
@@ -237,6 +239,14 @@ public class LivingPopulationManager
 	public void setSelfHeal(boolean on)
 	{
 		_selfHeal = on;
+	}
+
+	/**
+	 * @param hours how long until half of the unsold town stock is cleared out and its owners are paid the vendor price
+	 */
+	public void setTownStockHalfLife(double hours)
+	{
+		_stockHalfLifeHours = Math.max(0.1, hours);
 	}
 
 	public void setBlessedSpiritshots(double damage, double share)
@@ -352,6 +362,7 @@ public class LivingPopulationManager
 
 		_stockSaving = _townStockDao.load(_townStock);
 		_handoff.setTownStock(_townStock);
+		_lastStockSweep = System.currentTimeMillis(); // downtime does not clear stock
 		FakePlayerStoreFactory.setSupply(new TownShops(_townStock, () -> (_catalog == null) ? List.of() : _catalog.towns(), this::payOwner));
 		_dao.ensureColumns(); // add columns a newer module version needs to an older table (no manual migration)
 		final long now = System.currentTimeMillis();
@@ -796,10 +807,17 @@ public class LivingPopulationManager
 				if ((yield != null) && (huntedMs > 0))
 				{
 					final double kills = botKillsPerMinute * lootScale * (huntedMs / 60_000.0);
-					final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
-					bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
-					huntAdena += lootValue;
-					_townStock.deposit(bot.getTown(), bot.getId(), zoneItems(bot.getZone(), progress.level(), spoils), kills, _random);
+					if (bot.getTown() != null)
+					{
+						// The items go to the town's stock; their owner is paid when they sell in a shop or the stock clears.
+						_townStock.deposit(bot.getTown(), bot.getId(), zoneItems(bot.getZone(), progress.level(), spoils), kills, _random);
+					}
+					else
+					{
+						final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
+						bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
+						huntAdena += lootValue;
+					}
 				}
 				// Gear kept per slot: the weapons and armor its kills dropped are rolled for real; it wears the better ones.
 				if ((_gear != null) && _travelConfig.dropIncome() && (huntedMs > 0))
@@ -1506,6 +1524,7 @@ public class LivingPopulationManager
 				Files.createDirectories(path.getParent());
 			}
 			Files.write(path, json.getBytes(StandardCharsets.UTF_8));
+			sweepTownStock();
 			saveTownStock();
 		}
 		catch (Exception e)
@@ -1531,6 +1550,24 @@ public class LivingPopulationManager
 				}
 				return;
 			}
+		}
+	}
+
+	/** Clears out a share of the unsold town stock for the time since the last sweep and pays the owners the vendor price for it. */
+	private void sweepTownStock()
+	{
+		final long now = System.currentTimeMillis();
+		final long last = _lastStockSweep;
+		_lastStockSweep = now;
+		if ((last == 0) || (now <= last))
+		{
+			return;
+		}
+		final double hours = (now - last) / 3_600_000.0;
+		for (TownStock.Listing gone : _townStock.decay(1.0 - Math.pow(0.5, hours / _stockHalfLifeHours), _random))
+		{
+			final ItemTemplate item = ItemData.getInstance().getTemplate(gone.itemId());
+			payOwner(gone.owner(), gone.count() * ((item == null) ? 0L : Math.max(0L, item.getReferencePrice() / 2L)));
 		}
 	}
 

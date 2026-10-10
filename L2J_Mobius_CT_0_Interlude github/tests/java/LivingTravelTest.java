@@ -495,6 +495,14 @@ public class LivingTravelTest
 		check("a sale of more than the town holds takes nothing", (stock.take("Giran", 3, 16) == null) && (stock.count("Giran", 3) == 15));
 		final List<Long> shares = TownStock.shares(taken, 1000);
 		check("the buyer's payment is split by units and adds up", (shares.get(0) == 666L) && (shares.get(1) == 334L) && (shares.stream().mapToLong(Long::longValue).sum() == 1000));
+		final TownStock clearing = new TownStock();
+		clearing.add("Giran", 5L, 3, 100);
+		clearing.add("Giran", 6L, 3, 1);
+		final List<TownStock.Listing> cleared = clearing.decay(0.5, new java.util.Random(1));
+		check("clearing removes a share of each listing", (clearing.count("Giran", 5L, 3) == 50) && (cleared.get(0).owner() == 5L) && (cleared.get(0).count() == 50));
+		final long left = clearing.count("Giran", 3);
+		final long removed = clearing.decay(1.0, new java.util.Random(1)).stream().mapToLong(TownStock.Listing::count).sum();
+		check("clearing all of it empties the town and reports what went", (removed == left) && (clearing.count("Giran", 3) == 0));
 		stock.restore(taken);
 		check("a sale that falls through puts the items back to their owners", (stock.count("Giran", 3) == 60) && (stock.count("Giran", 5L, 3) == 30) && (stock.count("Giran", 6L, 3) == 30));
 		check("the listings list every owner's items", stock.listings().stream().filter(listing -> listing.town().equals("Giran") && (listing.itemId() == 3)).count() == 2);

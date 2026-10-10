@@ -93,15 +93,6 @@ public class FakePlayerStoreFactory
 	private static final int ANCIENT_ADENA_BUY_STOCK_MIN = 5000;
 	private static final int ANCIENT_ADENA_BUY_STOCK_MAX = 50000;
 
-	// Small towns keep shots readily available, while full-stock market hubs devote far fewer stalls to them.
-	// Hubs instead reserve a large share for dedicated material sellers, so their much larger populations expose
-	// a broad crafting market rather than repeating the same two shot lines.
-	private static final int SHOT_SELLER_CHANCE = 30;
-	private static final int HUB_SHOT_SELLER_CHANCE = 12;
-	private static final int HUB_MATERIAL_SELLER_CHANCE = 45;
-	private static final int SHOT_STACK_MIN = 5000;
-	private static final int SHOT_STACK_MAX = 25000;
-
 	// Variant prefixes that should lose to the plain item when the rest matches (e.g. prefer "Soulshot: D-grade" over "Beast Soulshot").
 	private static final String[] MATCH_NOISE =
 	{
@@ -109,10 +100,10 @@ public class FakePlayerStoreFactory
 	};
 
 	private static volatile boolean _built = false;
-	private static volatile FakePlayerStoreSupply _supply; // real goods for SELL stores, or null
+	private static volatile FakePlayerStoreSupply _supply; // the goods SELL stores are made from, or null
+	private static final int MIN_SUPPLY_LINES = 2; // a SELL store needs at least this many different items
 	private static final EnumMap<CrystalType, List<ItemTemplate>> EQUIP = new EnumMap<>(CrystalType.class);
 	private static final EnumMap<CrystalType, List<ItemTemplate>> BULK = new EnumMap<>(CrystalType.class);
-	private static final EnumMap<CrystalType, List<ItemTemplate>> MATERIALS = new EnumMap<>(CrystalType.class);
 	private static final EnumMap<CrystalType, List<RecipeList>> RECIPES = new EnumMap<>(CrystalType.class);
 
 	private FakePlayerStoreFactory()
@@ -139,7 +130,6 @@ public class FakePlayerStoreFactory
 			{
 				EQUIP.put(grade, new ArrayList<>());
 				BULK.put(grade, new ArrayList<>());
-				MATERIALS.put(grade, new ArrayList<>());
 				RECIPES.put(grade, new ArrayList<>());
 			}
 			for (ItemTemplate item : ItemData.getInstance().getAllItems())
@@ -185,13 +175,8 @@ public class FakePlayerStoreFactory
 						continue;
 					}
 					// Bucket the remaining consumables/mats by their crystal grade (gradeless mats fall into NONE and
-					// stay available to every town). Keep a material-only index as well so market hubs can create
-					// recognizable crafting-supply stalls instead of hoping the broad bulk lottery finds materials.
+					// stay available to every town).
 					BULK.get(item.getCrystalType()).add(item);
-					if (item.getItemType() == EtcItemType.MATERIAL)
-					{
-						MATERIALS.get(item.getCrystalType()).add(item);
-					}
 				}
 			}
 			// Recipes are bucketed by the grade of the item they produce, so crafters honour the same
@@ -325,86 +310,6 @@ public class FakePlayerStoreFactory
 	private static ItemTemplate pickBulk(int maxOrdinal)
 	{
 		return pickGraded(BULK, maxOrdinal);
-	}
-
-	private static ItemTemplate pickMaterial(int maxOrdinal)
-	{
-		return pickGraded(MATERIALS, maxOrdinal);
-	}
-
-	/**
-	 * Adds a reliable shot pair to a SELL store selected as a shot stall.
-	 * Regular towns use the vendor's grade cap; full-stock hubs randomize D/C/B/A/S.
-	 */
-	private static void addShotStock(List<FakePlayerStoreItem> stock, Set<Integer> seen, int cap, boolean fullStock)
-	{
-		final CrystalType grade = fullStock ? randomShotGrade(cap) : shotGradeForCap(cap);
-		addShotLine(stock, seen, "Soulshot " + shotGradeLetter(grade));
-		addShotLine(stock, seen, "Blessed Spiritshot " + shotGradeLetter(grade));
-	}
-
-	/**
-	 * For normal towns, use the highest appropriate D/C/B/A/S grade.
-	 */
-	private static CrystalType shotGradeForCap(int cap)
-	{
-		final int min = CrystalType.D.ordinal();
-		final int max = Math.min(cap, CrystalType.S.ordinal());
-		return CrystalType.values()[Math.max(min, max)];
-	}
-
-	/**
-	 * For market hubs, spread selected shot sellers across D/C/B/A/S.
-	 */
-	private static CrystalType randomShotGrade(int cap)
-	{
-		final int min = CrystalType.D.ordinal();
-		final int max = Math.min(cap, CrystalType.S.ordinal());
-		return CrystalType.values()[Rnd.get(min, Math.max(min, max))];
-	}
-
-	private static String shotGradeLetter(CrystalType grade)
-	{
-		switch (grade)
-		{
-			case D:
-			{
-				return "D";
-			}
-			case C:
-			{
-				return "C";
-			}
-			case B:
-			{
-				return "B";
-			}
-			case A:
-			{
-				return "A";
-			}
-			case S:
-			{
-				return "S";
-			}
-			default:
-			{
-				return "D";
-			}
-		}
-	}
-
-	private static void addShotLine(List<FakePlayerStoreItem> stock, Set<Integer> seen, String phrase)
-	{
-		final ItemTemplate item = findItemByName(phrase);
-		if ((item == null) || !seen.add(item.getId()))
-		{
-			return;
-		}
-
-		final int count = Rnd.get(SHOT_STACK_MIN, SHOT_STACK_MAX);
-		final int price = priced(effRef(item.getReferencePrice()), 1.0, 1.25);
-		stock.add(line(item, 0, count, price));
 	}
 
 	/** The grade cap a vendor surfaces: full range for a market hub, else gated by its level. */
@@ -745,8 +650,8 @@ public class FakePlayerStoreFactory
 	}
 
 	/**
-	 * Sets where SELL stores get real goods from.
-	 * @param supply the supply, or null to roll all stock
+	 * Sets where SELL stores get their goods from.
+	 * @param supply the supply, or null for no SELL stores
 	 */
 	public static void setSupply(FakePlayerStoreSupply supply)
 	{
@@ -760,19 +665,21 @@ public class FakePlayerStoreFactory
 	}
 
 	/**
-	 * Builds a SELL store for a spot: from the supply's goods when it has any there, else rolled (see
-	 * {@link #generateSell(int, boolean)}). Supplied lines are priced a little above reference, like rolled ones.
+	 * Builds a SELL store for a spot from the supply's goods only: a few of the items it offers there, priced a little
+	 * above reference. A spot the supply offers too little at gets no store.
 	 * @param where where the store stands
-	 * @param level the vendor's level (gates equipment grade of rolled stock)
-	 * @param fullStock whether the vendor is in a market hub
-	 * @return the stock
+	 * @return the stock, or empty when the supply has fewer than {@link #MIN_SUPPLY_LINES} items for the spot
 	 */
-	public static List<FakePlayerStoreItem> generateSell(Location where, int level, boolean fullStock)
+	public static List<FakePlayerStoreItem> generateSell(Location where)
 	{
 		final FakePlayerStoreSupply supply = _supply;
-		final List<FakePlayerStoreSupply.Offer> offers = (supply == null) ? List.of() : new ArrayList<>(supply.offers(where));
+		final List<FakePlayerStoreSupply.Offer> offers = (supply == null) ? new ArrayList<>() : new ArrayList<>(supply.offers(where));
 		final List<FakePlayerStoreItem> stock = new ArrayList<>();
-		final int lines = Rnd.get(2, 5);
+		if (offers.size() < MIN_SUPPLY_LINES)
+		{
+			return stock;
+		}
+		final int lines = Rnd.get(MIN_SUPPLY_LINES, 5);
 		while (!offers.isEmpty() && (stock.size() < lines))
 		{
 			final FakePlayerStoreSupply.Offer offer = offers.remove(Rnd.get(offers.size()));
@@ -782,48 +689,7 @@ public class FakePlayerStoreFactory
 				stock.add(new FakePlayerStoreItem(STORE_ITEM_OID.getAndIncrement(), item.getId(), 0, offer.count(), priced(effRef(item.getReferencePrice()), 1.0, 1.4), offer.source()));
 			}
 		}
-		return stock.isEmpty() ? generateSell(level, fullStock) : stock;
-	}
-
-	/**
-	 * Builds a SELL store: a few distinct lines, mostly bulk consumables with some equipment, priced a
-	 * little above reference.
-	 * @param level the vendor's level (gates equipment grade)
-	 * @return the generated stock (may be empty if the catalog is unavailable)
-	 */
-	public static List<FakePlayerStoreItem> generateSell(int level, boolean fullStock)
-	{
-		build();
-		final int cap = gradeCap(level, fullStock);
-		final List<FakePlayerStoreItem> stock = new ArrayList<>();
-		final Set<Integer> seen = new HashSet<>();
-
-		// Full-stock hubs use recognizable stall archetypes. Shot stalls are deliberately scarce; material
-		// stalls carry several distinct crafting supplies and advertise them naturally because they contain no
-		// unrelated equipment. Smaller towns retain the higher shot chance that keeps leveling supplies handy.
-		final int sellerRoll = Rnd.get(100);
-		final boolean shotSeller = sellerRoll < (fullStock ? HUB_SHOT_SELLER_CHANCE : SHOT_SELLER_CHANCE);
-		final boolean materialSeller = fullStock && !shotSeller && (sellerRoll < (HUB_SHOT_SELLER_CHANCE + HUB_MATERIAL_SELLER_CHANCE));
-		if (shotSeller)
-		{
-			addShotStock(stock, seen, cap, fullStock);
-		}
-
-		final int lines = Rnd.get(2, 5);
-		for (int i = 0; i < lines; i++)
-		{
-			final boolean bulk = materialSeller || (Rnd.get(100) < 55);
-			final ItemTemplate item = materialSeller ? pickMaterial(cap) : (bulk ? pickBulk(cap) : pickEquip(cap));
-			if ((item == null) || !seen.add(item.getId()))
-			{
-				continue;
-			}
-			final int count = bulk ? bulkAmount(item.getReferencePrice()) : 1;
-			final int enchant = (!bulk && (item.getCrystalType().ordinal() >= 1) && (Rnd.get(100) < 15)) ? Rnd.get(1, 4) : 0;
-			final int price = priced(effRef(item.getReferencePrice()), bulk ? 1.0 : 1.0, bulk ? 1.4 : 1.7);
-			stock.add(line(item, enchant, count, price));
-		}
-		return stock;
+		return (stock.size() < MIN_SUPPLY_LINES) ? new ArrayList<>() : stock;
 	}
 
 	/**

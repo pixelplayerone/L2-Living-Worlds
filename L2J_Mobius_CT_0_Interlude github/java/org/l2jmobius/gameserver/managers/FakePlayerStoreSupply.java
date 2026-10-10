@@ -23,10 +23,10 @@ import java.util.List;
 import org.l2jmobius.gameserver.model.Location;
 
 /**
- * Where the SELL stores of the fake-player vendors can get real goods instead of rolled ones. A module sets one with
- * {@link FakePlayerStoreFactory#setSupply(FakePlayerStoreSupply)}; without one, or when it offers nothing for a spot,
- * the stores roll their stock as before. A store line made from an offer remembers its source, and a purchase of that
- * line goes through {@link #withdraw}, {@link #paid} and {@link #restore} so whoever owns the goods is paid.
+ * The goods the SELL stores of the fake-player vendors are made from. A module sets one with
+ * {@link FakePlayerStoreFactory#setSupply(FakePlayerStoreSupply)}; without one, or when it offers too little for a spot,
+ * there is no SELL store there. A store line made from an offer remembers its source, and a purchase of that line goes
+ * through {@link #withdraw}, {@link #paid} and {@link #restore} so whoever owns the goods is paid.
  */
 public interface FakePlayerStoreSupply
 {
@@ -45,6 +45,13 @@ public interface FakePlayerStoreSupply
 	 * @return the goods available there, empty when there are none or the spot is not covered
 	 */
 	List<Offer> offers(Location where);
+
+	/**
+	 * @param source a store line's source
+	 * @param itemId the item
+	 * @return how many of it the supply holds now
+	 */
+	int available(Object source, int itemId);
 
 	/**
 	 * Takes goods out of the supply for a sale in progress.

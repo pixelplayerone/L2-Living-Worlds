@@ -461,6 +461,32 @@ public class FakePlayerStoreManager
 	 * Drops sold-out lines; when the whole store empties, the vendor closes (sign removed). Vendors are
 	 * not restocked at runtime on purpose — every server start generates fresh stock for them.
 	 */
+	/**
+	 * Cuts an open store's supplied lines down to what the supply still holds, and closes the store when nothing is left.
+	 * @param npc the vendor
+	 * @param look its appearance
+	 */
+	public static void refresh(Npc npc, FakePlayerAppearance look)
+	{
+		final FakePlayerStoreSupply supply = FakePlayerStoreFactory.supply();
+		synchronized (look.storeLock())
+		{
+			if (look.getStoreItems() == null)
+			{
+				return;
+			}
+			for (FakePlayerStoreItem entry : look.getStoreItems())
+			{
+				if (entry.getSource() != null)
+				{
+					final int held = (supply == null) ? 0 : supply.available(entry.getSource(), entry.getItemId());
+					entry.decrease(entry.getCount() - held);
+				}
+			}
+			settle(npc, look);
+		}
+	}
+
 	/** Puts goods taken out of a supply back when the sale did not go through. */
 	private static void restore(FakePlayerStoreSupply supply, Map<FakePlayerStoreItem, Object> receipts)
 	{
