@@ -114,7 +114,7 @@ public final class PhantomCombatPolicy
 		}
 		if (caster)
 		{
-			return magic;
+			return magic && (range >= 400); // Aura Burn / Aura Flare reach 150 - a caster never walks into melee for them
 		}
 		if (pvp || pressure || durable)
 		{
