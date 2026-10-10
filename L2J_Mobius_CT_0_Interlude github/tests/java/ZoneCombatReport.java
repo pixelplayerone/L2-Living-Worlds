@@ -164,11 +164,13 @@ public class ZoneCombatReport
 		final Object[][] classes = { { "Dagger (Adventurer)", 93 }, { "Summoner (Arcana Lord)", 96 }, { "Healer (Cardinal)", 97 }, { "Melee (Duelist)", 88 }, { "Tank (Phoenix Knight)", 90 } };
 		System.out.println("| level | class | solo kills/min | solo deaths/hr | solo net exp/hr | party kills/min | party deaths/hr | party net exp/hr |");
 		System.out.println("|---|---|---|---|---|---|---|---|");
-		for (int level : new int[] { 20, 40, 61, 76 })
+		final StringBuilder avg = new StringBuilder();
+		for (int level : new int[] { 20, 40, 52, 61, 76 })
 		{
 			final int grade = LivingSupplies.gradeFor(level);
 			final double span = total.get(level + 1) - total.get(level);
 			final double lossPerDeath = (loss.get(level) / 100.0) * span;
+			final double[] sum = new double[6];
 			for (Object[] c : classes)
 			{
 				final int id = (Integer) c[1];
@@ -206,9 +208,22 @@ public class ZoneCombatReport
 				if (n > 0)
 				{
 					System.out.printf("| %d | %s | %.1f | %.2f | %.0f | %.1f | %.2f | %.0f |%n", level, c[0], sk / n, sd / n, sn / n, pk / n, pd / n, pn / n);
+					final double[] row = { sk / n, sd / n, sn / n, pk / n, pd / n, pn / n };
+					for (int i = 0; i < 6; i++)
+					{
+						sum[i] += row[i] / classes.length;
+					}
 				}
 			}
+			// the flat model has no party: its rates (12 kills/min, 0.3 deaths/hr, level x 13 exp) with the four-member share, 1.30 / 4, for reference
+			final double flatSolo = (level * 13.0 * 12 * 60) - (0.3 * lossPerDeath);
+			final double flatParty = (level * 13.0 * 12 * 60 * 1.3 / 4.0) - (0.3 * lossPerDeath);
+			avg.append(String.format("| %d | %.0f | %.0f | %.1f > %.1f | %.2f > %.2f | %.0f > %.0f | %.1f > %.1f | %.2f > %.2f | %.0f > %.0f |%n", level, flatSolo, flatParty, 12.0, sum[0], 0.3, sum[1], flatSolo, sum[2], 12.0, sum[3], 0.3, sum[4], flatParty, sum[5]));
 		}
+		System.out.println();
+		System.out.println("| level | flat solo net/hr | flat party net/hr | solo kills/min 1.0 > 2.0 | solo deaths/hr 1.0 > 2.0 | solo net exp/hr 1.0 > 2.0 | party kills/min 1.0 > 2.0 | party deaths/hr 1.0 > 2.0 | party net exp/hr 1.0 > 2.0 |");
+		System.out.println("|---|---|---|---|---|---|---|---|---|");
+		System.out.print(avg);
 	}
 
 	/** Same averages with gear a grade back: starter gear at 1, then top of the grade below the level's (S at 80). */
