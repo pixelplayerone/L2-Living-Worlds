@@ -43,9 +43,11 @@ import org.l2jmobius.gameserver.model.World;
 import org.l2jmobius.gameserver.model.actor.Creature;
 import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.model.actor.instance.Monster;
+import org.l2jmobius.gameserver.model.effects.AbstractEffect;
 import org.l2jmobius.gameserver.model.effects.EffectType;
 import org.l2jmobius.gameserver.model.item.enums.ShotType;
 import org.l2jmobius.gameserver.model.skill.AbnormalType;
+import org.l2jmobius.gameserver.model.skill.EffectScope;
 import org.l2jmobius.gameserver.model.skill.Skill;
 import org.l2jmobius.gameserver.model.skill.enums.SkillFinishType;
 import org.l2jmobius.gameserver.model.skill.targets.TargetType;
@@ -160,6 +162,7 @@ public class PhantomPlaystyleEngine
 		int killFocusId;
 		long killAt;
 		double killSeconds;
+		double killDps;
 		// Control results against players: (target, skill) -> {attempts, landed}. The last launched control cast waits
 		// in ctl* until its cast has finished, then settleControl checks whether the effect is on the target.
 		final Map<Long, int[]> controlTries = Collections.synchronizedMap(new LinkedHashMap<>(32, 0.75f, true)
@@ -317,7 +320,7 @@ public class PhantomPlaystyleEngine
 			{
 				continue; // a builder is selected only as part of an affordable spender plan below
 			}
-			if (modern && !selfCast && ((entry.use == Use.CONTROL) || (entry.use == Use.DEBUFF)) && PhantomCombatPolicy.suppressSetup(entry.conds.contains(Cond.NOT_SPOILED) || entry.conds.contains(Cond.MOBS_UNSPOILED), context, pressure, durable(npc, focus, state)))
+			if (modern && !selfCast && ((entry.use == Use.CONTROL) || (entry.use == Use.DEBUFF)) && PhantomCombatPolicy.suppressSetup(entry.conds.contains(Cond.NOT_SPOILED) || entry.conds.contains(Cond.MOBS_UNSPOILED), context, pressure, durable(npc, focus, state, skill)))
 			{
 				continue; // do not spend a setup cast on an ordinary safe farming target
 			}
@@ -612,10 +615,11 @@ public class PhantomPlaystyleEngine
 
 	/**
 	 * A target worth a setup cast (debuff, control, a limit skill): a raid, or one the member needs
-	 * {@link #DURABLE_SECONDS} or longer to bring down from its present HP. Judged against the member's own damage, so
-	 * it scales with level and gear and treats a player the same as a monster. Reused for a second per target.
+	 * {@link #DURABLE_SECONDS} or longer to bring down from its present HP. A damage-over-time skill is judged on its own
+	 * numbers instead (see {@link #dotPays}). Judged against the member's own damage, so it scales with level and gear
+	 * and treats a player the same as a monster. The kill-time estimate is reused for a second per target.
 	 */
-	private static boolean durable(Player npc, Creature focus, PlayState state)
+	private static boolean durable(Player npc, Creature focus, PlayState state, Skill skill)
 	{
 		if (focus.isRaid())
 		{
@@ -626,10 +630,42 @@ public class PhantomPlaystyleEngine
 		{
 			state.killFocusId = focus.getObjectId();
 			state.killAt = now;
-			final double dps = damagePerSecond(npc, focus);
-			state.killSeconds = (dps > 0) ? (focus.getCurrentHp() / dps) : Double.MAX_VALUE;
+			state.killDps = damagePerSecond(npc, focus);
+			state.killSeconds = (state.killDps > 0) ? (focus.getCurrentHp() / state.killDps) : Double.MAX_VALUE;
 		}
-		return state.killSeconds >= DURABLE_SECONDS;
+		final double dot = damageOverTime(skill);
+		return (dot > 0) ? dotPays(npc, focus, state, skill, dot) : (state.killSeconds >= DURABLE_SECONDS);
+	}
+
+	/** What {@code skill} deals each second while it lasts, summed over its damage-over-time effects. */
+	private static double damageOverTime(Skill skill)
+	{
+		double total = 0;
+		final List<AbstractEffect> effects = skill.getEffects(EffectScope.GENERAL);
+		if (effects != null)
+		{
+			for (AbstractEffect effect : effects)
+			{
+				total += effect.getDamagePerSecond();
+			}
+		}
+		return total;
+	}
+
+	/**
+	 * Whether casting a damage-over-time skill beats spending the same cast on the member's own damage: the chance it
+	 * lands, times what it deals while the target is still alive (at most its duration, and until the member's damage
+	 * plus the DoT has killed it), against the damage the cast time gives up.
+	 */
+	private static boolean dotPays(Player npc, Creature focus, PlayState state, Skill skill, double dot)
+	{
+		if (state.killDps <= 0)
+		{
+			return true; // the member cannot hurt it at all; the DoT is the only damage there is
+		}
+		final double castSeconds = Math.max(550, Formulas.calcAtkSpd(npc, skill, skill.getHitTime() + skill.getCoolTime())) / 1000.0;
+		final double alive = Math.min(skill.getAbnormalTime(), focus.getCurrentHp() / (state.killDps + dot));
+		return (Formulas.calcEffectChance(npc, focus, skill) / 100) * dot * alive > castSeconds * state.killDps;
 	}
 
 	/** The member's best sustained damage against {@code focus}: weapon swings or its strongest single-target attack skill, whichever is higher. */
@@ -859,7 +895,7 @@ public class PhantomPlaystyleEngine
 			{
 				continue;
 			}
-			if (modern && (!state.combat.ready(id, focus.getObjectId(), now) || !PhantomCombatPolicy.affordable(caster, npc.getCurrentMp(), npc.getMaxMp(), PhantomCombatActions.mpCost(npc, skill), mpReservePercent) || !PhantomCombatPolicy.worthwhile(role, caster, focus instanceof Player, pressure, durable(npc, focus, state), PhantomCombatActions.mpCost(npc, skill), npc.getMaxMp(), skill.getCastRange(), skill.isMagic()) || !ordinaryAttack(skill)))
+			if (modern && (!state.combat.ready(id, focus.getObjectId(), now) || !PhantomCombatPolicy.affordable(caster, npc.getCurrentMp(), npc.getMaxMp(), PhantomCombatActions.mpCost(npc, skill), mpReservePercent) || !PhantomCombatPolicy.worthwhile(role, caster, focus instanceof Player, pressure, durable(npc, focus, state, skill), PhantomCombatActions.mpCost(npc, skill), npc.getMaxMp(), skill.getCastRange(), skill.isMagic()) || !ordinaryAttack(skill)))
 			{
 				continue;
 			}
@@ -1166,7 +1202,7 @@ public class PhantomPlaystyleEngine
 				}
 				case DURABLE_TARGET:
 				{
-					if (!durable(npc, focus, state))
+					if (!durable(npc, focus, state, skill))
 					{
 						return false; // dies too fast - a setup/limit cast never amortizes
 					}
