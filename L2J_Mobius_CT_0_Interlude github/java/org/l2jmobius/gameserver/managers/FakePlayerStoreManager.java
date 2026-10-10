@@ -247,14 +247,37 @@ public class FakePlayerStoreManager
 				}
 			}
 
+			// Goods a supply provided are taken out of it first, so the owners can be paid and nothing is sold twice.
+			final Map<FakePlayerStoreItem, Object> receipts = new LinkedHashMap<>();
+			final FakePlayerStoreSupply supply = FakePlayerStoreFactory.supply();
+			for (Map.Entry<FakePlayerStoreItem, Integer> bought : plan.entrySet())
+			{
+				final FakePlayerStoreItem entry = bought.getKey();
+				if (entry.getSource() == null)
+				{
+					continue;
+				}
+				final Object receipt = (supply == null) ? null : supply.withdraw(entry.getSource(), entry.getItemId(), bought.getValue());
+				if (receipt == null)
+				{
+					restore(supply, receipts);
+					player.sendMessage("Those goods are no longer available.");
+					player.sendPacket(new FakePlayerStoreListSell(player, npc));
+					return;
+				}
+				receipts.put(entry, receipt);
+			}
+
 			if (total > player.getAdena())
 			{
+				restore(supply, receipts);
 				player.sendMessage("You do not have enough adena.");
 				player.sendPacket(new FakePlayerStoreListSell(player, npc));
 				return;
 			}
 			if (!player.reduceAdena(ItemProcessType.BUY, (int) total, npc, true))
 			{
+				restore(supply, receipts);
 				return;
 			}
 
@@ -265,6 +288,11 @@ public class FakePlayerStoreManager
 				final FakePlayerStoreItem entry = bought.getKey();
 				player.addItem(ItemProcessType.BUY, entry.getItemId(), bought.getValue(), entry.getEnchant(), npc, true);
 				entry.decrease(bought.getValue());
+				final Object receipt = receipts.get(entry);
+				if (receipt != null)
+				{
+					supply.paid(receipt, FakePlayerStoreMath.lineTotal(bought.getValue(), entry.getPrice()));
+				}
 			}
 
 			settle(npc, look);
@@ -433,6 +461,41 @@ public class FakePlayerStoreManager
 	 * Drops sold-out lines; when the whole store empties, the vendor closes (sign removed). Vendors are
 	 * not restocked at runtime on purpose — every server start generates fresh stock for them.
 	 */
+	/**
+	 * Cuts an open store's supplied lines down to what the supply still holds, and closes the store when nothing is left.
+	 * @param npc the vendor
+	 * @param look its appearance
+	 */
+	public static void refresh(Npc npc, FakePlayerAppearance look)
+	{
+		final FakePlayerStoreSupply supply = FakePlayerStoreFactory.supply();
+		synchronized (look.storeLock())
+		{
+			if (look.getStoreItems() == null)
+			{
+				return;
+			}
+			for (FakePlayerStoreItem entry : look.getStoreItems())
+			{
+				if (entry.getSource() != null)
+				{
+					final int held = (supply == null) ? 0 : supply.available(entry.getSource(), entry.getItemId());
+					entry.decrease(entry.getCount() - held);
+				}
+			}
+			settle(npc, look);
+		}
+	}
+
+	/** Puts goods taken out of a supply back when the sale did not go through. */
+	private static void restore(FakePlayerStoreSupply supply, Map<FakePlayerStoreItem, Object> receipts)
+	{
+		for (Object receipt : receipts.values())
+		{
+			supply.restore(receipt);
+		}
+	}
+
 	private static void settle(Npc npc, FakePlayerAppearance look)
 	{
 		final List<FakePlayerStoreItem> remaining = new ArrayList<>();

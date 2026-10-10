@@ -57,6 +57,7 @@ import org.l2jmobius.gameserver.data.xml.PlayerTemplateData;
 import org.l2jmobius.gameserver.data.xml.SkillTreeData;
 import org.l2jmobius.gameserver.config.custom.FakePlayersConfig;
 import org.l2jmobius.gameserver.managers.FakePlayerChatManager;
+import org.l2jmobius.gameserver.managers.FakePlayerStoreFactory;
 import org.l2jmobius.gameserver.managers.PhantomManager;
 import org.l2jmobius.gameserver.network.enums.ChatType;
 import org.l2jmobius.gameserver.network.serverpackets.CreatureSay;
@@ -125,6 +126,12 @@ public class LivingPopulationManager
 	private volatile String _combatFile = "modules/living-population/data/zone_combat.tsv";
 	private volatile long[] _kitPrices; // gear kit price by grade, from the item data (see kitPrices)
 	private final Map<String, DropYield.Yield> _zoneYields = new ConcurrentHashMap<>(); // zone|level|spoiler|gear -> per kill
+	private final Map<String, Map<Integer, Double>> _zoneItems = new ConcurrentHashMap<>(); // zone|level|spoiler -> sellable items per kill
+	private final TownStock _townStock = new TownStock(); // the items each town holds (what cold bots hunted and sold there)
+	private final TownStockDao _townStockDao = new TownStockDao();
+	private volatile double _stockHalfLifeHours = 6.0; // unsold town stock: half of it is cleared (paid at the vendor price) in this long
+	private volatile long _lastStockSweep; // when the town stock last cleared, 0 until the first tick
+	private volatile boolean _stockSaving; // false when the saved stock could not be read, so a save never overwrites it
 	private final Map<String, Map<Integer, Double>> _zoneGear = new ConcurrentHashMap<>(); // zone|level|spoiler -> gear drop chances
 	private volatile GearCatalog _gear; // gear kept per slot (travel and GearSlots on), else null
 	private final Map<Integer, List<SkillPlanner.Entry>> _skillTrees = new ConcurrentHashMap<>(); // class id -> skill tree
@@ -232,6 +239,14 @@ public class LivingPopulationManager
 	public void setSelfHeal(boolean on)
 	{
 		_selfHeal = on;
+	}
+
+	/**
+	 * @param hours how long until half of the unsold town stock is cleared out and its owners are paid the vendor price
+	 */
+	public void setTownStockHalfLife(double hours)
+	{
+		_stockHalfLifeHours = Math.max(0.1, hours);
 	}
 
 	public void setBlessedSpiritshots(double damage, double share)
@@ -345,6 +360,10 @@ public class LivingPopulationManager
 			}
 		}
 
+		_stockSaving = _townStockDao.load(_townStock);
+		_handoff.setTownStock(_townStock);
+		_lastStockSweep = System.currentTimeMillis(); // downtime does not clear stock
+		FakePlayerStoreFactory.setSupply(new TownShops(_townStock, () -> (_catalog == null) ? List.of() : _catalog.towns(), this::payOwner));
 		_dao.ensureColumns(); // add columns a newer module version needs to an older table (no manual migration)
 		final long now = System.currentTimeMillis();
 		final List<ColdBot> loaded = _dao.loadAll();
@@ -444,6 +463,12 @@ public class LivingPopulationManager
 		}
 		_handoff.shutdown();
 		_handoff.setLife(null);
+		_handoff.setTownStock(null);
+		FakePlayerStoreFactory.setSupply(null);
+		if (_stockSaving && _townStock.dirty())
+		{
+			_townStockDao.save(_townStock);
+		}
 		// Clear in-memory state so a later start() reloads cleanly instead of double-loading the population.
 		_bots.clear();
 		_removals.clear();
@@ -782,9 +807,17 @@ public class LivingPopulationManager
 				if ((yield != null) && (huntedMs > 0))
 				{
 					final double kills = botKillsPerMinute * lootScale * (huntedMs / 60_000.0);
-					final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
-					bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
-					huntAdena += lootValue;
+					if (bot.getTown() != null)
+					{
+						// The items go to the town's stock; their owner is paid when they sell in a shop or the stock clears.
+						_townStock.deposit(bot.getTown(), bot.getId(), zoneItems(bot.getZone(), progress.level(), spoils), kills, _random);
+					}
+					else
+					{
+						final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
+						bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
+						huntAdena += lootValue;
+					}
 				}
 				// Gear kept per slot: the weapons and armor its kills dropped are rolled for real; it wears the better ones.
 				if ((_gear != null) && _travelConfig.dropIncome() && (huntedMs > 0))
@@ -1124,6 +1157,53 @@ public class LivingPopulationManager
 	}
 
 	/**
+	 * The items a kill in a zone drops that a shop buys, each with its average count per kill, from the real drop lists of
+	 * the monsters there weighted by how many of each spawn. Cached per zone, level and spoiler.
+	 * @param zoneName the bot's zone
+	 * @param level the bot's level
+	 * @param spoiler whether it also spoils its kills
+	 * @return item id to count per kill, empty when the zone lists no monsters
+	 */
+	private Map<Integer, Double> zoneItems(String zoneName, int level, boolean spoiler)
+	{
+		final ZoneCatalog.Zone zone = (zoneName == null) ? null : _catalog.zone(zoneName);
+		if ((zone == null) || zone.monsters().isEmpty())
+		{
+			return Map.of();
+		}
+		return _zoneItems.computeIfAbsent(zone.name() + '|' + level + '|' + spoiler, key ->
+		{
+			final DropYield.Rates rates = dropRates();
+			final DropYield.Items items = dropItems(_gear); // weapons and armor are rolled as gear, not stocked
+			final Map<Integer, Double> weighted = new HashMap<>();
+			double total = 0;
+			for (ZoneCatalog.Monster monster : zone.monsters())
+			{
+				final NpcTemplate template = NpcData.getInstance().getTemplate(monster.npcId());
+				if (template == null)
+				{
+					continue;
+				}
+				final int weight = Math.max(0, monster.count());
+				total += weight;
+				for (Map.Entry<Integer, Double> entry : DropYield.counts(deathDrops(template), spoiler ? spoilDrops(template) : List.of(), spoiler, template.getLevel(), level, rates, items).entrySet())
+				{
+					weighted.merge(entry.getKey(), entry.getValue() * weight, Double::sum);
+				}
+			}
+			final Map<Integer, Double> perKill = new HashMap<>();
+			if (total > 0)
+			{
+				for (Map.Entry<Integer, Double> entry : weighted.entrySet())
+				{
+					perKill.put(entry.getKey(), entry.getValue() / total);
+				}
+			}
+			return perKill;
+		});
+	}
+
+	/**
 	 * The weapons and armor a kill in a zone can drop, each with its chance per kill, from the real drop lists of the
 	 * monsters there weighted by how many of each spawn. Cached per zone, level and spoiler.
 	 * @param zoneName the bot's zone
@@ -1444,10 +1524,85 @@ public class LivingPopulationManager
 				Files.createDirectories(path.getParent());
 			}
 			Files.write(path, json.getBytes(StandardCharsets.UTF_8));
+			sweepTownStock();
+			saveTownStock();
 		}
 		catch (Exception e)
 		{
 			LOGGER.log(Level.WARNING, "LivingPopulation: snapshot write failed: " + e.getMessage(), e);
+		}
+	}
+
+	/** Pays a bot the adena for items of its that sold in a town shop: on its character when it is in the world, else on its row. */
+	private void payOwner(long id, long adena)
+	{
+		if (_handoff.payHot(id, adena))
+		{
+			return;
+		}
+		for (ColdBot bot : _bots)
+		{
+			if (bot.getId() == id)
+			{
+				synchronized (bot)
+				{
+					bot.setAdena(Math.min(ColdEconomy.MAX_ADENA, bot.getAdena() + adena));
+				}
+				return;
+			}
+		}
+	}
+
+	/** Clears out a share of the unsold town stock for the time since the last sweep and pays the owners the vendor price for it. */
+	private void sweepTownStock()
+	{
+		final long now = System.currentTimeMillis();
+		final long last = _lastStockSweep;
+		_lastStockSweep = now;
+		if ((last == 0) || (now <= last))
+		{
+			return;
+		}
+		final double hours = (now - last) / 3_600_000.0;
+		for (TownStock.Listing gone : _townStock.decay(1.0 - Math.pow(0.5, hours / _stockHalfLifeHours), _random))
+		{
+			final ItemTemplate item = ItemData.getInstance().getTemplate(gone.itemId());
+			payOwner(gone.owner(), gone.count() * ((item == null) ? 0L : Math.max(0L, item.getReferencePrice() / 2L)));
+		}
+	}
+
+	/** Saves the town stock when it changed, and writes it next to the snapshot for the monitor. */
+	private void saveTownStock() throws java.io.IOException
+	{
+		if (!_townStock.dirty())
+		{
+			return;
+		}
+		final StringBuilder sb = new StringBuilder("{");
+		boolean firstTown = true;
+		for (Map.Entry<String, Map<Integer, Long>> town : _townStock.totals().entrySet())
+		{
+			sb.append(firstTown ? "" : ",").append('"').append(town.getKey()).append("\":[");
+			firstTown = false;
+			boolean first = true;
+			for (Map.Entry<Integer, Long> item : town.getValue().entrySet())
+			{
+				final ItemTemplate template = ItemData.getInstance().getTemplate(item.getKey());
+				final String name = (template == null) ? String.valueOf(item.getKey()) : template.getName().replace("\\", "").replace("\"", "");
+				sb.append(first ? "" : ",").append("{\"id\":").append(item.getKey()).append(",\"name\":\"").append(name).append("\",\"count\":").append(item.getValue()).append('}');
+				first = false;
+			}
+			sb.append(']');
+		}
+		sb.append('}');
+		Files.write(Path.of(_config.snapshotFile()).resolveSibling("LivingPopulation-townstock.json"), sb.toString().getBytes(StandardCharsets.UTF_8));
+		if (_stockSaving)
+		{
+			_townStockDao.save(_townStock); // marks the stock clean when it is saved
+		}
+		else
+		{
+			_townStock.clean();
 		}
 	}
 

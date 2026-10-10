@@ -84,6 +84,7 @@ PROD_SOURCES=(
 	"java/org/l2jmobius/gameserver/livingpop/ColdLife.java"
 	"java/org/l2jmobius/gameserver/livingpop/LivingSupplies.java"
 	"java/org/l2jmobius/gameserver/livingpop/DropYield.java"
+	"java/org/l2jmobius/gameserver/livingpop/TownStock.java"
 	"java/org/l2jmobius/gameserver/livingpop/ColdRisk.java"
 	"java/org/l2jmobius/gameserver/livingpop/ClassPath.java"
 	"java/org/l2jmobius/gameserver/livingpop/SkillPlanner.java"

@@ -161,6 +161,7 @@ public class LivingPopulationModule implements GameModule
 		LivingPopulationManager.getInstance().setExtraMonsters(chancesOf(context.config().getString("ZoneExtraMonsterChances", "0.15,0.075,0.04,0.02,0.01")));
 		LivingPopulationManager.getInstance().setRotationWindow(context.config().getInt("ZoneRotationWindowSeconds", 60));
 		LivingPopulationManager.getInstance().setShotModel(context.config().getBoolean("ShotsFromHits", true), context.config().getDouble("MeleeAttackSeconds", 1.4), context.config().getDouble("BowAttackSeconds", 2.4), context.config().getDouble("CastSeconds", 2.2));
+		LivingPopulationManager.getInstance().setTownStockHalfLife(context.config().getDouble("TownStockHalfLifeHours", 6.0));
 		LivingPopulationManager.getInstance().setSelfHeal(context.config().getBoolean("SelfHeal", true));
 		LivingPopulationManager.getInstance().setStartingBuffs(context.config().getBoolean("StartingBuffs", true));
 		LivingPopulationManager.getInstance().setRestAndEvasion(context.config().getBoolean("ZoneRest", true), context.config().getBoolean("ZoneEvasion", true));

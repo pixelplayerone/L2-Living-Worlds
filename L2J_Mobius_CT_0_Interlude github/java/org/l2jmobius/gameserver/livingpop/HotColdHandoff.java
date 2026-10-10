@@ -39,6 +39,7 @@ import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Point;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Town;
 import org.l2jmobius.gameserver.managers.PhantomManager;
 import org.l2jmobius.gameserver.managers.ZoneManager;
+import org.l2jmobius.gameserver.model.item.enums.ItemProcessType;
 import org.l2jmobius.gameserver.model.Location;
 import org.l2jmobius.gameserver.model.World;
 import org.l2jmobius.gameserver.model.actor.Player;
@@ -173,6 +174,7 @@ public class HotColdHandoff
 	private volatile int _gearTierLevelStep;
 	private volatile boolean _stopped;
 	private volatile ColdLife.Context _life; // Phase 5 travel for hot bots; null when travel is off
+	private volatile TownStock _townStock; // where the items of a hot bot's loot are kept, or null
 	private final AtomicBoolean _refreshing = new AtomicBoolean(); // one hot refresh at a time, never overlapping
 
 	public HotColdHandoff(ColdBotDao dao)
@@ -213,6 +215,15 @@ public class HotColdHandoff
 	public void setLife(ColdLife.Context life)
 	{
 		_life = life;
+	}
+
+	/**
+	 * Sets where a hot bot's sold-off loot goes as items.
+	 * @param townStock the town stock, or null to keep only the loot's value
+	 */
+	public void setTownStock(TownStock townStock)
+	{
+		_townStock = townStock;
 	}
 
 	/**
@@ -1386,6 +1397,24 @@ public class HotColdHandoff
 	}
 
 	/**
+	 * Pays a bot whose live character is in the world.
+	 * @param id a bot id
+	 * @param adena the adena
+	 * @return false when the bot has no live character (pay its row instead)
+	 */
+	public boolean payHot(long id, long adena)
+	{
+		final HotEntry entry = _hot.get(id);
+		final Player player = (entry == null) ? null : entry._player;
+		if (player == null)
+		{
+			return false;
+		}
+		player.addAdena(ItemProcessType.REWARD, (int) Math.min(Integer.MAX_VALUE, adena), null, false);
+		return true;
+	}
+
+	/**
 	 * Puts a bot whose cooldown failed back under watch, so a later scan retries it, but only while the run it belongs to
 	 * is still going. Once that run has stopped (and whether or not a new one has started), the old copy must not enter
 	 * the tracking: the character stays tracked by PhantomManager and the next run takes it back (see adoptOrphans).
@@ -1667,7 +1696,13 @@ public class HotColdHandoff
 		{
 			bot.getDecisions().add(now, null, "Picked up " + LivingGear.describe(change, fit) + " and put it on");
 		}
-		if (bag.loot() > 0)
+		final TownStock townStock = _townStock;
+		if ((townStock != null) && (bot.getTown() != null))
+		{
+			// The items go to the town's stock; their owner is paid when they sell in a shop or the stock clears.
+			bag.items().forEach((itemId, count) -> townStock.add(bot.getTown(), bot.getId(), itemId, count));
+		}
+		else if (bag.loot() > 0)
 		{
 			bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + bag.loot()));
 		}

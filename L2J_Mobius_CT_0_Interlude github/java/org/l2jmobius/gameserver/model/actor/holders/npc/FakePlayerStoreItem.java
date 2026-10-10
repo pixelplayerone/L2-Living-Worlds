@@ -36,14 +36,29 @@ public class FakePlayerStoreItem
 	private final int _enchant;
 	private int _count;
 	private final int _price;
+	private final Object _source; // where the goods came from when a supply provided them, else null
 
 	public FakePlayerStoreItem(int objectId, int itemId, int enchant, int count, int price)
+	{
+		this(objectId, itemId, enchant, count, price, null);
+	}
+
+	public FakePlayerStoreItem(int objectId, int itemId, int enchant, int count, int price, Object source)
 	{
 		_objectId = objectId;
 		_itemId = itemId;
 		_enchant = enchant;
 		_count = count;
 		_price = price;
+		_source = source;
+	}
+
+	/**
+	 * @return where a store supply took these goods from, or null for rolled stock
+	 */
+	public Object getSource()
+	{
+		return _source;
 	}
 
 	public int getObjectId()
