@@ -635,6 +635,74 @@ public class LivingTravelTest
 		check("bots spread over the branches", branches.equals(Set.of(19, 22)));
 		check("summoners are included", wizards.equals(Set.of(12, 13, 14)));
 		check("no class after the third", ClassPath.next(99, 1L) == -1);
+		int end = 18;
+		for (int next = ClassPath.next(end, 7L); next >= 0; next = ClassPath.next(end, 7L))
+		{
+			end = next;
+		}
+		check("a bot shops for the end of its class path from level 1", (ClassPath.tier(end) == 3) && (ClassPath.gearClass(18, 7L) == end) && (ClassPath.gearClass(ClassPath.next(18, 7L), 7L) == end) && (ClassPath.gearClass(99, 7L) == 99));
+		final ColdLife.GearShop fits = new ColdLife.GearShop()
+		{
+			@Override
+			public LivingGear.Items items()
+			{
+				return null;
+			}
+
+			@Override
+			public LivingGear.Fit fit(int classId)
+			{
+				return new LivingGear.Fit("HEAVY", Set.of("SWORD"), false, true, 1);
+			}
+
+			@Override
+			public List<LivingGear.Offer> offers(ZoneCatalog.Town town)
+			{
+				return List.of();
+			}
+
+			@Override
+			public boolean wearable(int itemId)
+			{
+				return true;
+			}
+
+			@Override
+			public int tierStep()
+			{
+				return 10;
+			}
+		};
+		final Set<String> tankWeapons = new HashSet<>();
+		for (long id = 1; id <= 200; id++)
+		{
+			tankWeapons.addAll(ColdLife.fitOf(fits, 19, id, 30).weapons());
+		}
+		check("a tank rolls a sword or a blunt weapon, always the same for the bot", tankWeapons.equals(Set.of("SWORD", "BLUNT")) && ColdLife.fitOf(fits, 19, 5L, 30).equals(ColdLife.fitOf(fits, 19, 5L, 30)));
+		final Set<String> palusWeapons = new HashSet<>();
+		for (long id = 1; id <= 200; id++)
+		{
+			palusWeapons.addAll(ColdLife.fitOf(fits, 32, id, 30).weapons());
+			palusWeapons.addAll(ColdLife.fitOf(fits, 106, id, 30).weapons());
+		}
+		check("the Palus Knight line always keeps the sword for Sting", palusWeapons.equals(Set.of("SWORD")));
+		final Set<String> duelistEarly = new HashSet<>();
+		final Set<String> dancerEarly = new HashSet<>();
+		boolean later = true;
+		for (long id = 1; id <= 400; id++)
+		{
+			if (ClassPath.gearClass(0, id) == ClassPath.DUELIST)
+			{
+				duelistEarly.addAll(ColdLife.fitOf(fits, 0, id, 25).weapons());
+				later &= ColdLife.fitOf(fits, 0, id, 40).equals(fits.fit(ClassPath.DUELIST));
+			}
+			if (ClassPath.gearClass(31, id) == ClassPath.SPECTRAL_DANCER)
+			{
+				dancerEarly.addAll(ColdLife.fitOf(fits, 31, id, 25).weapons());
+			}
+		}
+		check("a duelist-bound fighter rolls a one-handed sword or blunt until level 40, then takes duals", duelistEarly.equals(Set.of("SWORD", "BLUNT")) && later);
+		check("a Spectral Dancer-bound dark fighter carries a sword until level 40", dancerEarly.equals(Set.of("SWORD")));
 		check("class masters by line", "ElfHumanFighterChange1".equals(ClassPath.master(18, 19)) && "ElfHumanFighterChange2".equals(ClassPath.master(19, 20)) && "ElfHumanFighterChange2".equals(ClassPath.master(20, 99)));
 		check("mystics and priests", "ElfHumanWizardChange1".equals(ClassPath.master(10, 15)) && "ElfHumanClericChange2".equals(ClassPath.master(15, 16)) && "ElfHumanWizardChange2".equals(ClassPath.master(11, 14)));
 		check("dwarves by branch", "DwarfBlacksmithChange1".equals(ClassPath.master(53, 56)) && "DwarfWarehouseChange1".equals(ClassPath.master(53, 54)) && "DwarfWarehouseChange2".equals(ClassPath.master(55, 117)));
@@ -851,6 +919,21 @@ public class LivingTravelTest
 	private static void testGearRules()
 	{
 		check("a bow is not a warrior's weapon", !LivingGear.fits(PIECES.get(12), WARRIOR));
+		final LivingGear.Piece normalC = new LivingGear.Piece(900, "Sword of C", LivingGear.Kind.WEAPON, 2, "SWORD", false, false, false, 120, 60, 0, 0, 5000L);
+		final LivingGear.Piece shadowC = new LivingGear.Piece(901, "Shadow Item: Sword of C", LivingGear.Kind.WEAPON, 2, "SWORD", false, false, false, 120, 60, 0, 0, 0L);
+		final LivingGear.Piece normalA = new LivingGear.Piece(902, "Sword of A", LivingGear.Kind.WEAPON, 4, "SWORD", false, false, false, 200, 80, 0, 0, 5000L);
+		final Map<Integer, LivingGear.Piece> shadowItems = Map.of(900, normalC, 901, shadowC, 902, normalA);
+		final LivingGear.Items shadowLookup = shadowItems::get;
+		final Map<LivingGear.Slot, Integer> bare = new java.util.EnumMap<>(LivingGear.Slot.class);
+		check("from level 40 a bot buys the shadow C weapon and not the normal one", (LivingGear.target(bare, shadowC, WARRIOR, 45, shadowLookup) == LivingGear.Slot.WEAPON) && (LivingGear.target(bare, normalC, WARRIOR, 45, shadowLookup) == null) && (LivingGear.target(bare, normalA, WARRIOR, 65, shadowLookup) == LivingGear.Slot.WEAPON));
+		check("no C grade weapon is open to a bot before level 40", LivingGear.target(bare, normalC, WARRIOR, 39, shadowLookup) == null);
+		check("a shadow weapon wears out with use", !LivingGear.wornOut(7L, 1_000_000L, 0L, 300) && LivingGear.wornOut(7L, 1_000_000L, 301L * 60_000L, 300) && !LivingGear.wornOut(7L, 1_000_000L, 60_000L, 0));
+		final Map<LivingGear.Slot, Integer> armed = new java.util.EnumMap<>(LivingGear.Slot.class);
+		armed.put(LivingGear.Slot.WEAPON, 10);
+		armed.put(LivingGear.Slot.SHIELD, 30);
+		final LivingGear.Piece twoHander = PIECES.get(15);
+		final List<LivingGear.Change> swapped = LivingGear.shop(armed, new LivingGear.Fit("HEAVY", Set.of("SWORD"), false, true, 0), 5, 100_000L, List.of(new LivingGear.Offer(twoHander, 3000L, true)), PIECES::get);
+		check("a two-handed weapon takes the shield off", !swapped.isEmpty() && !armed.containsKey(LivingGear.Slot.SHIELD) && swapped.get(0).removed().contains(30));
 		check("a staff is not a fighter's weapon", !LivingGear.fits(PIECES.get(14), WARRIOR) && LivingGear.fits(PIECES.get(14), new LivingGear.Fit("MAGIC", Set.of(), true, true, 0)));
 		check("heavy armor fits a heavy class, light armor does not", LivingGear.fits(PIECES.get(22), WARRIOR) && !LivingGear.fits(PIECES.get(20), WARRIOR));
 		check("a one-handed class takes no two-hander", !LivingGear.fits(PIECES.get(15), new LivingGear.Fit("HEAVY", Set.of("SWORD"), false, true, 1)));

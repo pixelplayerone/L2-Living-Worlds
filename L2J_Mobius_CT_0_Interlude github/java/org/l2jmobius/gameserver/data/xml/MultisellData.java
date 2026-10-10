@@ -21,6 +21,7 @@
 package org.l2jmobius.gameserver.data.xml;
 
 import java.io.File;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -468,6 +469,14 @@ public class MultisellData implements IXmlReader
 				return ing.getTemplate() != null;
 			}
 		}
+	}
+	
+	/**
+	 * @return every multisell list
+	 */
+	public Collection<ListContainer> getLists()
+	{
+		return _entries.values();
 	}
 	
 	public static MultisellData getInstance()

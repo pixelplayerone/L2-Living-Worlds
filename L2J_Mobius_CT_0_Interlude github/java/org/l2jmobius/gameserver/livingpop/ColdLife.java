@@ -149,6 +149,15 @@ public final class ColdLife
 
 		/** @return levels per gear tier (the tier then follows the weapon's grade) */
 		int tierStep();
+
+		/**
+		 * @param itemId an item
+		 * @return how many minutes of wear a shadow item lasts, or 0 for any other item
+		 */
+		default int shadowMinutes(int itemId)
+		{
+			return 0;
+		}
 	}
 
 	/**
@@ -678,7 +687,7 @@ public final class ColdLife
 		}
 
 		// Gear, piece by piece, with what is left after supplies.
-		shopGear(bot, town, context, events);
+		shopGear(bot, town, context, events, now);
 		bot.setShoppedAt(now);
 
 		// Business with a class master or its trainer comes before any break.
@@ -1070,6 +1079,37 @@ public final class ColdLife
 		return (back == null) ? 0L : Math.max(0L, back.fee());
 	}
 
+	/** The level a fighter learns Dual Weapon Mastery (the second class change), and C grade dual swords open up. */
+	private static final int DUAL_WEAPON_LEVEL = 40;
+
+	/**
+	 * What a bot shops for: the gear of the class its path ends in, and for a tank a stable 50/50 roll between a
+	 * one-handed sword and a one-handed blunt weapon (the Palus Knight line always takes the sword). A bot bound for dual
+	 * swords has none to buy before it learns Dual Weapon Mastery at the second class change, so until then it carries a
+	 * one-handed weapon and a shield: a Human fighter rolls sword or blunt like a tank, a dark elf takes the sword.
+	 * @param shop the shop
+	 * @param classId the bot's class
+	 * @param botId the bot's id
+	 * @param level the bot's level
+	 * @return what it wears
+	 */
+	public static LivingGear.Fit fitOf(GearShop shop, int classId, long botId, int level)
+	{
+		final int gearClass = ClassPath.gearClass(classId, botId);
+		LivingGear.Fit fit = shop.fit(gearClass);
+		final boolean early = ClassPath.dualWielder(gearClass) && (level < DUAL_WEAPON_LEVEL);
+		if (early)
+		{
+			fit = new LivingGear.Fit(fit.armor(), Set.of("SWORD"), false, true, 1);
+		}
+		final boolean rolls = ClassPath.tank(gearClass) || (early && (gearClass == ClassPath.DUELIST));
+		if (!rolls || ((Long.hashCode(botId * 0x9E3779B97F4A7C15L >>> 17) & 1) == 0))
+		{
+			return fit;
+		}
+		return new LivingGear.Fit(fit.armor(), Set.of("BLUNT"), fit.mage(), fit.shield(), fit.hands());
+	}
+
 	private static String[] gearErrand(ColdBot bot, Town town, Context context)
 	{
 		final GearShop shop = context.gear();
@@ -1077,7 +1117,7 @@ public final class ColdLife
 		{
 			return new String[3];
 		}
-		final LivingGear.Fit fit = shop.fit(bot.getClassId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId(), bot.getLevel());
 		final List<LivingGear.Offer> offers = offersIn(shop, town);
 		// What it will have for gear in town: its purse once the loot is sold, less the supplies it buys first (counting
 		// the Scroll of Escape the trip itself uses, when it uses one rather than walking).
@@ -1123,15 +1163,24 @@ public final class ColdLife
 	/**
 	 * Buys gear piece by piece on a town visit (see {@link LivingGear#shop}) and sells what it replaces.
 	 */
-	private static void shopGear(ColdBot bot, Town town, Context context, List<DecisionLog.Event> events)
+	private static void shopGear(ColdBot bot, Town town, Context context, List<DecisionLog.Event> events, long now)
 	{
 		final GearShop shop = context.gear();
 		if (shop == null)
 		{
 			return;
 		}
-		final LivingGear.Fit fit = shop.fit(bot.getClassId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId(), bot.getLevel());
 		final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
+		final Integer weapon = gear.get(LivingGear.Slot.WEAPON);
+		final int minutes = (weapon == null) ? 0 : shop.shadowMinutes(weapon);
+		if ((minutes > 0) && (bot.getShoppedAt() > 0) && LivingGear.wornOut(bot.getId(), now, now - bot.getShoppedAt(), minutes))
+		{
+			final LivingGear.Piece worn = shop.items().piece(weapon);
+			gear.remove(LivingGear.Slot.WEAPON);
+			setGear(bot, gear, shop);
+			events.add(new DecisionLog.Event(null, "Its " + ((worn == null) ? "shadow weapon" : worn.name()) + " wore out"));
+		}
 		long adena = bot.getAdena();
 		final List<String> old = new ArrayList<>();
 		// A slot filled on this visit is not shopped again, so it never buys a piece and sells it a round later.
@@ -1193,7 +1242,7 @@ public final class ColdLife
 			return 0L;
 		}
 		final LivingGear.Items items = shop.items();
-		final LivingGear.Fit fit = shop.fit(bot.getClassId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId(), bot.getLevel());
 		final List<LivingGear.Piece> pieces = new ArrayList<>();
 		final List<String> kept = new ArrayList<>();
 		long loot = 0;

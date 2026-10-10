@@ -94,6 +94,11 @@ public class ListContainer
 		_npcsAllowed.add(npcId);
 	}
 	
+	public Set<Integer> getNpcsAllowed()
+	{
+		return _npcsAllowed;
+	}
+	
 	public boolean isNpcAllowed(int npcId)
 	{
 		return (_npcsAllowed != null) && _npcsAllowed.contains(npcId);

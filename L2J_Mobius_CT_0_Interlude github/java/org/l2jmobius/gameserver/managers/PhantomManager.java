@@ -3618,7 +3618,9 @@ public class PhantomManager implements IXmlReader
 		final String armor = role.armor.name();
 		if (playerClass.isMage())
 		{
-			return new LivingGear.Fit(armor, Set.of(), true, true, 0);
+			// A nuker fights with a two-handed weapon; a healer or buffer with a one-handed one and a shield.
+			final boolean nuker = role == PartyRole.NUKER;
+			return new LivingGear.Fit(armor, Set.of(), true, !nuker, nuker ? 2 : 1);
 		}
 		switch (role)
 		{

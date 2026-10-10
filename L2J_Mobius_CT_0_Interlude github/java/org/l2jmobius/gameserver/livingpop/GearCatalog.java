@@ -34,6 +34,7 @@ import org.l2jmobius.gameserver.data.SpawnTable;
 import org.l2jmobius.gameserver.data.xml.BuyListData;
 import org.l2jmobius.gameserver.data.xml.InitialEquipmentData;
 import org.l2jmobius.gameserver.data.xml.ItemData;
+import org.l2jmobius.gameserver.data.xml.MultisellData;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Point;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Town;
 import org.l2jmobius.gameserver.managers.FakePlayerGearFilter;
@@ -47,6 +48,9 @@ import org.l2jmobius.gameserver.model.item.Weapon;
 import org.l2jmobius.gameserver.model.item.enums.BodyPart;
 import org.l2jmobius.gameserver.model.item.holders.InitialEquipment;
 import org.l2jmobius.gameserver.model.item.type.ArmorType;
+import org.l2jmobius.gameserver.model.itemcontainer.Inventory;
+import org.l2jmobius.gameserver.model.multisell.Entry;
+import org.l2jmobius.gameserver.model.multisell.ListContainer;
 import org.l2jmobius.gameserver.model.item.type.WeaponType;
 import org.l2jmobius.gameserver.model.spawns.Spawn;
 import org.l2jmobius.gameserver.model.stats.Stat;
@@ -112,7 +116,32 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 	@Override
 	public boolean wearable(int itemId)
 	{
-		return (piece(itemId) != null) && FakePlayerGearFilter.isPlayerGear(itemId);
+		final LivingGear.Piece piece = piece(itemId);
+		return (piece != null) && (FakePlayerGearFilter.isPlayerGear(itemId) || (piece.shadow() && (shadowOriginal(piece) != null)));
+	}
+
+	@Override
+	public int shadowMinutes(int itemId)
+	{
+		final LivingGear.Piece piece = piece(itemId);
+		return ((piece != null) && piece.shadow()) ? ItemData.getInstance().getTemplate(itemId).getDuration() : 0;
+	}
+
+	/**
+	 * @param shadow a shadow item
+	 * @return the normal item it copies (same name and grade, gear the phantoms render safely), or null when there is none
+	 */
+	private ItemTemplate shadowOriginal(LivingGear.Piece shadow)
+	{
+		final String name = shadow.name().substring("Shadow Item:".length()).trim();
+		for (ItemTemplate item : ItemData.getInstance().getAllItems())
+		{
+			if ((item != null) && item.getName().equals(name) && (item.getCrystalType().ordinal() == shadow.grade()) && item.isTradeable() && FakePlayerGearFilter.isPlayerGear(item))
+			{
+				return item;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -303,25 +332,58 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 			{
 				continue;
 			}
-			final List<Point> merchants = new ArrayList<>();
-			for (int npcId : holder.getNpcsAllowed())
+			final List<Point> merchants = merchantSpots(holder.getNpcsAllowed());
+			if (!merchants.isEmpty())
 			{
-				if ((npcId >= 35000) && (npcId < 37000))
+				lists.add(new ShopList(merchants, prices));
+			}
+		}
+		// Multisell lists that trade adena for a single piece of gear: the shadow weapons the weapon merchants sell.
+		for (ListContainer list : MultisellData.getInstance().getLists())
+		{
+			if (list.getNpcsAllowed() == null)
+			{
+				continue;
+			}
+			final Map<Integer, Long> prices = new HashMap<>();
+			for (Entry entry : list.getEntries())
+			{
+				if ((entry.getIngredients().size() != 1) || (entry.getProducts().size() != 1) || (entry.getIngredients().get(0).getItemId() != Inventory.ADENA_ID))
 				{
-					continue; // castle, fortress and clan hall NPCs: not a town shop anyone can use
+					continue;
 				}
-				for (Spawn spawn : SpawnTable.getInstance().getSpawns(npcId))
+				final int itemId = entry.getProducts().get(0).getItemId();
+				if (wearable(itemId))
 				{
-					merchants.add(new Point(spawn.getX(), spawn.getY(), spawn.getZ()));
+					prices.put(itemId, (long) entry.getIngredients().get(0).getItemCount());
 				}
 			}
-			if (!merchants.isEmpty())
+			final List<Point> merchants = merchantSpots(list.getNpcsAllowed());
+			if (!prices.isEmpty() && !merchants.isEmpty())
 			{
 				lists.add(new ShopList(merchants, prices));
 			}
 		}
 		_shopLists = List.copyOf(lists);
 		return _shopLists;
+	}
+
+	/** Where these shop NPCs stand (castle, fortress and clan hall NPCs are left out: not a town shop anyone can use). */
+	private static List<Point> merchantSpots(Collection<Integer> npcIds)
+	{
+		final List<Point> merchants = new ArrayList<>();
+		for (int npcId : npcIds)
+		{
+			if ((npcId >= 35000) && (npcId < 37000))
+			{
+				continue;
+			}
+			for (Spawn spawn : SpawnTable.getInstance().getSpawns(npcId))
+			{
+				merchants.add(new Point(spawn.getX(), spawn.getY(), spawn.getZ()));
+			}
+		}
+		return merchants;
 	}
 
 	/** The buylist ids, from the buylist file names (the file name is the list id). */

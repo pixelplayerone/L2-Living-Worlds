@@ -21,6 +21,7 @@ package org.l2jmobius.gameserver.livingpop;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The Interlude class tree as a living bot climbs it: which classes follow each one, at what level, which bot takes
@@ -213,6 +214,42 @@ public final class ClassPath
 	}
 
 	/**
+	 * The class a bot buys gear for: the last class of its path. Every class change is a stable pick per bot (see
+	 * {@link #next}), so the whole path first, second and third class is settled from level 1, and a bot buys weapon and
+	 * armor for where it is going from the start (a fighter bound for a dagger third class carries daggers at level 1).
+	 * @param classId its class
+	 * @param botId its id
+	 * @return the class at the end of its path (its own class when no change is left)
+	 */
+	public static int gearClass(int classId, long botId)
+	{
+		int result = classId;
+		for (int next = next(result, botId); next >= 0; next = next(result, botId))
+		{
+			result = next;
+		}
+		return result;
+	}
+
+	/**
+	 * @param classId a class
+	 * @return whether it fights with dual swords (Duelist, Spectral Dancer)
+	 */
+	public static boolean dualWielder(int classId)
+	{
+		return DUAL_WIELDERS.contains(classId);
+	}
+
+	/**
+	 * @param classId a class
+	 * @return whether it is a tank that may use a sword or a blunt weapon (the Human and Elven knight lines; the Palus Knight line learns Sting, which needs a sword)
+	 */
+	public static boolean tank(int classId)
+	{
+		return TANKS.contains(classId);
+	}
+
+	/**
 	 * The class master script that handles changing from this class (the masters also teach the class its skills). The
 	 * third class change has no master of its own in the data, so the second class masters stand in for it.
 	 * @param classId the class it changes from
@@ -380,6 +417,15 @@ public final class ClassPath
 			return (stage == Stage.TAKE) || (stage == Stage.RETURN);
 		}
 	}
+
+	/** The human dual sword class. */
+	public static final int DUELIST = 88;
+	/** The dark elf dual sword class. */
+	public static final int SPECTRAL_DANCER = 107;
+
+	private static final Set<Integer> DUAL_WIELDERS = Set.of(DUELIST, SPECTRAL_DANCER);
+
+	private static final Set<Integer> TANKS = Set.of(4, 19, 5, 6, 20, 90, 91, 99);
 
 	private static int mix(long value)
 	{
