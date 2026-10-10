@@ -44,7 +44,9 @@ import org.l2jmobius.gameserver.model.actor.Creature;
 import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.model.actor.instance.Monster;
 import org.l2jmobius.gameserver.model.effects.EffectType;
+import org.l2jmobius.gameserver.model.item.Armor;
 import org.l2jmobius.gameserver.model.item.enums.ShotType;
+import org.l2jmobius.gameserver.model.item.type.ArmorType;
 import org.l2jmobius.gameserver.model.skill.AbnormalType;
 import org.l2jmobius.gameserver.model.skill.Skill;
 import org.l2jmobius.gameserver.model.skill.enums.SkillFinishType;
@@ -1051,6 +1053,14 @@ public class PhantomPlaystyleEngine
 				case FOCUS_ON_ME:
 				{
 					if (focus.getTarget() != npc)
+					{
+						return false;
+					}
+					break;
+				}
+				case SHIELD:
+				{
+					if (!(npc.getSecondaryWeaponItem() instanceof Armor armor) || (armor.getItemType() != ArmorType.SHIELD))
 					{
 						return false;
 					}

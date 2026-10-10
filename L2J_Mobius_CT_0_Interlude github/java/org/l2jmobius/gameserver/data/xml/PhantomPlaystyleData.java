@@ -93,6 +93,7 @@ public class PhantomPlaystyleData implements IXmlReader
 		UNDER_ATTACK, // something is actively coming at this member (PANIC gate)
 		PVP, // the target is a player (dagger PvP openers and target drops)
 		FOCUS_ON_ME, // the target has this member selected (Trick/Switch make it drop us)
+		SHIELD, // the member has a shield equipped (shield-defense toggles do nothing without one)
 		TARGET_FIGHTER; // the target is a player of a non-mystic class (a physical-skill mute is wasted on a mage or healer)
 	}
 

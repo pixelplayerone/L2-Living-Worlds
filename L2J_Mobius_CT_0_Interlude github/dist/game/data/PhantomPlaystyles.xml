@@ -38,7 +38,8 @@
 	                 MOBS_UNSPOILED (mobsAtLeast), REAR, CHARGES (chargesAtLeast), CHARGES_BELOW (chargesBelow),
 	                 DEBUFF_MISSING, SELF_ABNORMAL_FREE, NOT_SPOILED, DURABLE_TARGET, HEALER_READY,
 	                 ONCE_PER_TARGET, UNDER_ATTACK, PVP (the target is a player), FOCUS_ON_ME (the target has
-	                 this member selected), TARGET_FIGHTER (the target is a player of a non-mystic class)
+	                 this member selected), TARGET_FIGHTER (the target is a player of a non-mystic class),
+	                 SHIELD (the member has a shield equipped)
 	  minLevel/maxLevel - the level window this entry applies in. Unlearned skills are skipped anyway, so
 	                 minLevel is rarely needed; maxLevel is what RETIRES an outgrown skill (a level 80
 	                 archer still knows Power Shot, so only an explicit cap stops it being used).
@@ -292,7 +293,7 @@
 	     Touch of Life deliberately absent - it is an ALLY save costing ~1215 of the CASTER's HP, so
 	     self-casting it at panic HP could kill the tank. It needs a future ally-target layer. -->
 	<playstyle name="Phoenix Knight" classIds="5,90">
-		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP" />
+		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP,SHIELD" />
 		<skill id="335" name="Fortitude"         use="STANCE"   when="PVP" />
 		<skill id="406" name="Angelic Icon"   use="LIMIT"    when="HEALER_READY,DURABLE_TARGET" />
 		<skill id="404" name="Mass Shackling" use="CONTROL"  when="MOBS_NEAR" mobsAtLeast="3" paceMs="10000" />
@@ -303,7 +304,7 @@
 
 	<!-- Dark Avenger line (TANK): debuff pressure between taunts. Panther deferred with the other pets. -->
 	<playstyle name="Hell Knight" classIds="6,91">
-		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP" />
+		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP,SHIELD" />
 		<skill id="335" name="Fortitude"         use="STANCE"   when="PVP" />
 		<skill id="342" name="Touch of Death" use="DEBUFF"   when="DURABLE_TARGET,ONCE_PER_TARGET" />
 		<skill id="92"  name="Shield Stun"    use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
@@ -314,8 +315,8 @@
 
 	<!-- Temple Knight line (TANK). -->
 	<playstyle name="Eva's Templar" classIds="20,99">
-		<skill id="288" name="Guard Stance"      use="STANCE"   when="PVP" />
-		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP" />
+		<skill id="288" name="Guard Stance"      use="STANCE"   when="PVP,SHIELD" />
+		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP,SHIELD" />
 		<skill id="335" name="Fortitude"         use="STANCE"   when="PVP" />
 		<skill id="400" name="Tribunal"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="352" name="Shield Bash"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
@@ -325,8 +326,8 @@
 
 	<!-- Shillien Knight line (TANK): the debuff tank - Hex habitually, paralyze the big one. -->
 	<playstyle name="Shillien Templar" classIds="33,106">
-		<skill id="288" name="Guard Stance"      use="STANCE"   when="PVP" />
-		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP" />
+		<skill id="288" name="Guard Stance"      use="STANCE"   when="PVP,SHIELD" />
+		<skill id="322" name="Shield Fortress"   use="STANCE"   when="PVP,SHIELD" />
 		<skill id="335" name="Fortitude"         use="STANCE"   when="PVP" />
 		<skill id="122" name="Hex"             use="DEBUFF"   when="DEBUFF_MISSING" />
 		<skill id="342" name="Touch of Death"  use="DEBUFF"   when="DURABLE_TARGET,ONCE_PER_TARGET" />
@@ -424,7 +425,6 @@
 	     the shooting reserve, not a spam guard. -->
 
 	<playstyle name="Archer (Human)" classIds="7,9,92" role="ARCHER">
-		<skill id="256" name="Accuracy"          use="STANCE"   when="PVP" />
 		<skill id="334" name="Focus Skill Mastery" use="STANCE"   when="PVP" />
 		<skill id="101" name="Stunning Shot"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="354" name="Hamstring Shot" use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
@@ -435,7 +435,6 @@
 	</playstyle>
 
 	<playstyle name="Archer (Elf)" classIds="22,24,102" role="ARCHER">
-		<skill id="256" name="Accuracy"          use="STANCE"   when="PVP" />
 		<skill id="334" name="Focus Skill Mastery" use="STANCE"   when="PVP" />
 		<skill id="101" name="Stunning Shot"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="354" name="Hamstring Shot" use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
@@ -446,7 +445,6 @@
 	</playstyle>
 
 	<playstyle name="Archer (Dark Elf)" classIds="35,37,109" role="ARCHER">
-		<skill id="256" name="Accuracy"          use="STANCE"   when="PVP" />
 		<skill id="334" name="Focus Skill Mastery" use="STANCE"   when="PVP" />
 		<skill id="101" name="Stunning Shot"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="122" name="Hex"            use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
@@ -613,9 +611,6 @@
 	     blunt; a party member also carries a polearm (PhantomWeaponSets), and the pole AoEs below fire only while
 	     the leader has it switch to that polearm. -->
 	<playstyle name="Fortune Seeker" classIds="54,55,117">
-		<skill id="424" name="War Frenzy"        use="STANCE"   when="PVP" />
-		<skill id="422" name="Polearm Accuracy"  use="STANCE"   when="PVP" />
-		<skill id="340" name="Riposte Stance"    use="STANCE"   when="PVP,TARGET_FIGHTER" />
 		<!-- Spoil first - it has to land BEFORE the thing dies to be worth anything, and it is the whole
 		     economic point of the class. NOT_SPOILED reads the mob's real spoil state instead of a
 		     fire-once ledger: a resisted attempt leaves the mob unspoiled so the phantom RETRIES, and an
@@ -630,6 +625,9 @@
 		<skill id="347" name="Earthquake"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
+		<skill id="424" name="War Frenzy"        use="STANCE"   when="PVP" />
+		<skill id="422" name="Polearm Accuracy"  use="STANCE"   when="PVP" />
+		<skill id="340" name="Riposte Stance"    use="STANCE"   when="PVP,TARGET_FIGHTER" />
 	</playstyle>
 
 	<!-- Warsmith line: hammer control + armor pressure; golems deferred with the other summons. Same weapons
