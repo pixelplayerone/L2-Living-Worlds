@@ -108,6 +108,11 @@ public class HotColdHandoff
 	private static final double ERRAND_SPREAD_MIN = 50.0;
 	private static final double ERRAND_SPREAD_MAX = 110.0;
 	private static final double ERRAND_SPOT_RANGE = 40.0;
+	// A bot going hot appears this far from the shared point it stood on cold, and one standing within
+	// SPAWN_STOP_RANGE of a shop or gatekeeper appears around the town's arrival point instead (FPC-292, FPC-293).
+	private static final double SPAWN_SPREAD_MIN = 80.0;
+	private static final double SPAWN_SPREAD_MAX = 320.0;
+	private static final double SPAWN_STOP_RANGE = 300.0;
 	// How long past its estimated errand time a live bot may still be walking to the shops before it moves on anyway.
 	private static final long ERRAND_OVERTIME_MS = 180_000L;
 	// A walk that gains no ground for this long is stuck on terrain: the character is placed at its next waypoint.
@@ -1086,6 +1091,35 @@ public class HotColdHandoff
 		return _partied.contains(id);
 	}
 
+	/**
+	 * Where a cold bot appears when it goes hot (FPC-292, FPC-293). A cold bot stands exactly on a shared point: one of
+	 * its zone's few hunting spots, a shop NPC, a class master or the gatekeeper while it runs its errands, or the town's respawn point.
+	 * Every bot there would appear stacked on that point (inside the NPC, in town). A bot at a town stop appears around
+	 * the town's arrival point instead, from where it walks back to the shops; any other bot appears at its own spot
+	 * around where it stands.
+	 */
+	private Point spawnSpot(ColdBot bot)
+	{
+		final Point here = new Point(bot.getX(), bot.getY(), bot.getZ());
+		final LivingRoute.Terrain terrain = new GeoTerrain(0);
+		final ColdLife.Context life = _life;
+		final Town town = ((life == null) || (bot.getTown() == null)) ? null : life.catalog().town(bot.getTown());
+		if (town != null)
+		{
+			final List<Point> stops = new ArrayList<>(town.masters().values());
+			stops.add(town.grocer());
+			stops.add(town.gatekeeper());
+			for (Point stop : stops)
+			{
+				if ((stop != null) && (stop.distance(here) <= SPAWN_STOP_RANGE))
+				{
+					return LivingRoute.spread(terrain, bot.getId(), town.arrival(), town.arrival(), SPAWN_SPREAD_MIN, SPAWN_SPREAD_MAX);
+				}
+			}
+		}
+		return LivingRoute.spread(terrain, bot.getId(), here, here, SPAWN_SPREAD_MIN, SPAWN_SPREAD_MAX);
+	}
+
 	/** Locks the bot and dispatches its materialization to the game thread. Called on the resolver thread. */
 	private void activate(ColdBot bot, long now)
 	{
@@ -1117,7 +1151,8 @@ public class HotColdHandoff
 		final int potionId = LivingSupplies.potionIdFor(level);
 		// With travel on, a bot caught mid-trip or in town arrives idle: the life step drives it from its first tick.
 		final boolean idle = (_life != null) && !ColdLife.isHunting(bot.getActivity());
-		final Location location = new Location(bot.getX(), bot.getY(), bot.getZ());
+		final Point spot = spawnSpot(bot);
+		final Location location = new Location(spot.x(), spot.y(), spot.z());
 		// With skill training on, it knows only what it learned at its trainer; otherwise every skill of its level.
 		final Map<Integer, Integer> skills = ((_life != null) && (_life.skills() != null)) ? SkillPlanner.decode(bot.getSkills()) : null;
 		final long sp = Math.max(0L, bot.getSp());
