@@ -444,11 +444,13 @@ public class PhantomPartyManager
 	// STRONG heals for a big but non-critical gap, where there's time to cast (5s). Greater Battle Heal still leads
 	// (a Bishop's fast casting makes it the default even here); Major Heal follows as the MP-smart option - it heals
 	// as much as Greater Battle Heal for less than half the MP (~48 vs ~108) at the cost of cast time + 1 Spirit Ore,
-	// so it doubles as the graceful fallback when the healer is low on MP; Greater Heal (5s, +HP-regen HoT) is last.
+	// so it doubles as the graceful fallback when the healer is low on MP; Vitalize (no reagent) covers an empty Spirit Ore stock;
+	// Greater Heal (5s, +HP-regen HoT) is last.
 	private static final int[] STRONG_HEAL_PRIORITY =
 	{
 		1218, // Greater Battle Heal
 		1401, // Major Heal (Bishop/Cardinal 56+, +1 Spirit Ore) - big heal, very MP-cheap; also the low-MP fallback
+		1020, // Vitalize (Bishop/Elder lines 48+) - about twice Greater Heal's power with no reagent, so the Spirit Ore-free step down
 		1217 // Greater Heal (+HP-regen HoT)
 	};
 
