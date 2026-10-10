@@ -145,6 +145,7 @@ jobs:
             "java/org/l2jmobius/gameserver/livingpop/SkillPlanner.java" \
             "java/org/l2jmobius/gameserver/livingpop/LivingGear.java" \
             "java/org/l2jmobius/gameserver/livingpop/LivingChat.java" \
+            "java/org/l2jmobius/gameserver/livingpop/ZoneCombat.java" \
             tests/java/*.java
           java -cp build/test-classes FakePlayerChatParsingTest
           java -cp build/test-classes FakePlayerStorePricingTest

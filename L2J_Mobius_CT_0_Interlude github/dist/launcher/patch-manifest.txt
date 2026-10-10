@@ -99,8 +99,10 @@ game/modules/alt-companion/scripts/AltCompanionModule.java
 # keys settle.
 game/modules/living-population/module.json
 game/modules/living-population/MODULE.md
+game/modules/living-population/ZONE_COMBAT.md
 game/modules/living-population/config/module.ini
 game/modules/living-population/data/zones.xml
+game/modules/living-population/data/zone_combat.tsv
 game/modules/living-population/scripts/LivingPopulationModule.java
 game/modules/living-population/sql/install.sql
 game/modules/living-population/sql/remove.sql
