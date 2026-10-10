@@ -33,7 +33,7 @@
 	                 ALWAYS, TARGET_HP_BELOW (hpBelow), TARGET_HP_ABOVE (hpAbove),
 	                 SELF_HP_BELOW (selfHpBelow), MP_ABOVE (mpAbove), MOBS_NEAR (mobsAtLeast),
 	                 MOBS_UNSPOILED (mobsAtLeast), REAR, CHARGES (chargesAtLeast), CHARGES_BELOW (chargesBelow),
-	                 DEBUFF_MISSING, SELF_ABNORMAL_FREE, NOT_SPOILED, DURABLE_TARGET, HEALER_READY,
+	                 DEBUFF_MISSING, SELF_ABNORMAL_FREE, NOT_SPOILED, DURABLE_TARGET (a raid, or a target this member needs 8+ seconds to kill), HEALER_READY,
 	                 ONCE_PER_TARGET, UNDER_ATTACK, PVP (the target is a player), FOCUS_ON_ME (the target has
 	                 this member selected)
 	  minLevel/maxLevel - the level window this entry applies in. Unlearned skills are skipped anyway, so
