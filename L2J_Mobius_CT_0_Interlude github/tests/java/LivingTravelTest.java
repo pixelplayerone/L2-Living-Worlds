@@ -489,6 +489,14 @@ public class LivingTravelTest
 		check("towns are kept apart", (stock.count("Giran", 3) == 30) && (stock.count("Aden", 3) == 6000) && (stock.totals().size() == 2));
 		stock.deposit("Giran", 6L, counts, 10, new java.util.Random(1));
 		check("items stay with the bot that hunted them", (stock.count("Giran", 5L, 3) == 30) && (stock.count("Giran", 6L, 3) == 30) && (stock.count("Giran", 3) == 60) && (stock.count("Giran", 7L, 3) == 0));
+		final List<TownStock.Listing> taken = stock.take("Giran", 3, 45);
+		check("a sale takes from the owners in id order", (taken != null) && (taken.size() == 2) && (taken.get(0).owner() == 5L) && (taken.get(0).count() == 30) && (taken.get(1).owner() == 6L) && (taken.get(1).count() == 15));
+		check("what is taken leaves the town", (stock.count("Giran", 3) == 15) && (stock.count("Giran", 5L, 3) == 0) && (stock.count("Giran", 6L, 3) == 15));
+		check("a sale of more than the town holds takes nothing", (stock.take("Giran", 3, 16) == null) && (stock.count("Giran", 3) == 15));
+		final List<Long> shares = TownStock.shares(taken, 1000);
+		check("the buyer's payment is split by units and adds up", (shares.get(0) == 666L) && (shares.get(1) == 334L) && (shares.stream().mapToLong(Long::longValue).sum() == 1000));
+		stock.restore(taken);
+		check("a sale that falls through puts the items back to their owners", (stock.count("Giran", 3) == 60) && (stock.count("Giran", 5L, 3) == 30) && (stock.count("Giran", 6L, 3) == 30));
 		check("the listings list every owner's items", stock.listings().stream().filter(listing -> listing.town().equals("Giran") && (listing.itemId() == 3)).count() == 2);
 	}
 

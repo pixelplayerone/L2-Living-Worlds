@@ -39,6 +39,7 @@ import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Point;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Town;
 import org.l2jmobius.gameserver.managers.PhantomManager;
 import org.l2jmobius.gameserver.managers.ZoneManager;
+import org.l2jmobius.gameserver.model.item.enums.ItemProcessType;
 import org.l2jmobius.gameserver.model.Location;
 import org.l2jmobius.gameserver.model.World;
 import org.l2jmobius.gameserver.model.actor.Player;
@@ -1393,6 +1394,24 @@ public class HotColdHandoff
 	public boolean isHot(long id)
 	{
 		return _hot.containsKey(id) || _pending.contains(id);
+	}
+
+	/**
+	 * Pays a bot whose live character is in the world.
+	 * @param id a bot id
+	 * @param adena the adena
+	 * @return false when the bot has no live character (pay its row instead)
+	 */
+	public boolean payHot(long id, long adena)
+	{
+		final HotEntry entry = _hot.get(id);
+		final Player player = (entry == null) ? null : entry._player;
+		if (player == null)
+		{
+			return false;
+		}
+		player.addAdena(ItemProcessType.REWARD, (int) Math.min(Integer.MAX_VALUE, adena), null, false);
+		return true;
 	}
 
 	/**

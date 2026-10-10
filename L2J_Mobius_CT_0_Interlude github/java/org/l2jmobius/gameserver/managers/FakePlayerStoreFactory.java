@@ -32,6 +32,7 @@ import org.l2jmobius.gameserver.config.RatesConfig;
 import org.l2jmobius.gameserver.config.custom.FakePlayersConfig;
 import org.l2jmobius.gameserver.data.xml.ItemData;
 import org.l2jmobius.gameserver.data.xml.RecipeData;
+import org.l2jmobius.gameserver.model.Location;
 import org.l2jmobius.gameserver.model.actor.holders.npc.FakePlayerCraftItem;
 import org.l2jmobius.gameserver.model.actor.holders.npc.FakePlayerStoreItem;
 import org.l2jmobius.gameserver.model.item.ItemTemplate;
@@ -108,6 +109,7 @@ public class FakePlayerStoreFactory
 	};
 
 	private static volatile boolean _built = false;
+	private static volatile FakePlayerStoreSupply _supply; // real goods for SELL stores, or null
 	private static final EnumMap<CrystalType, List<ItemTemplate>> EQUIP = new EnumMap<>(CrystalType.class);
 	private static final EnumMap<CrystalType, List<ItemTemplate>> BULK = new EnumMap<>(CrystalType.class);
 	private static final EnumMap<CrystalType, List<ItemTemplate>> MATERIALS = new EnumMap<>(CrystalType.class);
@@ -740,6 +742,47 @@ public class FakePlayerStoreFactory
 	private static FakePlayerStoreItem line(ItemTemplate item, int enchant, int count, int price)
 	{
 		return new FakePlayerStoreItem(STORE_ITEM_OID.getAndIncrement(), item.getId(), enchant, count, price);
+	}
+
+	/**
+	 * Sets where SELL stores get real goods from.
+	 * @param supply the supply, or null to roll all stock
+	 */
+	public static void setSupply(FakePlayerStoreSupply supply)
+	{
+		_supply = supply;
+	}
+
+	/** @return the supply set by {@link #setSupply}, or null */
+	public static FakePlayerStoreSupply supply()
+	{
+		return _supply;
+	}
+
+	/**
+	 * Builds a SELL store for a spot: from the supply's goods when it has any there, else rolled (see
+	 * {@link #generateSell(int, boolean)}). Supplied lines are priced a little above reference, like rolled ones.
+	 * @param where where the store stands
+	 * @param level the vendor's level (gates equipment grade of rolled stock)
+	 * @param fullStock whether the vendor is in a market hub
+	 * @return the stock
+	 */
+	public static List<FakePlayerStoreItem> generateSell(Location where, int level, boolean fullStock)
+	{
+		final FakePlayerStoreSupply supply = _supply;
+		final List<FakePlayerStoreSupply.Offer> offers = (supply == null) ? List.of() : new ArrayList<>(supply.offers(where));
+		final List<FakePlayerStoreItem> stock = new ArrayList<>();
+		final int lines = Rnd.get(2, 5);
+		while (!offers.isEmpty() && (stock.size() < lines))
+		{
+			final FakePlayerStoreSupply.Offer offer = offers.remove(Rnd.get(offers.size()));
+			final ItemTemplate item = ItemData.getInstance().getTemplate(offer.itemId());
+			if ((item != null) && (offer.count() > 0))
+			{
+				stock.add(new FakePlayerStoreItem(STORE_ITEM_OID.getAndIncrement(), item.getId(), 0, offer.count(), priced(effRef(item.getReferencePrice()), 1.0, 1.4), offer.source()));
+			}
+		}
+		return stock.isEmpty() ? generateSell(level, fullStock) : stock;
 	}
 
 	/**

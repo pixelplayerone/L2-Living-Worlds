@@ -57,6 +57,7 @@ import org.l2jmobius.gameserver.data.xml.PlayerTemplateData;
 import org.l2jmobius.gameserver.data.xml.SkillTreeData;
 import org.l2jmobius.gameserver.config.custom.FakePlayersConfig;
 import org.l2jmobius.gameserver.managers.FakePlayerChatManager;
+import org.l2jmobius.gameserver.managers.FakePlayerStoreFactory;
 import org.l2jmobius.gameserver.managers.PhantomManager;
 import org.l2jmobius.gameserver.network.enums.ChatType;
 import org.l2jmobius.gameserver.network.serverpackets.CreatureSay;
@@ -351,6 +352,7 @@ public class LivingPopulationManager
 
 		_stockSaving = _townStockDao.load(_townStock);
 		_handoff.setTownStock(_townStock);
+		FakePlayerStoreFactory.setSupply(new TownShops(_townStock, () -> (_catalog == null) ? List.of() : _catalog.towns(), this::payOwner));
 		_dao.ensureColumns(); // add columns a newer module version needs to an older table (no manual migration)
 		final long now = System.currentTimeMillis();
 		final List<ColdBot> loaded = _dao.loadAll();
@@ -451,6 +453,7 @@ public class LivingPopulationManager
 		_handoff.shutdown();
 		_handoff.setLife(null);
 		_handoff.setTownStock(null);
+		FakePlayerStoreFactory.setSupply(null);
 		if (_stockSaving && _townStock.dirty())
 		{
 			_townStockDao.save(_townStock);
@@ -1508,6 +1511,26 @@ public class LivingPopulationManager
 		catch (Exception e)
 		{
 			LOGGER.log(Level.WARNING, "LivingPopulation: snapshot write failed: " + e.getMessage(), e);
+		}
+	}
+
+	/** Pays a bot the adena for items of its that sold in a town shop: on its character when it is in the world, else on its row. */
+	private void payOwner(long id, long adena)
+	{
+		if (_handoff.payHot(id, adena))
+		{
+			return;
+		}
+		for (ColdBot bot : _bots)
+		{
+			if (bot.getId() == id)
+			{
+				synchronized (bot)
+				{
+					bot.setAdena(Math.min(ColdEconomy.MAX_ADENA, bot.getAdena() + adena));
+				}
+				return;
+			}
 		}
 	}
 

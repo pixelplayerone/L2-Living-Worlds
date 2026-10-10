@@ -59,7 +59,7 @@ public final class TownStock
 	 * @param kills how many kills the span had
 	 * @param random the rounding source
 	 */
-	public void deposit(String town, long owner, Map<Integer, Double> perKill, double kills, Random random)
+	public synchronized void deposit(String town, long owner, Map<Integer, Double> perKill, double kills, Random random)
 	{
 		if ((town == null) || (kills <= 0))
 		{
@@ -83,10 +83,64 @@ public final class TownStock
 	 * @param itemId an item
 	 * @param count how many to add
 	 */
-	public void add(String town, long owner, int itemId, long count)
+	public synchronized void add(String town, long owner, int itemId, long count)
 	{
 		_listings.merge(new Key(town, owner, itemId), count, Long::sum);
 		_dirty = true;
+	}
+
+	/**
+	 * Takes items out of a town for a sale, from the owners in id order.
+	 * @param town a town
+	 * @param itemId an item
+	 * @param count how many
+	 * @return what was taken, by owner, or null when the town holds fewer than that (nothing is taken then)
+	 */
+	public synchronized List<Listing> take(String town, int itemId, long count)
+	{
+		if ((count < 1) || (count(town, itemId) < count))
+		{
+			return null;
+		}
+		final List<Listing> taken = new ArrayList<>();
+		long left = count;
+		for (Listing listing : listings())
+		{
+			if (!listing.town().equals(town) || (listing.itemId() != itemId))
+			{
+				continue;
+			}
+			final long part = Math.min(left, listing.count());
+			final Key key = new Key(town, listing.owner(), itemId);
+			if (part >= listing.count())
+			{
+				_listings.remove(key);
+			}
+			else
+			{
+				_listings.put(key, listing.count() - part);
+			}
+			taken.add(new Listing(town, listing.owner(), itemId, part));
+			left -= part;
+			if (left == 0)
+			{
+				break;
+			}
+		}
+		_dirty = true;
+		return taken;
+	}
+
+	/**
+	 * Puts back what {@link #take} took, to the same owners.
+	 * @param taken the listings it returned
+	 */
+	public synchronized void restore(List<Listing> taken)
+	{
+		for (Listing listing : taken)
+		{
+			add(listing.town(), listing.owner(), listing.itemId(), listing.count());
+		}
 	}
 
 	/**
@@ -133,6 +187,27 @@ public final class TownStock
 		final Map<String, Map<Integer, Long>> totals = new TreeMap<>();
 		_listings.forEach((key, count) -> totals.computeIfAbsent(key.town(), town -> new TreeMap<>()).merge(key.itemId(), count, Long::sum));
 		return totals;
+	}
+
+	/**
+	 * Splits what a buyer paid among the owners of the items taken, by how many of them each owned; the last owner gets
+	 * the remainder, so the shares always add up to the total.
+	 * @param taken what {@link #take} returned
+	 * @param total the adena paid
+	 * @return each listing's share, in the same order
+	 */
+	public static List<Long> shares(List<Listing> taken, long total)
+	{
+		final long units = taken.stream().mapToLong(Listing::count).sum();
+		final List<Long> shares = new ArrayList<>();
+		long left = total;
+		for (int i = 0; i < taken.size(); i++)
+		{
+			final long share = (i == (taken.size() - 1)) ? left : ((total * taken.get(i).count()) / units);
+			shares.add(share);
+			left -= share;
+		}
+		return shares;
 	}
 
 	/** @return whether anything changed since the last {@link #clean()} */

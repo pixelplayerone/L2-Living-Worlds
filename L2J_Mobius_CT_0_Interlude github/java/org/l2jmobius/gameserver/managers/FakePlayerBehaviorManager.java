@@ -593,7 +593,7 @@ public class FakePlayerBehaviorManager implements IXmlReader
 					}
 					else
 					{
-						stock = FakePlayerStoreFactory.generateSell(level, fullStock);
+						stock = FakePlayerStoreFactory.generateSell(population.center, level, fullStock);
 						storeId = kind.equals("PACKAGE") ? PrivateStoreType.PACKAGE_SELL.getId() : PrivateStoreType.SELL.getId();
 					}
 					look.setStoreItems(stock);
