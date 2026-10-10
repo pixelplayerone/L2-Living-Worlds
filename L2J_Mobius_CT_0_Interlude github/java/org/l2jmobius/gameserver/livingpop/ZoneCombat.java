@@ -561,11 +561,6 @@ public final class ZoneCombat
 		return 4 + chance.length - 1;
 	}
 
-	private static String otherBuffer(String buffer)
-	{
-		return BUFFERS[0].equals(buffer) ? BUFFERS[1] : BUFFERS[0];
-	}
-
 	/** The buffer lines in the order a set's key joins them (as tools/combat_sim/build_party_buffs.py does). */
 	private static final List<String> BUFFER_ORDER = List.of("hierophant", "doom_cryer", "dominator", "sword_muse", "spectral_dancer", "evas_saint", "shillien_saint");
 
@@ -662,15 +657,16 @@ public final class ZoneCombat
 		final int tankClass = botTank ? classId : TANK_CLASSES[Math.floorMod(variant / (BUFFERS.length * DPS_CLASSES.length), TANK_CLASSES.length)];
 		final Stats tankStats = botTank ? stats : curveStats(Role.TANK, grade, grade);
 		final double tankSkills = botTank ? skillFraction : 1.0;
-		// The party: tank, healer, one buffer and one damage dealer, plus up to five more members drawn from what is left (a second main buffer, a minor buffer, up to four more damage dealers).
+		// The party: tank, healer, one buffer and one damage dealer, plus up to five more members drawn from what is left (minor buffers, up to four more damage dealers).
 		final Random dice = new Random((variant & 63) * 7919L + 17L);
 		final int size = partySize(dice.nextDouble(), level);
-		// The main damage dealer is the bot's own, the healer's Archmage, or a reference one; the seats beyond the four core ones are filled by rule: from 6 members a party has a spoiler (never two), from 7 a second main buffer, from 8 also a minor buffer; what is left is drawn at random.
+		// The main damage dealer is the bot's own, the healer's Archmage, or a reference one. The seats beyond the four core ones are filled by rule, then at random: a main buffer (a Hierophant or Doom Cryer) when the bot is a buffer of another line, from 6 members a spoiler (never two), from 7 a minor buffer, from 8 two.
 		final int mainDps = (slot == 1) ? classId : (slot == 3) ? 94 : DPS_CLASSES[Math.floorMod(variant / BUFFERS.length, DPS_CLASSES.length)];
 		final boolean needSpoiler = (size >= 6) && !LivingSupplies.isSpoiler(mainDps);
-		final List<Integer> open = new ArrayList<>(List.of(0, 1, 1, 1, 1, 2)); // 0 second buffer, 1 damage dealer, 2 minor buffer (no data, it only takes a seat)
+		final boolean needMain = (slot == 2) && !Arrays.asList(BUFFERS).contains(buffer) && (size >= 5);
+		final List<Integer> open = new ArrayList<>(List.of(1, 1, 1, 1, 2, 2)); // 1 damage dealer, 2 minor buffer
 		final List<Integer> picked = new ArrayList<>();
-		for (int forced : new int[] { (size >= 7) ? 0 : -1, (size >= 8) ? 2 : -1, needSpoiler ? 1 : -1 })
+		for (int forced : new int[] { needMain ? 0 : -1, needSpoiler ? 1 : -1, (size >= 7) ? 2 : -1, (size >= 8) ? 2 : -1 })
 		{
 			if (forced >= 0)
 			{
@@ -680,21 +676,15 @@ public final class ZoneCombat
 		}
 		Collections.shuffle(open, dice);
 		picked.addAll(open.subList(0, size - 4 - picked.size()));
-		final boolean secondBuffer = picked.contains(0);
 		final Set<String> lines = new HashSet<>(List.of(buffer));
-		if (secondBuffer)
+		if (picked.contains(0))
 		{
-			lines.add(otherBuffer(buffer));
+			lines.add(BUFFERS[Math.floorMod(variant, BUFFERS.length)]); // the main buffer beside a bot that buffs with another line
 		}
-		if (picked.contains(2))
-		{
-			final List<String> minors = new ArrayList<>(List.of("sword_muse", "spectral_dancer"));
-			minors.removeAll(lines);
-			if (!minors.isEmpty())
-			{
-				lines.add(minors.get(dice.nextInt(minors.size())));
-			}
-		}
+		final List<String> minors = new ArrayList<>(List.of("sword_muse", "spectral_dancer"));
+		minors.removeAll(lines);
+		Collections.shuffle(minors, dice);
+		lines.addAll(minors.subList(0, Math.min(minors.size(), Collections.frequency(picked, 2))));
 		final String buffers = bufferKey(lines);
 		final int dpsCount = 1 + Collections.frequency(picked, 1);
 		final int[] dClass = new int[dpsCount];

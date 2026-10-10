@@ -12,18 +12,16 @@ ORDER = list(LEAF)  # the key of a set joins its lines in this order (ZoneCombat
 
 
 def buffer_sets():
-    """Every buffer set a virtual party can have, as ZoneCombat builds them: the buffer alone, plus the other main buffer (Hierophant, or Doom Cryer for a Hierophant), plus a minor buffer
-    (a Sword Muse or Spectral Dancer the set does not have yet); a set stacks by the server's rule (same abnormalType replaces, the higher level wins), so it is computed as one."""
-    sets = set()
-    for b in ("hierophant", "doom_cryer", "dominator", "sword_muse", "spectral_dancer", "evas_saint", "shillien_saint"):
-        sets.add((b,))
-    for b in ("hierophant", "doom_cryer", "dominator", "sword_muse", "spectral_dancer"):
-        pair = {b, "doom_cryer" if b == "hierophant" else "hierophant"}
-        sets.add(tuple(sorted(pair, key=ORDER.index)))
-        for m in ("sword_muse", "spectral_dancer"):
-            if m not in pair:
-                sets.add(tuple(sorted(pair | {m}, key=ORDER.index)))
+    """Every buffer set a virtual party can have, as ZoneCombat builds them: a main buffer (Hierophant or Doom Cryer), plus the bot's own line when it buffs with another (Dominator, Sword Muse, Spectral Dancer),
+    plus up to two minor buffers (Sword Muse, Spectral Dancer); and the lone lines of a four-member party. A set stacks by the server's rule (same abnormalType replaces, the higher level wins), so it is computed as one."""
+    sets = {(b,) for b in ORDER}
+    for main in ("hierophant", "doom_cryer"):
+        for own in (None, "dominator", "sword_muse", "spectral_dancer"):
+            for minors in ((), ("sword_muse",), ("spectral_dancer",), ("sword_muse", "spectral_dancer")):
+                lines = {main, *minors} | ({own} if own else set())
+                sets.add(tuple(sorted(lines, key=ORDER.index)))
     return sorted(sets, key=lambda t: [ORDER.index(x) for x in t])
+
 
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "party_buff_rows.tsv")
 names, parent, trees = B.names, B.parent, B.trees
