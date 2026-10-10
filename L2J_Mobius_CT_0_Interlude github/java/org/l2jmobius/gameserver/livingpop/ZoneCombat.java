@@ -525,21 +525,22 @@ public final class ZoneCombat
 
 	/** The server's party experience bonus by member count (Party.BONUS_EXP_SP, one member first). */
 	private static final double[] EXP_BONUS = { 1.0, 1.10, 1.20, 1.30, 1.40, 1.50, 2.0, 2.10, 2.20 };
-	/** How likely a virtual party is 4, 5 ... 9 members: small parties are the common ones. */
-	private static final double[] SIZE_CHANCE = { 0.50, 0.25, 0.12, 0.07, 0.04, 0.02 };
+	/** How likely a virtual party is 4, 5 ... 9 members: small parties are the common ones, and the higher the level the bigger they get. Rows by level: below 61, 61+, 70+, 76+. */
+	private static final double[][] SIZE_CHANCE = { { 0.50, 0.25, 0.12, 0.07, 0.04, 0.02 }, { 0.30, 0.25, 0.175, 0.125, 0.10, 0.05 }, { 0.0, 0.0, 0.35, 0.25, 0.25, 0.15 }, { 0.0, 0.0, 0.0, 0.0, 0.50, 0.50 } };
 
-	private static int partySize(double roll)
+	private static int partySize(double roll, int level)
 	{
-		double left = roll * Arrays.stream(SIZE_CHANCE).sum();
-		for (int i = 0; i < SIZE_CHANCE.length; i++)
+		final double[] chance = SIZE_CHANCE[(level >= 76) ? 3 : (level >= 70) ? 2 : (level >= 61) ? 1 : 0];
+		double left = roll * Arrays.stream(chance).sum();
+		for (int i = 0; i < chance.length; i++)
 		{
-			left -= SIZE_CHANCE[i];
-			if (left < 0.0)
+			left -= chance[i];
+			if ((left < 0.0) && (chance[i] > 0.0))
 			{
 				return 4 + i;
 			}
 		}
-		return 4 + SIZE_CHANCE.length - 1;
+		return 4 + chance.length - 1;
 	}
 
 	private static String otherBuffer(String buffer)
@@ -647,7 +648,7 @@ public final class ZoneCombat
 		final double tankSkills = botTank ? skillFraction : 1.0;
 		// The party: tank, healer, one buffer and one damage dealer, plus up to five more members drawn from what is left (a second main buffer, a minor buffer, up to four more damage dealers).
 		final Random dice = new Random((variant & 63) * 7919L + 17L);
-		final int size = partySize(dice.nextDouble());
+		final int size = partySize(dice.nextDouble(), level);
 		final List<Integer> open = new ArrayList<>(List.of(0, 1, 1, 1, 1, 2)); // 0 second buffer, 1 damage dealer, 2 minor buffer (no data, it only takes a seat)
 		Collections.shuffle(open, dice);
 		final List<Integer> picked = open.subList(0, size - 4);
