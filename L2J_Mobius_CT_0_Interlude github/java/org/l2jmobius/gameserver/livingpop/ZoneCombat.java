@@ -143,6 +143,7 @@ public final class ZoneCombat
 	private final Map<String, java.util.TreeMap<Integer, Double>> _rotationMp = new HashMap<>(); // line -> level -> MP per second the 60 s rotation spends
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotations = new HashMap<>(); // line -> level -> {auto dps, dps over 5, 15, 30, 45, 60, 90, 120 s} against the sim's dummy
 	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
+	private final Map<Integer, Map<Integer, int[]>> _spRank = new HashMap<>(); // class id -> skill id * 1000 + level -> {order, tier} on the class's SP priority list
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotSelf = new HashMap<>(); // line -> level -> {dps ratio over 5 .. 120 s with the self buffs, P.Def mul, M.Def mul}
 	private final Map<String, java.util.TreeMap<Integer, int[]>> _rotSelfIds = new HashMap<>(); // line -> level -> the self buff skill ids those ratios assume
 	private final Map<Role, double[][]> _newbie = new java.util.EnumMap<>(Role.class); // Newbie Helper buffs: role -> {damage, pDef, mDef} by level (8-25)
@@ -218,6 +219,7 @@ public final class ZoneCombat
 		final Map<String, Double> undeadShare = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, List<double[]>>> heals = new HashMap<>();
 		final Map<Integer, String> rotationLine = new HashMap<>();
+		final Map<Integer, Map<Integer, int[]>> spRank = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotSelf = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, int[]>> rotSelfIds = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> serv = new HashMap<>();
@@ -257,6 +259,18 @@ public final class ZoneCombat
 							table[1][level] = Double.parseDouble(f[4]);
 							table[2][level] = Double.parseDouble(f[5]);
 						}
+					}
+					else if (f[0].equals("SP") && (f.length >= 3))
+					{
+						// SP <classId> <tier letter + skill id : level, ...>  in priority order; tier A, B or C
+						final Map<Integer, int[]> ranks = new HashMap<>();
+						int order = 0;
+						for (String token : f[2].split(","))
+						{
+							final int colon = token.indexOf(':');
+							ranks.putIfAbsent((Integer.parseInt(token.substring(1, colon)) * 1000) + Integer.parseInt(token.substring(colon + 1)), new int[] { order++, token.charAt(0) - 'A' });
+						}
+						spRank.put(Integer.parseInt(f[1]), ranks);
 					}
 					else if (f[0].equals("ROT") && (f.length >= 11))
 					{
@@ -362,6 +376,7 @@ public final class ZoneCombat
 		model._undeadShare.putAll(undeadShare);
 		model._heals.putAll(heals);
 		model._rotationLine.putAll(rotationLine);
+		model._spRank.putAll(spRank);
 		model._rotSelf.putAll(rotSelf);
 		model._rotSelfIds.putAll(rotSelfIds);
 		model._serv.putAll(serv);
@@ -841,6 +856,18 @@ public final class ZoneCombat
 			return null;
 		}
 		return ((table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry()).getValue();
+	}
+
+	/**
+	 * @param classId a class id
+	 * @param skillId a skill
+	 * @param level the skill level
+	 * @return its {order, tier} on the class's SP priority list (tier 0 = A), or null when the class has no list or the skill is not on it
+	 */
+	public int[] skillRank(int classId, int skillId, int level)
+	{
+		final Map<Integer, int[]> ranks = _spRank.get(classId);
+		return (ranks == null) ? null : ranks.get((skillId * 1000) + level);
 	}
 
 	/** @return whether this class has a rotation line */

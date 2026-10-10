@@ -1,5 +1,5 @@
 """Writes zone_combat.tsv for the Living Population cold-state model: the hunting-area monster averages (zone_monsters.csv) and the
-gear curves (curves_points.csv) in one small file the module reads at start. Run build_zone_monsters.py, build_curves.py, build_buff_factors.py and build_rotation_table.py first.
+gear curves (curves_points.csv) in one small file the module reads at start. Run build_zone_monsters.py, build_curves.py, build_buff_factors.py, build_rotation_table.py and build_sp_priority_rows.py first.
 Usage: python3 build_zone_combat.py [out.tsv]"""
 import csv, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -55,6 +55,9 @@ with open(out, "w", encoding="utf-8", newline="") as f:
     rr = os.path.join(HERE, "rotation_rows.tsv")
     if os.path.exists(rr):                                  # sim best rotations per line and level (real time-to-kill option)
         f.write(open(rr, encoding="utf-8").read())
+    sr = os.path.join(HERE, "sp_priority_rows.tsv")
+    if os.path.exists(sr):                                  # the order bots learn skills in (tier A saves SP)
+        f.write(open(sr, encoding="utf-8").read())
     hr = os.path.join(HERE, "heal_rows.tsv")
     if os.path.exists(hr):                                  # the heals each line can cast on itself, and Servitor Heal (self heals)
         f.write(open(hr, encoding="utf-8").read())
