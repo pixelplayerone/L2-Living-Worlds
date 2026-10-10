@@ -314,11 +314,6 @@ public final class PhantomCombatActions
 		return true;
 	}
 
-	public static boolean durable(Creature target)
-	{
-		return ((target instanceof Monster monster) && monster.isRaid()) || ((target.getMaxHp() >= 4000) && (target.getCurrentHpPercent() > 35));
-	}
-
 	/** Ordinary single-mob aggro alone is not a reason to spend a farmer's MP on control and bow skills. */
 	public static boolean pressure(Player npc, boolean underAttack)
 	{
