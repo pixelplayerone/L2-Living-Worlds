@@ -88,6 +88,7 @@ PROD_SOURCES=(
 	"java/org/l2jmobius/gameserver/livingpop/ClassPath.java"
 	"java/org/l2jmobius/gameserver/livingpop/SkillPlanner.java"
 	"java/org/l2jmobius/gameserver/livingpop/LivingGear.java"
+	"java/org/l2jmobius/gameserver/livingpop/ZoneCombat.java"
 	"java/org/l2jmobius/gameserver/livingpop/LivingChat.java"
 )
 JAVA_MAIN_CLASSES=(

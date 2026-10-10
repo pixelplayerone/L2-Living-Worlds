@@ -520,6 +520,14 @@ public class LivingTravelTest
 		check("tanks survive better, mages worse", near(ColdRisk.danger(params, 15, 10, 20, 10, 1, 1, 4).deathsPerHour(), 0.225) && near(ColdRisk.danger(params, 15, 10, 20, 10, 1, 1, 10).deathsPerHour(), 0.375));
 		check("death chance over time", near(ColdRisk.deathChance(1.0, 3_600_000L), 1 - Math.exp(-1)) && near(ColdRisk.deathChance(0.3, 0L), 0));
 		check("exp loss by level", near(ColdRisk.expLossPercent(10), 5.8) && near(ColdRisk.expLossPercent(80), 0.9) && near(ColdRisk.expLossPercent(95), 0));
+		final double[] serverLoss = new double[81];
+		java.util.Arrays.fill(serverLoss, 4.0);
+		serverLoss[1] = 12.0;
+		serverLoss[76] = 2.5;
+		ColdRisk.setExpLossTable(serverLoss);
+		check("exp loss reads the server table, capped at 10%", near(ColdRisk.expLossPercent(76), 2.5) && near(ColdRisk.expLossPercent(1), 10.0) && near(ColdRisk.expLossPercent(200), 4.0));
+		ColdRisk.setExpLossTable(null);
+		check("exp loss falls back to the estimate without a table", near(ColdRisk.expLossPercent(10), 5.8));
 		check("mages rest half again as long", (ColdRisk.restMs(params, 10) == 90_000L) && (ColdRisk.restMs(params, 0) == 60_000L));
 
 		final ColdRisk.State once = ColdRisk.died(ColdRisk.State.EMPTY, "Near Woods", 1_000L, params);

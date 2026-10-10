@@ -153,6 +153,16 @@ public final class ColdRisk
 	 */
 	public static Danger danger(Params params, int level, int zoneMin, int zoneMax, long potions, int gearTier, int tierCeiling, int classId)
 	{
+		return danger(params, level, zoneMin, zoneMax, potions, gearTier, tierCeiling, classId, 0.0);
+	}
+
+	/**
+	 * Like {@link #danger(Params, int, int, int, long, int, int, int)} with the zone's own factor from {@link ZoneCombat}.
+	 * @param zoneFactor the multiple of the base rate its gear and the zone's monsters give it; above 0 it replaces the
+	 *            gear-behind step (that is already in it), 0 or less keeps the old behavior
+	 */
+	public static Danger danger(Params params, int level, int zoneMin, int zoneMax, long potions, int gearTier, int tierCeiling, int classId, double zoneFactor)
+	{
 		final List<String> reasons = new ArrayList<>();
 		// Where it stands in the zone's range: at the bottom the monsters hit twice as hard as in the middle, at the top half.
 		final double half = Math.max(1.0, (zoneMax - zoneMin) / 2.0);
@@ -171,14 +181,47 @@ public final class ColdRisk
 			rate *= 2.0;
 			reasons.add("out of potions");
 		}
-		final int missing = Math.max(0, tierCeiling - gearTier);
-		if (missing > 0)
+		if (zoneFactor > 0.0)
 		{
-			rate *= 1.0 + (0.5 * missing);
-			reasons.add("gear behind its level");
+			rate *= zoneFactor;
+			if (zoneFactor >= 1.5)
+			{
+				reasons.add("the zone's monsters hit hard for its gear");
+			}
 		}
-		rate *= LivingSupplies.isTank(classId) ? 0.75 : (LivingSupplies.isLight(classId) ? 1.25 : 1.0);
+		else
+		{
+			final int missing = Math.max(0, tierCeiling - gearTier);
+			if (missing > 0)
+			{
+				rate *= 1.0 + (0.5 * missing);
+				reasons.add("gear behind its level");
+			}
+		}
+		if (zoneFactor <= 0.0)
+		{
+			// Only without the zone model: its factor already uses the role's defence and evasion, which replaces this class guess.
+			rate *= LivingSupplies.isTank(classId) ? 0.75 : (LivingSupplies.isLight(classId) ? 1.25 : 1.0);
+		}
 		return new Danger(Math.max(0.0, rate), List.copyOf(reasons));
+	}
+
+	/**
+	 * A death rate that is already the answer (the zone model's HP model, which knows the gear, the level against the zone and the monsters): only running out of potions still doubles it.
+	 * @param deathsPerHour the model's deaths an hour
+	 * @param potions healing potions carried
+	 * @return its death rate and why
+	 */
+	public static Danger fromRate(double deathsPerHour, long potions)
+	{
+		final List<String> reasons = new ArrayList<>();
+		double rate = Math.max(0.0, deathsPerHour);
+		if (potions <= 0)
+		{
+			rate *= 2.0;
+			reasons.add("out of potions");
+		}
+		return new Danger(rate, List.copyOf(reasons));
 	}
 
 	/**
@@ -191,12 +234,28 @@ public final class ColdRisk
 		return 1.0 - Math.exp(-Math.max(0.0, deathsPerHour) * (Math.max(0L, elapsedMs) / 3_600_000.0));
 	}
 
+	/** The server's experience loss per level (percent of the level's experience span), or null for the built-in estimate. */
+	private static volatile double[] _expLossTable;
+
+	/**
+	 * @param percentByLevel the server's loss in percent of a level's experience, indexed by level (0 unused); null returns to the estimate
+	 */
+	public static void setExpLossTable(double[] percentByLevel)
+	{
+		_expLossTable = (percentByLevel == null) ? null : percentByLevel.clone();
+	}
+
 	/**
 	 * @param level the level it died at
-	 * @return the share of the level's experience it loses, in percent
+	 * @return the share of the level's experience it loses, in percent: the server's table when it was loaded (capped at the server's 10%), else a straight-line estimate
 	 */
 	public static double expLossPercent(int level)
 	{
+		final double[] table = _expLossTable;
+		if ((table != null) && (table.length > 1))
+		{
+			return Math.max(0.0, Math.min(10.0, table[Math.max(1, Math.min(level, table.length - 1))]));
+		}
 		return Math.max(0.0, 6.5 - (0.07 * level));
 	}
 

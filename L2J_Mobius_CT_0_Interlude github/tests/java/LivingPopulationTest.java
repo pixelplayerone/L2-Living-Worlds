@@ -35,6 +35,8 @@ import org.l2jmobius.gameserver.livingpop.HandoffPolicy;
 import org.l2jmobius.gameserver.livingpop.LivingPopulationConfig;
 import org.l2jmobius.gameserver.livingpop.NeedsEvaluator;
 import org.l2jmobius.gameserver.livingpop.PopulationDirector;
+import org.l2jmobius.gameserver.livingpop.ColdRisk;
+import org.l2jmobius.gameserver.livingpop.ZoneCombat;
 
 /**
  * Standalone (no JUnit, no game server) regression harness for the dependency-free Living Population cold logic:
@@ -63,7 +65,7 @@ public class LivingPopulationTest
 	private static int _checks = 0;
 	private static int _failures = 0;
 
-	public static void main(String[] args)
+	public static void main(String[] args) throws Exception
 	{
 		testProgressionNoTimeNoGain();
 		testProgressionLevelsUp();
@@ -103,6 +105,7 @@ public class LivingPopulationTest
 		testEconomyReportsDecisions();
 		testEconomyReportsWaits();
 		testStatusIncludesDecisions();
+		testZoneCombat();
 
 		System.out.println("LivingPopulationTest: " + (_checks - _failures) + "/" + _checks + " checks passed.");
 		if (_failures > 0)
@@ -664,6 +667,340 @@ public class LivingPopulationTest
 		final String json = ColdBotStatus.render(bots, 0, 1L);
 		check("snapshot has the decisions newest first", json.contains("\"decisions\":[{\"t\":20,\"m\":\"second\"},{\"t\":10,\"m\":\"first\"}]"));
 		check("snapshot has the position", json.contains("\"x\":") && json.contains("\"z\":"));
+	}
+
+	// ---- zone combat: kill and death rates from gear against the zone's monsters
+	private static final String ZONE_DATA = String.join("\n",
+		"CURVE\tpatk_melee\t38\t112\t190\t236\t305\t342", "CURVE\tpatk_bow\t64\t191\t323\t400\t570\t581", "CURVE\tmatk_mage\t31\t79\t122\t145\t167\t193",
+		"CURVE\tpdef_tank\t170\t400\t519\t666\t724\t885", "CURVE\tpdef_melee\t80\t238\t316\t428\t468\t572", "CURVE\tpdef_light\t116\t176\t245\t378\t395\t446", "CURVE\tpdef_robe\t91\t134\t191\t293\t328\t363",
+		"CURVE\tmdef_heavy\t98\t168\t224\t276\t333\t333", "CURVE\tmdef_light\t98\t168\t224\t276\t346\t346", "CURVE\tmdef_robe\t98\t168\t224\t276\t333\t333",
+		"ZONE\tEasy\t1\t10\t4\t70\t50\t33\t11\t7", "ZONE\tMid\t35\t45\t42\t1200\t180\t120\t400\t250", "ZONE\tMid2\t40\t50\t46\t1500\t200\t130\t450\t280", "ZONE\tHard\t70\t75\t72\t2566\t308\t200\t743\t507", "ZONE\tCrowded\t35\t45\t42\t1200\t180\t120\t400\t250\t30\t4\t100\t3940");
+
+	private static void testZoneCombat() throws RuntimeException
+	{
+		final ZoneCombat model;
+		try
+		{
+			model = ZoneCombat.parse(new java.io.StringReader(ZONE_DATA), ZoneCombat.Params.defaults());
+		}
+		catch (java.io.IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+		check("zone combat: parsed zones", model.enabled() && (model.zoneCount() == 5));
+		final ZoneCombat.Stats shotStats = model.curveStats(ZoneCombat.roleOf(2), 2, 2);
+		check("shots per kill: off by default (negative = use the flat setting)", model.shotsPerKill("Mid", 2, 40, shotStats, 1.0, false) < 0.0);
+		model.setShotModel(true, 1.4, 2.4, 2.2);
+		final double meleeShots = model.shotsPerKill("Mid", 2, 40, shotStats, 1.0, false);
+		check("shots per kill: at least one hit's shots (C grade melee fires 3 per attack)", (meleeShots >= 3.0) && (Math.abs((meleeShots / 3.0) - Math.rint(meleeShots / 3.0)) < 1e-9));
+		check("shots per kill: unknown zone falls back to the flat setting", model.shotsPerKill("Nowhere", 2, 40, shotStats, 1.0, false) < 0.0);
+		check("potions: no habit, no potions", model.potionsPerHour("Mid", 2, 40, shotStats, 1.0, 0.0) == 0.0);
+		check("potions: never more than the habit", model.potionsPerHour("Mid", 2, 40, shotStats, 1.0, 4.0) <= 4.0);
+		check("zone combat: off model returns the flat rate", ZoneCombat.off().killsPerMinute("Mid", 2, 40, 2, 2, 1.0) == 12.0);
+		check("zone combat: unknown zone returns the flat rate", model.killsPerMinute("Nowhere", 2, 40, 2, 2, 1.0) == 12.0);
+		check("zone combat: unknown zone death factor is 1", model.deathFactor("Nowhere", 2, 40, 2) == 1.0);
+		final double fitted = model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0);
+		final double behind = model.killsPerMinute("Mid", 2, 40, 1, 1, 1.0);
+		final double noSkills = model.killsPerMinute("Mid", 2, 40, 2, 2, 0.0);
+		check("zone combat: worse weapon grade kills slower", behind < fitted);
+		check("zone combat: missing skills kill slower", noSkills < fitted);
+		check("zone combat: skill floor halves damage, not more", noSkills > (fitted * 0.4));
+		check("zone combat: a fitted bot is near the flat rate in the median zone", Math.abs(fitted - 12.0) < 3.0);
+		check("zone combat: kill rate stays under the cap and above zero", (model.killsPerMinute("Easy", 10, 5, 0, 0, 1.0) <= 24.0) && (model.killsPerMinute("Hard", 10, 72, 0, 0, 0.0) > 0.0));
+		check("zone combat: same stats, tougher zone, slower kills", model.killsPerMinute("Hard", 2, 72, 5, 5, 1.0) < model.killsPerMinute("Easy", 2, 72, 5, 5, 1.0));
+		check("zone combat: more skills never kill slower", model.killsPerMinute("Mid", 2, 40, 2, 2, 0.6) >= model.killsPerMinute("Mid", 2, 40, 2, 2, 0.3));
+		check("zone combat: weaker armor raises the death factor", model.deathFactor("Mid", 2, 40, 0) > model.deathFactor("Mid", 2, 40, 2));
+		check("zone combat: tougher zone raises the death factor", model.deathFactor("Hard", 2, 40, 5) > model.deathFactor("Easy", 2, 40, 5));
+		check("zone combat: death factor stays inside the limits", (model.deathFactor("Hard", 10, 40, 0) <= 4.0) && (model.deathFactor("Easy", 2, 40, 5) >= 0.25));
+		check("zone combat: roles", (ZoneCombat.roleOf(6) == ZoneCombat.Role.TANK) && (ZoneCombat.roleOf(2) == ZoneCombat.Role.MELEE) && (ZoneCombat.roleOf(9) == ZoneCombat.Role.BOW) && (ZoneCombat.roleOf(10) == ZoneCombat.Role.MAGE));
+		check("zone combat: grade of a whole tier", (ZoneCombat.gradeOfTier(0, 10) == 0) && (ZoneCombat.gradeOfTier(2, 10) == 1) && (ZoneCombat.gradeOfTier(5, 10) == 2) && (ZoneCombat.gradeOfTier(3, 0) == 0));
+		check("zone combat: skill fraction counts learned levels", ZoneCombat.skillFraction(java.util.List.of(new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(1, 1, 5, 0, 0, 0, true), new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(2, 1, 5, 0, 0, 0, true), new org.l2jmobius.gameserver.livingpop.SkillPlanner.Entry(3, 1, 50, 0, 0, 0, true)), java.util.Map.of(1, 1), 10) == 0.5);
+		check("zone combat: untracked skills count as complete", ZoneCombat.skillFraction(java.util.List.of(), null, 10) == 1.0);
+		final ColdRisk.Params risk = new ColdRisk.Params(0.3, 90_000L, 600_000L, 60_000L, 3_600_000L);
+		final double flat = ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 2).deathsPerHour();
+		final double zoned = ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 2, 2.0).deathsPerHour();
+		check("zone combat: old danger unchanged and zone factor multiplies", (Math.abs(flat - 0.3) < 1e-9) && (Math.abs(zoned - 0.6) < 1e-9));
+		final double behindFlat = ColdRisk.danger(risk, 40, 37, 43, 20, 2, 4, 2).deathsPerHour();
+		final double behindZoned = ColdRisk.danger(risk, 40, 37, 43, 20, 2, 4, 2, 1.0).deathsPerHour();
+		check("zone combat: zone factor replaces the gear-behind step", (behindFlat > flat) && (Math.abs(behindZoned - 0.3) < 1e-9));
+		check("zone combat: the class guess applies only without a zone factor", (ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 6).deathsPerHour() < ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 10).deathsPerHour()) && (Math.abs(ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 6, 1.0).deathsPerHour() - ColdRisk.danger(risk, 40, 37, 43, 20, 4, 4, 10, 1.0).deathsPerHour()) < 1e-9));
+		check("zone combat: a zone with no rest rows is not rest-modeled (the fixed rests stay)", !model.restModeled("Nowhere"));
+		check("zone combat: mob level is read from the data", (Math.abs(model.mobLevel("Mid") - 42.0) < 1e-9) && (model.mobLevel("Nowhere") < 0));
+		check("exp gap: a bot 11+ levels over the zone earns nothing", ZoneCombat.outleveled(25, 4.0, 11) && ZoneCombat.outleveled(15, 4.0, 11));
+		check("exp gap: inside the limit earns", !ZoneCombat.outleveled(14, 4.0, 11) && !ZoneCombat.outleveled(42, 42.0, 11));
+		check("exp gap: far below the zone earns nothing too", ZoneCombat.outleveled(20, 42.0, 11) && !ZoneCombat.outleveled(35, 42.0, 11));
+		check("exp gap: unknown zone or no limit never blocks", !ZoneCombat.outleveled(80, -1.0, 11) && !ZoneCombat.outleveled(80, 4.0, 0));
+		// buffed leveling: a share of the full buffer party, per role
+		final String withBuffs = ZONE_DATA + "\nBUFF\tmelee\t40\t1.25\t1.10\t1.40\nBUFF\tmage\t40\t1.60\t1.10\t1.40";
+		final ZoneCombat buffed;
+		try
+		{
+			buffed = ZoneCombat.parse(new java.io.StringReader(withBuffs), ZoneCombat.Params.defaults());
+		}
+		catch (java.io.IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+		final double unbuffedKills = buffed.killsPerMinute("Mid", 2, 40, 2, 2, 1.0);
+		buffed.setBuffShares(new double[] { 0.0, 1.0, 0.0, 0.5 });
+		check("buffs: share 1 kills faster", buffed.killsPerMinute("Mid", 2, 40, 2, 2, 1.0) > unbuffedKills);
+		check("buffs: a role with share 0 is unchanged", Math.abs(buffed.killsPerMinute("Mid", 6, 40, 2, 2, 1.0) - model.killsPerMinute("Mid", 6, 40, 2, 2, 1.0)) < 1e-9);
+		check("buffs: half share sits between none and full", buffed.killsPerMinute("Mid", 10, 40, 2, 2, 1.0) > model.killsPerMinute("Mid", 10, 40, 2, 2, 1.0));
+		final double buffedDeaths = buffed.deathFactor("Hard", 2, 40, 2);
+		check("buffs: defence lowers the death factor", buffedDeaths < model.deathFactor("Hard", 2, 40, 2));
+		check("buffs: a level without a row has no effect", Math.abs(buffed.killsPerMinute("Mid", 2, 41, 2, 2, 1.0) - model.killsPerMinute("Mid", 2, 41, 2, 2, 1.0)) < 1e-9);
+		buffed.setBuffShares(null);
+		check("buffs: shares cleared returns to the baseline", Math.abs(buffed.killsPerMinute("Mid", 2, 40, 2, 2, 1.0) - unbuffedKills) < 1e-9);
+		final double noShots = model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0);
+		final double halfShots = model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.5);
+		check("shots: a bot with none kills slower", noShots < fitted);
+		check("shots: half the time sits between", (halfShots < fitted) && (halfShots > noShots));
+		check("shots: all the time is the calibrated rate", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 1.0) - fitted) < 1e-9);
+		check("shots: a mage loses less than a fighter (spiritshots add the square root)", (model.killsPerMinute("Mid", 10, 40, 2, 2, 1.0, 0.0) / model.killsPerMinute("Mid", 10, 40, 2, 2, 1.0, 1.0)) > (noShots / fitted));
+		model.setShotDamage(1.0, 1.0);
+		check("shots: a bonus of 1 turns the check off", Math.abs(model.killsPerMinute("Mid", 2, 40, 2, 2, 1.0, 0.0) - fitted) < 1e-9);
+		model.setShotDamage(2.0, Math.sqrt(2.0));
+		final String rotData = "CURVE\tpatk_melee\t10\t20\t30\t40\t50\t60\nCURVE\tpatk_bow\t10\t20\t30\t40\t50\t60\nCURVE\tmatk_mage\t10\t20\t30\t40\t50\t60\n" + "CURVE\tpdef_tank\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_melee\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_light\t100\t120\t140\t160\t180\t200\nCURVE\tpdef_robe\t100\t120\t140\t160\t180\t200\n" + "CURVE\tmdef_heavy\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_light\t50\t60\t70\t80\t90\t100\nCURVE\tmdef_robe\t50\t60\t70\t80\t90\t100\n" + "ZONE\tRot\t38\t42\t40\t400\t400\t300\t50\t50\t10\t5\t0\t100\n" + "ROT\tphoenix knight\t40\t10\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t90\tphoenix knight\nROT\tarchmage\t40\t0\t150\t150\t150\t150\t150\t150\t150\nROTCLASS\t94\tarchmage\nROT\tduelist\t40\t10\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t88\tduelist\n";
+		try
+		{
+			final ZoneCombat rot = ZoneCombat.parse(new java.io.StringReader(rotData), ZoneCombat.Params.defaults());
+			rot.setRotationTtk(true);
+			final ZoneCombat.Stats fit = rot.curveStats(ZoneCombat.Role.MELEE, 2, 2);
+			final double full = rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double none = rot.killsPerMinute("Rot", 88, 40, fit, 0.0, 1.0);
+			check("rotation ttk: a class with a rotation line gets its own rate", rot.hasRotation(88) && !rot.hasRotation(2));
+			check("rotation ttk: 100 dps (x 400/400) kills a 400 HP monster in 4 s, plus 2.5 s of overhead", Math.abs(full - (60.0 / 6.5)) < 0.05);
+			check("rotation ttk: skipping all skills falls back to the auto-attack rate", Math.abs(none - (60.0 / (400.0 / 10.0 + 2.5))) < 0.05 || none <= full);
+			check("rotation ttk: a worse weapon kills slower", rot.killsPerMinute("Rot", 88, 40, new ZoneCombat.Stats(fit.attack() / 2, fit.pDef(), fit.mDef()), 1.0, 1.0) < full);
+			
+			final String restData = rotData.replace("ROT\tduelist", "REST\tRot\tmelee\t40\t6.5\t40\t10\t0\nROT\tduelist");
+			final ZoneCombat rested = ZoneCombat.parse(new java.io.StringReader(restData), ZoneCombat.Params.defaults());
+			rested.setRotationTtk(true);
+			final double standing = rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			rested.setRest(true);
+			final double sitting = rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double withPotions = rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0, false, 120.0);
+			check("rest: sitting to refill HP costs kills", sitting < standing);
+			check("rest: potions heal some of the HP so the bot sits less", withPotions > sitting);
+			check("rest: a zone with no rest data is untouched", Math.abs(rested.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - sitting) < 1e-9);
+			final ZoneCombat dodge = ZoneCombat.parse(new java.io.StringReader(rotData.replace("\t0\t100\n", "\t0\t100\t30\n")), ZoneCombat.Params.defaults());
+			final double noEvasion = dodge.deathFactor("Rot", 9, 40, dodge.curveStats(ZoneCombat.Role.BOW, 2, 2));
+			dodge.setEvasion(true);
+			check("evasion: archers dodge more than mages (a lower death factor)", dodge.deathFactor("Rot", 9, 40, dodge.curveStats(ZoneCombat.Role.BOW, 2, 2)) <= dodge.deathFactor("Rot", 10, 40, dodge.curveStats(ZoneCombat.Role.MAGE, 2, 2)) * 1.0001);
+			rot.setRotationTtk(true);
+			final ZoneCombat.Stats mage = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
+			final ZoneCombat.PartyOutcome healerParty = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3);
+			final ZoneCombat.PartyOutcome tankParty = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3);
+			check("party: a healer gets a party outcome", (healerParty != null) && (healerParty.slot() == 3));
+			final double[] serverBonus = { 1.0, 1.10, 1.20, 1.30, 1.40, 1.50, 2.0, 2.10, 2.20 };
+			final int[] sizes = new int[10];
+			boolean sharesFit = true;
+			for (int v = 0; v < 64; v++)
+			{
+				final ZoneCombat.PartyOutcome o = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, v);
+				final int size = (int) Math.round(1.0 / o.lootShare());
+				sharesFit &= (size >= 4) && (size <= 9) && (Math.abs(o.expShare() - (serverBonus[size - 1] / size)) < 1e-9);
+				sizes[Math.max(0, Math.min(9, size))]++;
+			}
+			check("party: 4 to 9 members, exp share is the server's bonus for the size over the size", sharesFit);
+			check("party: four members is the commonest size and nine the rarest", (sizes[4] > sizes[5]) && (sizes[5] >= sizes[9]));
+			boolean levelSizes = true;
+			for (int v = 0; v < 64; v++)
+			{
+				levelSizes &= Math.round(1.0 / rot.party("Rot", 97, 76, mage, 1.0, 1.0, false, v).lootShare()) >= 7;
+				levelSizes &= Math.round(1.0 / rot.party("Rot", 97, 70, mage, 1.0, 1.0, false, v).lootShare()) >= 6;
+			}
+			check("party: at 70+ no party is under six, at 76+ none under seven", levelSizes);
+			boolean spoilers = true;
+			for (int v = 0; v < 64; v++)
+			{
+				final ZoneCombat.PartyOutcome o = rot.party("Rot", 97, 61, mage, 1.0, 1.0, false, v);
+				spoilers &= (Math.round(1.0 / o.lootShare()) < 6) || o.spoils();
+			}
+			check("party: from six members a party has a spoiler", spoilers);
+			check("party chance by level: none below 20, 15% at 20, 50% at 50, 90% at 76 and up", (ZoneCombat.partyChance(19) == 0.0) && (ZoneCombat.partyChance(20) == 0.15) && (ZoneCombat.partyChance(49) == 0.35) && (ZoneCombat.partyChance(50) == 0.5) && (ZoneCombat.partyChance(76) == 0.9) && (ZoneCombat.partyChance(85) == 0.9));
+			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
+			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
+			check("party: the party is no worse to die in than going alone (without HP data the tank has the solo rate)", tankParty.deathFactor() <= rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)) + 1e-9);
+			final ZoneCombat starting = ZoneCombat.parse(new java.io.StringReader(rotData + "NBUFF\tMELEE\t16\t1.15\t1.15\t1.0\t1.2\t0.09\t1.275\nNBUFF\tMELEE\t12\t1.0\t1.0\t1.0\t1.0\t0.0\t1.275\nPBUFF\thierophant\tmelee\t30\t1.4\t1.1\t1.0\nPBUFF\tdoom_cryer\tmelee\t30\t1.2\t1.1\t1.0\n"), ZoneCombat.Params.defaults());
+			starting.setRotationTtk(true);
+			final double unbuffedL16 = starting.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0);
+			final double unbuffedL30 = starting.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0);
+			final double unbuffedL7 = starting.killsPerMinute("Rot", 88, 7, fit, 1.0, 1.0);
+			starting.setStartingBuffs(true);
+			check("starting buffs: the Newbie Helper's Haste at level 16 kills faster", starting.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0) > unbuffedL16);
+			check("starting buffs: below level 8 nothing", Math.abs(starting.killsPerMinute("Rot", 88, 7, fit, 1.0, 1.0) - unbuffedL7) < 1e-9);
+			check("starting buffs: from 26 the average of a Hierophant and a Doom Cryer (x1.3 here)", starting.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0) > unbuffedL30);
+			check("starting buffs: Wind Walk shortens the walk between monsters even with no damage buff (level 12)", starting.killsPerMinute("Rot", 88, 12, fit, 1.0, 1.0) > unbuffedL7 + 1e-9);
+			starting.setStartingBuffs(false);
+			check("starting buffs: off returns to the base rate", Math.abs(starting.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0) - unbuffedL30) < 1e-9);
+			final ZoneCombat lateBuffs = ZoneCombat.parse(new java.io.StringReader(restData.replace("ROT\tduelist", "BBUFF\thierophant\t30\t33\t1.2\t0.0\t1.2\nBBUFF\tdoom_cryer\t30\t0\t1.0\t0.09\t1.0\nPBUFF\thierophant\tmelee\t30\t1.0\t1.0\t1.0\nPBUFF\tdoom_cryer\tmelee\t30\t1.0\t1.0\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			lateBuffs.setRotationTtk(true);
+			lateBuffs.setRest(true);
+			final double late0 = lateBuffs.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0);
+			lateBuffs.setStartingBuffs(true);
+			check("buffers at 26+: Wind Walk, Regeneration and Chant of Vampire raise kills (less walking and sitting)", lateBuffs.killsPerMinute("Rot", 88, 30, fit, 1.0, 1.0) > late0);
+			final ZoneCombat pet = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tarchmage", "SERV\tarchmage\t40\t100\t5000\t200\t100\t0\nPBUFF\thierophant\tmelee\t40\t2.0\t1.0\t1.0\nPBUFF\tdoom_cryer\tmelee\t40\t2.0\t1.0\t1.0\nPBUFF\thierophant\tmage\t40\t1.0\t1.0\t1.0\nPBUFF\tdoom_cryer\tmage\t40\t1.0\t1.0\t1.0\nROT\tarchmage")), ZoneCombat.Params.defaults());
+			pet.setRotationTtk(true);
+			final double petBase = pet.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0);
+			pet.setStartingBuffs(true);
+			check("servitor: it gets the fighter buffs, not the summoner's (the mage buffs here are 1.0, the fighter's 2.0)", pet.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0) > petBase);
+			final ZoneCombat vamp = ZoneCombat.parse(new java.io.StringReader(restData.replace("ROT\tduelist", "NBUFF\tMELEE\t16\t1.0\t1.0\t1.0\t1.0\t0.09\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			vamp.setRotationTtk(true);
+			vamp.setRest(true);
+			final double sitNoVamp = vamp.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0);
+			vamp.setStartingBuffs(true);
+			check("vampiric rage: HP returned from damage dealt means less sitting", vamp.killsPerMinute("Rot", 88, 16, fit, 1.0, 1.0) > sitNoVamp);
+			final double bowWalk = rot.killsPerMinute("Rot", 92, 40, rot.curveStats(ZoneCombat.Role.BOW, 2, 2), 1.0, 1.0);
+			final double meleeWalk = rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			rot.setRangedWalk(0.5);
+			check("ranged walk: archers and mages walk half as much between kills, fighters the same", (rot.killsPerMinute("Rot", 92, 40, rot.curveStats(ZoneCombat.Role.BOW, 2, 2), 1.0, 1.0) > bowWalk) && (Math.abs(rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - meleeWalk) < 1e-9));
+			rot.setRangedWalk(1.0);
+			final java.util.Set<String> seen = new java.util.HashSet<>();
+			for (int v = 0; v < 64; v++)
+			{
+				seen.add(String.valueOf(Math.round(rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, v).killsPerMinute() * 1000)));
+			}
+			check("party: the damage dealer varies across the whole damage list", seen.size() > 2);
+			rot.setRangedWalk(0.5);
+			final double ranged = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3).killsPerMinute();
+			rot.setRangedWalk(1.0);
+			check("party: a ranged damage dealer (the healer's mage) pulls for the group, so the party walks less", ranged > rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3).killsPerMinute());
+			final ZoneCombat noMp = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "REST\tRot\tmelee\t40\t6.5\t40\t10\t0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			final ZoneCombat withMp = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "REST\tRot\tmelee\t40\t6.5\t40\t10\t0\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			noMp.setRest(true);
+			withMp.setRest(true);
+			final double spoilFree = noMp.killsPerMinute("Rot", 117, 40, fit, 1.0, 1.0);
+			check("spoil mana: a spoiler bot sits to refill the mana Spoil takes on every kill", withMp.killsPerMinute("Rot", 117, 40, fit, 1.0, 1.0) < spoilFree);
+			check("spoil mana: other classes pay nothing", Math.abs(withMp.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - noMp.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0)) < 1e-9);
+			check("spoil mana: grows with the Spoil level", (ZoneCombat.spoilMana(9) == 0) && (ZoneCombat.spoilMana(40) == 31) && (ZoneCombat.spoilMana(80) == 67));
+			boolean anySpoil = false;
+			boolean anyClean = false;
+			for (int v = 0; v < 64; v++)
+			{
+				final boolean spoils = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, v).spoils();
+				anySpoil |= spoils;
+				anyClean |= !spoils;
+			}
+			check("party spoiling: a Fortune Seeker among the random damage dealers makes the party spoil", anySpoil && anyClean);
+			check("party spoiling: a spoiler bot's party spoils, and its spoil mana is its own cost", rot.party("Rot", 117, 40, fit, 1.0, 1.0, false, 3).spoils());
+			final String undeadRow = "ROTU\tduelist\t40\t0\t300\t300\t300\t300\t300\t300\t300\n";
+			final ZoneCombat noUndead = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", undeadRow + "ROT\tduelist")), ZoneCombat.Params.defaults());
+			final ZoneCombat halfUndead = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", undeadRow + "ZUNDEAD\tRot\t0.5\nROT\tduelist")), ZoneCombat.Params.defaults());
+			final ZoneCombat allUndead = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", undeadRow + "ZUNDEAD\tRot\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			noUndead.setRotationTtk(true);
+			halfUndead.setRotationTtk(true);
+			allUndead.setRotationTtk(true);
+			final double undeadNone = noUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double undeadHalf = halfUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			final double undeadFull = allUndead.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			check("undead rotation: a zone of undead uses the line's undead rotation, a mixed zone in between, a zone without undead the plain one", (undeadNone < undeadHalf) && (undeadHalf < undeadFull));
+			final ZoneCombat worse = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROTU\tduelist\t40\t0\t10\t10\t10\t10\t10\t10\t10\nZUNDEAD\tRot\t1.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			worse.setRotationTtk(true);
+			check("undead rotation: used only when it is faster than the plain one", Math.abs(worse.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - undeadNone) < 1e-9);
+			check("undead rotation: a line without one is unchanged", Math.abs(allUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0) - noUndead.killsPerMinute("Rot", 94, 40, mage, 1.0, 1.0)) < 1e-9);
+			final ZoneCombat tankLines = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROT\tpk\t40\t0\t100\t100\t100\t100\t100\t100\t100\nROTCLASS\t90\tpk\nROT\thk\t40\t0\t400\t400\t400\t400\t400\t400\t400\nROTCLASS\t91\thk\nROT\tduelist")), ZoneCombat.Params.defaults());
+			tankLines.setRotationTtk(true);
+			final double tankFirst = tankLines.party("Rot", 97, 40, mage, 1.0, 1.0, false, 0).killsPerMinute();
+			final double tankSecond = tankLines.party("Rot", 97, 40, mage, 1.0, 1.0, false, 38).killsPerMinute();
+			check("party: the reference tank is drawn at random from the tank classes (Phoenix Knight, Hell Knight, the Templars)", tankSecond > tankFirst);
+			check("party: each drop is split by the party size", (tankParty.lootShare() <= 0.25 + 1e-9) && (tankParty.lootShare() >= 1.0 / 9.0 - 1e-9));
+			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
+			final ZoneCombat selfBuffed = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROTSELF\tduelist\t40\t2\t2\t2\t2\t2\t2\t2\t0.8\t1.0\t94,312\nROT\tduelist")), ZoneCombat.Params.defaults());
+			selfBuffed.setRotationTtk(true);
+			final double withSelf = selfBuffed.killsPerMinute("Rot", 88, 40, new ZoneCombat.Stats(fit.attack(), fit.pDef(), fit.mDef(), 1.0), 1.0, 1.0);
+			final double halfSelf = selfBuffed.killsPerMinute("Rot", 88, 40, new ZoneCombat.Stats(fit.attack(), fit.pDef(), fit.mDef(), 0.5), 1.0, 1.0);
+			final double noSelf = selfBuffed.killsPerMinute("Rot", 88, 40, new ZoneCombat.Stats(fit.attack(), fit.pDef(), fit.mDef(), 0.0), 1.0, 1.0);
+			check("self buffs: the ones it has bought raise its damage, none gives the base rate", (withSelf > halfSelf) && (halfSelf > noSelf) && (Math.abs(noSelf - full) < 1e-9));
+			check("self buffs: the ids the data assumes are known", (selfBuffed.selfBuffIds(88, 40).length == 2) && (selfBuffed.selfBuffIds(94, 40).length == 0));
+			check("self buffs: a defence penalty (Rage) raises the death factor", selfBuffed.deathFactor("Rot", 88, 40, new ZoneCombat.Stats(fit.attack(), 140.0, 200.0, 1.0)) > selfBuffed.deathFactor("Rot", 88, 40, new ZoneCombat.Stats(fit.attack(), 140.0, 200.0, 0.0)));
+			final ZoneCombat summoner = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tarchmage", "SERV\tarchmage\t40\t100\t5000\t200\nROT\tarchmage")), ZoneCombat.Params.defaults());
+			summoner.setRotationTtk(true);
+			check("servitor: its damage kills faster than the summoner alone", summoner.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0) > rot.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0));
+			check("servitor: it takes the hits first, so the summoner dies less", summoner.deathFactor("Rot", 94, 40, mageFit) < rot.deathFactor("Rot", 94, 40, mageFit));
+			final String healRows = "HEAL\tarchmage\t40\t1015\t300\t30\t2.0\t3.0\nHEAL\tarchmage\t40\t1127\t400\t40\t2.0\t3.0\n";
+			final ZoneCombat healed = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tarchmage", "REST\tRot\tmage\t40\t6.5\t200\t10\t0\t20.0\n" + healRows + "ROT\tarchmage")), ZoneCombat.Params.defaults());
+			healed.setRotationTtk(true);
+			healed.setRest(true);
+			final double noHealKills = healed.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0);
+			final double noHealDeaths = healed.deathFactor("Rot", 94, 40, mageFit);
+			healed.setSelfHeal(true);
+			check("self heal: a mage with heals sits less than one without (the heals' mana and casting cost less than the HP they save)", healed.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0) > noHealKills);
+			check("self heal: and dies less", healed.deathFactor("Rot", 94, 40, mageFit) < noHealDeaths);
+			final ZoneCombat noRows = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tarchmage", "REST\tRot\tmage\t40\t6.5\t200\t10\t0\t20.0\nROT\tarchmage")), ZoneCombat.Params.defaults());
+			noRows.setRotationTtk(true);
+			noRows.setRest(true);
+			final double plain = noRows.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0);
+			noRows.setSelfHeal(true);
+			healed.setExpModel(l -> 1_000_000_000_000L, 1.0);
+			check("self heal: with deaths that costly it heals (fewer deaths even where it kills slower)", healed.deathFactor("Rot", 94, 40, mageFit) < noHealDeaths);
+			healed.setExpModel(l -> 1L, 1.0);
+			check("self heal: a line with no heal data is unchanged", Math.abs(noRows.killsPerMinute("Rot", 94, 40, mageFit, 1.0, 1.0) - plain) < 1e-9);
+			final ZoneCombat fighterHeal = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "REST\tRot\tmelee\t40\t6.5\t40\t10\t0\t1.0\nHEAL\tduelist\t40\t1015\t300\t30\t2.0\t3.0\nROT\tduelist")), ZoneCombat.Params.defaults());
+			fighterHeal.setRotationTtk(true);
+			fighterHeal.setRest(true);
+			final double fighterBase = fighterHeal.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0);
+			fighterHeal.setSelfHeal(true);
+			check("self heal: fighters do not heal themselves", Math.abs(fighterHeal.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - fighterBase) < 1e-9);
+			final ZoneCombat noPetHeal = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tarchmage", "REST\tRot\tmage\t40\t6.5\t200\t10\t0\t20.0\n" + healRows + "SERV\tarchmage\t40\t100\t5000\t200\nROT\tarchmage")), ZoneCombat.Params.defaults());
+			noPetHeal.setRotationTtk(true);
+			noPetHeal.setRest(true);
+			final double exposureBefore = noPetHeal.deathFactor("Rot", 94, 40, mageFit);
+			noPetHeal.setSelfHeal(true);
+			check("servitor heal: a healed servitor holds longer, so its summoner is exposed less", noPetHeal.deathFactor("Rot", 94, 40, mageFit) < exposureBefore);
+			rot.setParty(new ZoneCombat.PartyParams(false, 0.75, 0.3, 45.0, 0.12, 0.3));
+			check("party: off gives no outcome", rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3) == null);
+			rot.setParty(ZoneCombat.PartyParams.defaults());
+			rot.setRotationTtk(false);
+			check("rotation ttk: off uses the relative model", Math.abs(rot.killsPerMinute("Rot", 88, 40, fit, 1.0, 1.0) - full) > 1e-9);
+		}
+		catch (java.io.IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+		final ZoneCombat.Stats mageGear = model.curveStats(ZoneCombat.Role.MAGE, 2, 2);
+		final double plainSps = model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 1.0, false);
+		final double blessedSps = model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 1.0, true);
+		check("blessed spiritshots: a mage firing them kills faster than with plain ones", blessedSps > plainSps);
+		check("blessed spiritshots: a fighter is unaffected by the flag", Math.abs(model.killsPerMinute("Mid", 2, 40, model.curveStats(ZoneCombat.Role.MELEE, 2, 2), 1.0, 1.0, true) - model.killsPerMinute("Mid", 2, 40, model.curveStats(ZoneCombat.Role.MELEE, 2, 2), 1.0, 1.0, false)) < 1e-9);
+		check("blessed spiritshots: with none in stock the flag changes nothing", Math.abs(model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 0.0, true) - model.killsPerMinute("Mid", 10, 40, mageGear, 1.0, 0.0, false)) < 1e-9);
+		check("zone exp: the zone's average exp per kill is read, unknown is -1", (Math.abs(model.expPerKill("Crowded") - 3940.0) < 1e-9) && (model.expPerKill("Mid") < 0) && (model.expPerKill("Nowhere") < 0));
+		// respawn limit and aggressive zones
+		check("respawn: a lone bot gets the usable share of the zone (30 a minute, half usable)", Math.abs(model.respawnCap("Crowded", 1, 0.5) - 15.0) < 1e-9);
+		check("respawn: bots share the zone", Math.abs(model.respawnCap("Crowded", 10, 0.5) - 1.5) < 1e-9);
+		check("respawn: unknown respawns or zone never cap", Double.isInfinite(model.respawnCap("Mid", 5, 0.5)) && Double.isInfinite(model.respawnCap("Nowhere", 5, 0.5)));
+		final double calm = model.deathFactor("Crowded", 2, 40, 2);
+		model.setAggroRisk(1.0);
+		check("aggro: a fully aggressive zone doubles the death factor", Math.abs(model.deathFactor("Crowded", 2, 40, 2) - (2.0 * calm)) < 1e-9);
+		check("aggro: a zone with no aggressive monsters is unchanged", Math.abs(model.deathFactor("Mid", 2, 40, 2) - model.deathFactor("Mid", 2, 40, 2)) < 1e-9);
+		model.setAggroRisk(0.0);
+		check("aggro: risk 0 turns it off", Math.abs(model.deathFactor("Crowded", 2, 40, 2) - calm) < 1e-9);
+		// HP-model deaths with more monsters joining a fight (a rest row with an HP pool turns the model on for the zone)
+		try
+		{
+			final String hpData = ZONE_DATA + "\nREST\tCrowded\tmelee\t40\t6.5\t200\t10\t0\t1.0\t4000\nREST\tMid\tmelee\t40\t6.5\t200\t10\t0\t1.0\t4000";
+			final ZoneCombat hp = ZoneCombat.parse(new java.io.StringReader(hpData), ZoneCombat.Params.defaults());
+			hp.setRest(true);
+			hp.setHpDeaths(true, 0.002, 0.3);
+			final ZoneCombat.Stats hpStats = hp.curveStats(ZoneCombat.Role.MELEE, 2, 2);
+			check("hp deaths: a zone without rest data has none (-1)", hp.deathsPerHour("Easy", 2, 40, hpStats) < 0.0);
+			hp.setExtraMonsters(new double[] { 0, 0, 0, 0, 0 });
+			final double alone = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			hp.setExtraMonsters(new double[] { 0.15, 0.075, 0.04, 0.02, 0.01 });
+			final double crowd = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			check("hp deaths: monsters joining the fight add deaths", crowd >= alone);
+			hp.setHpDeaths(true, 0.2, 0.3);
+			final double lax = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			hp.setHpDeaths(true, 0.0001, 0.3);
+			final double strict = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			check("hp deaths: a bot that accepts a riskier fight dies more", lax >= strict);
+			check("hp deaths: the rate is never negative where there is rest data", (strict >= 0.0) && (crowd >= 0.0) && (alone >= 0.0));
+		}
+		catch (Exception e)
+		{
+			check("hp deaths: the test model parses (" + e.getMessage() + ")", false);
+		}
+		check("zone combat: economy params keep everything but the kill rate", econ().withKillsPerMinute(7.0).killsPerMinute() == 7.0 && econ().withKillsPerMinute(7.0).adenaPerMobLevel() == 5.0);
 	}
 
 	private static void check(String label, boolean condition)
