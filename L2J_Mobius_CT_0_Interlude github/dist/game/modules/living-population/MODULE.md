@@ -175,4 +175,6 @@ keeps it.
 | `SnapshotFile` | Path of the monitoring JSON snapshot. |
 
 
+Town stock (`TownStock`, table `living_town_stock`): while cold bots hunt, the sellable items their kills drop (from the same drop lists and rates as the loot value, weapons and armor excluded) are added to the stock of the town they sell in, rounded at random so small amounts add up. Nothing takes items out yet, and the bots are still paid the vendor price for their loot as before. The stock is saved with each status snapshot and written to `LivingPopulation-townstock.json` next to it.
+
 The zone combat model (`ZoneCombat`, rotations, zone supply, deaths, experience) is explained in detail in `ZONE_COMBAT.md`.

@@ -32,6 +32,7 @@ import org.l2jmobius.gameserver.livingpop.ColdLife;
 import org.l2jmobius.gameserver.livingpop.ColdRisk;
 import org.l2jmobius.gameserver.livingpop.DecisionLog;
 import org.l2jmobius.gameserver.livingpop.DropYield;
+import org.l2jmobius.gameserver.livingpop.TownStock;
 import org.l2jmobius.gameserver.livingpop.GoalPlanner;
 import org.l2jmobius.gameserver.livingpop.LivingChat;
 import org.l2jmobius.gameserver.livingpop.LivingGear;
@@ -82,6 +83,7 @@ public class LivingTravelTest
 		testErrandPosition();
 		testStarterZone();
 		testDropYield();
+		testTownStock();
 		testLootSale();
 		testColdRisk();
 		testColdDeathAndRest();
@@ -454,6 +456,37 @@ public class LivingTravelTest
 	private static boolean near(double value, double expected)
 	{
 		return Math.abs(value - expected) < 1e-6;
+	}
+
+	private static void testTownStock()
+	{
+		final DropYield.Rates plain = DropYield.Rates.plain();
+		// A 10% x 50% drop of 1 item (id 1), a sure drop of 3 (id 3): a herb, a quest item and adena are not stocked.
+		final List<DropYield.Drop> drops = List.of(new DropYield.Drop(57, 70, 100, 19, 29), new DropYield.Drop(1, 10, 50, 1, 1), new DropYield.Drop(3, 100, 100, 3, 3), new DropYield.Drop(8600, 20, 100, 1, 1), new DropYield.Drop(900, 100, 100, 2, 2));
+		final Map<Integer, Double> counts = DropYield.counts(drops, List.of(), false, 20, 20, plain, ITEMS);
+		check("item counts per kill are chance times the average amount", near(counts.get(1), 0.05) && near(counts.get(3), 3.0));
+		check("adena, herbs and quest items are left out of the counts", counts.size() == 2);
+		final DropYield.Yield yield = DropYield.perKill(drops, List.of(), false, 20, 20, plain, ITEMS);
+		check("loot value is the counts times their shop prices", near(yield.loot(), (0.05 * 100) + (3.0 * 100)));
+
+		final TownStock stock = new TownStock();
+		check("a new stock is empty and clean", (stock.count("Giran", 3) == 0) && !stock.dirty());
+		stock.deposit("Giran", counts, 10, new java.util.Random(1));
+		check("a sure drop adds up exactly", stock.count("Giran", 3) == 30);
+		check("a deposit marks the stock changed", stock.dirty());
+		stock.clean();
+		check("clean clears the changed mark", !stock.dirty());
+		stock.deposit(null, counts, 10, new java.util.Random(1));
+		stock.deposit("Giran", counts, 0, new java.util.Random(1));
+		check("no town or no kills deposits nothing", !stock.dirty());
+		final java.util.Random random = new java.util.Random(7);
+		for (int i = 0; i < 2000; i++)
+		{
+			stock.deposit("Aden", counts, 1, random);
+		}
+		final long rare = stock.count("Aden", 1);
+		check("a rare drop averages out over many spans", (rare > 70) && (rare < 130));
+		check("towns are kept apart", (stock.count("Giran", 3) == 30) && (stock.count("Aden", 3) == 6000) && (stock.snapshot().size() == 2));
 	}
 
 	private static void testDropYield()

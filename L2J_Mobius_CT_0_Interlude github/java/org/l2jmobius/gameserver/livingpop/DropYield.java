@@ -154,43 +154,73 @@ public final class DropYield
 		final double itemGap = rates.itemGap().chance(monsterLevel - killerLevel) / 100.0;
 		final double[] probability = probabilities(drops, monsterLevel, killerLevel, rates, items);
 		double adena = 0;
-		double loot = 0;
 		for (int i = 0; i < drops.size(); i++)
 		{
-			final Drop drop = drops.get(i);
-			if ((drop.itemId() != ADENA) && items.herb(drop.itemId()))
+			if (drops.get(i).itemId() == ADENA)
 			{
-				continue; // used on the spot, nothing to sell
-			}
-			final Float byId = rates.amountById().get(drop.itemId());
-			final double amount = average(drop) * ((byId != null) ? byId : rates.amount());
-			if (drop.itemId() == ADENA)
-			{
-				adena += probability[i] * amount;
-			}
-			else
-			{
-				loot += probability[i] * amount * items.sellPrice(drop.itemId());
+				adena += probability[i] * average(drops.get(i)) * amountRate(drops.get(i), rates);
 			}
 		}
-
 		if (spoiler)
 		{
 			for (Drop spoil : spoils)
 			{
-				final double p = Math.min(1.0, (spoil.chance() / 100.0) * rates.spoilChance()) * itemGap;
-				final double amount = average(spoil) * rates.spoilAmount();
 				if (spoil.itemId() == ADENA)
 				{
-					adena += p * amount;
-				}
-				else
-				{
-					loot += p * amount * items.sellPrice(spoil.itemId());
+					adena += Math.min(1.0, (spoil.chance() / 100.0) * rates.spoilChance()) * itemGap * average(spoil) * rates.spoilAmount();
 				}
 			}
 		}
+		double loot = 0;
+		for (Map.Entry<Integer, Double> entry : counts(drops, spoils, spoiler, monsterLevel, killerLevel, rates, items).entrySet())
+		{
+			loot += entry.getValue() * items.sellPrice(entry.getKey());
+		}
 		return new Yield(adena, loot);
+	}
+
+	/**
+	 * How many of each sellable item one kill drops on average, under the same rules as {@link #perKill} (adena, herbs and
+	 * items a shop will not buy are left out).
+	 * @param drops its death drop list
+	 * @param spoils its spoil list, counted only when {@code spoiler}
+	 * @param spoiler whether the killer spoils every kill
+	 * @param monsterLevel the monster's level
+	 * @param killerLevel the bot's level
+	 * @param rates the server's drop rates
+	 * @param items item prices and kinds
+	 * @return item id to expected count per kill
+	 */
+	public static Map<Integer, Double> counts(List<Drop> drops, List<Drop> spoils, boolean spoiler, int monsterLevel, int killerLevel, Rates rates, Items items)
+	{
+		final Map<Integer, Double> counts = new HashMap<>();
+		final double[] probability = probabilities(drops, monsterLevel, killerLevel, rates, items);
+		for (int i = 0; i < drops.size(); i++)
+		{
+			final Drop drop = drops.get(i);
+			if ((drop.itemId() != ADENA) && !items.herb(drop.itemId()) && (items.sellPrice(drop.itemId()) > 0))
+			{
+				counts.merge(drop.itemId(), probability[i] * average(drop) * amountRate(drop, rates), Double::sum);
+			}
+		}
+		if (spoiler)
+		{
+			final double itemGap = rates.itemGap().chance(monsterLevel - killerLevel) / 100.0;
+			for (Drop spoil : spoils)
+			{
+				if ((spoil.itemId() != ADENA) && (items.sellPrice(spoil.itemId()) > 0))
+				{
+					counts.merge(spoil.itemId(), Math.min(1.0, (spoil.chance() / 100.0) * rates.spoilChance()) * itemGap * average(spoil) * rates.spoilAmount(), Double::sum);
+				}
+			}
+		}
+		return counts;
+	}
+
+	private static double amountRate(Drop drop, Rates rates)
+	{
+		final Float byId = rates.amountById().get(drop.itemId());
+		return (byId != null) ? byId : rates.amount();
 	}
 
 	/**

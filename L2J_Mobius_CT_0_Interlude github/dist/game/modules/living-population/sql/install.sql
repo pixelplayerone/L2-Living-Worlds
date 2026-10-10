@@ -42,3 +42,11 @@ CREATE TABLE IF NOT EXISTS living_population_bots (
 	PRIMARY KEY (id),
 	UNIQUE KEY uk_living_population_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- The items each town holds (what the cold bots hunted and sold there).
+CREATE TABLE IF NOT EXISTS living_town_stock (
+	town VARCHAR(64) NOT NULL,
+	item_id INT NOT NULL,
+	quantity BIGINT NOT NULL DEFAULT 0,
+	PRIMARY KEY (town, item_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

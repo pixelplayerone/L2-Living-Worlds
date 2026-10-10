@@ -125,6 +125,10 @@ public class LivingPopulationManager
 	private volatile String _combatFile = "modules/living-population/data/zone_combat.tsv";
 	private volatile long[] _kitPrices; // gear kit price by grade, from the item data (see kitPrices)
 	private final Map<String, DropYield.Yield> _zoneYields = new ConcurrentHashMap<>(); // zone|level|spoiler|gear -> per kill
+	private final Map<String, Map<Integer, Double>> _zoneItems = new ConcurrentHashMap<>(); // zone|level|spoiler -> sellable items per kill
+	private final TownStock _townStock = new TownStock(); // the items each town holds (what cold bots hunted and sold there)
+	private final TownStockDao _townStockDao = new TownStockDao();
+	private volatile boolean _stockSaving; // false when the saved stock could not be read, so a save never overwrites it
 	private final Map<String, Map<Integer, Double>> _zoneGear = new ConcurrentHashMap<>(); // zone|level|spoiler -> gear drop chances
 	private volatile GearCatalog _gear; // gear kept per slot (travel and GearSlots on), else null
 	private final Map<Integer, List<SkillPlanner.Entry>> _skillTrees = new ConcurrentHashMap<>(); // class id -> skill tree
@@ -345,6 +349,7 @@ public class LivingPopulationManager
 			}
 		}
 
+		_stockSaving = _townStockDao.load(_townStock);
 		_dao.ensureColumns(); // add columns a newer module version needs to an older table (no manual migration)
 		final long now = System.currentTimeMillis();
 		final List<ColdBot> loaded = _dao.loadAll();
@@ -444,6 +449,10 @@ public class LivingPopulationManager
 		}
 		_handoff.shutdown();
 		_handoff.setLife(null);
+		if (_stockSaving && _townStock.dirty())
+		{
+			_townStockDao.save(_townStock);
+		}
 		// Clear in-memory state so a later start() reloads cleanly instead of double-loading the population.
 		_bots.clear();
 		_removals.clear();
@@ -785,6 +794,7 @@ public class LivingPopulationManager
 					final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
 					bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
 					huntAdena += lootValue;
+					_townStock.deposit(bot.getTown(), zoneItems(bot.getZone(), progress.level(), spoils), kills, _random);
 				}
 				// Gear kept per slot: the weapons and armor its kills dropped are rolled for real; it wears the better ones.
 				if ((_gear != null) && _travelConfig.dropIncome() && (huntedMs > 0))
@@ -1124,6 +1134,53 @@ public class LivingPopulationManager
 	}
 
 	/**
+	 * The items a kill in a zone drops that a shop buys, each with its average count per kill, from the real drop lists of
+	 * the monsters there weighted by how many of each spawn. Cached per zone, level and spoiler.
+	 * @param zoneName the bot's zone
+	 * @param level the bot's level
+	 * @param spoiler whether it also spoils its kills
+	 * @return item id to count per kill, empty when the zone lists no monsters
+	 */
+	private Map<Integer, Double> zoneItems(String zoneName, int level, boolean spoiler)
+	{
+		final ZoneCatalog.Zone zone = (zoneName == null) ? null : _catalog.zone(zoneName);
+		if ((zone == null) || zone.monsters().isEmpty())
+		{
+			return Map.of();
+		}
+		return _zoneItems.computeIfAbsent(zone.name() + '|' + level + '|' + spoiler, key ->
+		{
+			final DropYield.Rates rates = dropRates();
+			final DropYield.Items items = dropItems(_gear); // weapons and armor are rolled as gear, not stocked
+			final Map<Integer, Double> weighted = new HashMap<>();
+			double total = 0;
+			for (ZoneCatalog.Monster monster : zone.monsters())
+			{
+				final NpcTemplate template = NpcData.getInstance().getTemplate(monster.npcId());
+				if (template == null)
+				{
+					continue;
+				}
+				final int weight = Math.max(0, monster.count());
+				total += weight;
+				for (Map.Entry<Integer, Double> entry : DropYield.counts(deathDrops(template), spoiler ? spoilDrops(template) : List.of(), spoiler, template.getLevel(), level, rates, items).entrySet())
+				{
+					weighted.merge(entry.getKey(), entry.getValue() * weight, Double::sum);
+				}
+			}
+			final Map<Integer, Double> perKill = new HashMap<>();
+			if (total > 0)
+			{
+				for (Map.Entry<Integer, Double> entry : weighted.entrySet())
+				{
+					perKill.put(entry.getKey(), entry.getValue() / total);
+				}
+			}
+			return perKill;
+		});
+	}
+
+	/**
 	 * The weapons and armor a kill in a zone can drop, each with its chance per kill, from the real drop lists of the
 	 * monsters there weighted by how many of each spawn. Cached per zone, level and spoiler.
 	 * @param zoneName the bot's zone
@@ -1444,10 +1501,46 @@ public class LivingPopulationManager
 				Files.createDirectories(path.getParent());
 			}
 			Files.write(path, json.getBytes(StandardCharsets.UTF_8));
+			saveTownStock();
 		}
 		catch (Exception e)
 		{
 			LOGGER.log(Level.WARNING, "LivingPopulation: snapshot write failed: " + e.getMessage(), e);
+		}
+	}
+
+	/** Saves the town stock when it changed, and writes it next to the snapshot for the monitor. */
+	private void saveTownStock() throws java.io.IOException
+	{
+		if (!_townStock.dirty())
+		{
+			return;
+		}
+		final StringBuilder sb = new StringBuilder("{");
+		boolean firstTown = true;
+		for (Map.Entry<String, Map<Integer, Long>> town : _townStock.snapshot().entrySet())
+		{
+			sb.append(firstTown ? "" : ",").append('"').append(town.getKey()).append("\":[");
+			firstTown = false;
+			boolean first = true;
+			for (Map.Entry<Integer, Long> item : town.getValue().entrySet())
+			{
+				final ItemTemplate template = ItemData.getInstance().getTemplate(item.getKey());
+				final String name = (template == null) ? String.valueOf(item.getKey()) : template.getName().replace("\\", "").replace("\"", "");
+				sb.append(first ? "" : ",").append("{\"id\":").append(item.getKey()).append(",\"name\":\"").append(name).append("\",\"count\":").append(item.getValue()).append('}');
+				first = false;
+			}
+			sb.append(']');
+		}
+		sb.append('}');
+		Files.write(Path.of(_config.snapshotFile()).resolveSibling("LivingPopulation-townstock.json"), sb.toString().getBytes(StandardCharsets.UTF_8));
+		if (_stockSaving)
+		{
+			_townStockDao.save(_townStock); // marks the stock clean when it is saved
+		}
+		else
+		{
+			_townStock.clean();
 		}
 	}
 
