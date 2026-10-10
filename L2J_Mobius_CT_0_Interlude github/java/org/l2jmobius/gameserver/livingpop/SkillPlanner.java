@@ -46,9 +46,22 @@ public final class SkillPlanner
 	 * @param bookId the spellbook it needs, or 0
 	 * @param bookPrice what the spellbook costs in a shop (0 when it is not sold)
 	 * @param free whether the game gives it without a trainer (auto-get)
+	 * @param order its place in the class's SP priority list (lower learns first); {@link #UNRANKED} when it is not on the list
+	 * @param tier its tier on that list: {@link #TIER_A} to save SP for, 1 and 2 for the rest, {@link #UNRANKED_TIER} when it is not on the list
 	 */
-	public record Entry(int skillId, int level, int minLevel, long sp, int bookId, long bookPrice, boolean free)
+	public record Entry(int skillId, int level, int minLevel, long sp, int bookId, long bookPrice, boolean free, int order, int tier)
 	{
+		/** The order of a skill that is not on the priority list: after every listed one, cheapest first. */
+		public static final int UNRANKED = Integer.MAX_VALUE;
+		public static final int TIER_A = 0;
+		public static final int UNRANKED_TIER = 3;
+
+		/** An entry that is not on any priority list. */
+		public Entry(int skillId, int level, int minLevel, long sp, int bookId, long bookPrice, boolean free)
+		{
+			this(skillId, level, minLevel, sp, bookId, bookPrice, free, UNRANKED, UNRANKED_TIER);
+		}
+
 		/** @return whether it needs a book that no shop sells */
 		public boolean unsold()
 		{
@@ -75,7 +88,9 @@ public final class SkillPlanner
 	}
 
 	/**
-	 * Learns what it can, cheapest level first, until nothing more is learnable. Next levels of a skill open up as the
+	 * Learns what it can, in the class's SP priority order: free skills first, then the listed skills best first, then the
+	 * unlisted ones cheapest first. When the best skill left is a tier A one it cannot yet pay for in SP, it saves for it
+	 * and buys nothing lower; any other skill it cannot pay for is passed over. Next levels of a skill open up as the
 	 * previous one is learned.
 	 * @param tree the class's complete skill tree
 	 * @param known the skills it knows (skill id to level); updated in place
@@ -90,10 +105,12 @@ public final class SkillPlanner
 		long spLeft = Math.max(0L, sp);
 		long adenaLeft = Math.max(0L, budget);
 		int books = 0;
+		boolean saving = false;
 		boolean progress = true;
 		while (progress)
 		{
 			progress = false;
+			saving = false;
 			for (Entry entry : next(tree, known, level))
 			{
 				if (entry.unsold())
@@ -112,7 +129,13 @@ public final class SkillPlanner
 					}
 					known.put(entry.skillId(), entry.level());
 					learned.add(entry);
-					progress = true;
+					progress = true; // the list changes (a next level opens up), so look again from the top
+					break;
+				}
+				if ((entry.tier() == Entry.TIER_A) && (sp1 > spLeft))
+				{
+					saving = true; // it saves for this one and buys nothing lower
+					break;
 				}
 			}
 		}
@@ -124,7 +147,7 @@ public final class SkillPlanner
 			{
 				continue;
 			}
-			if (!entry.free() && (entry.sp() > spLeft))
+			if (!entry.free() && ((entry.sp() > spLeft) || saving))
 			{
 				shortSp++;
 			}
@@ -179,7 +202,7 @@ public final class SkillPlanner
 		return total;
 	}
 
-	/** The next learnable level of each skill, cheapest first. */
+	/** The next learnable level of each skill: free ones first, then by priority order, then cheapest first. */
 	private static List<Entry> next(List<Entry> tree, Map<Integer, Integer> known, int level)
 	{
 		final List<Entry> result = new ArrayList<>();
@@ -190,7 +213,7 @@ public final class SkillPlanner
 				result.add(entry);
 			}
 		}
-		result.sort(Comparator.comparingInt(Entry::minLevel).thenComparingLong(Entry::sp).thenComparingInt(Entry::skillId));
+		result.sort(Comparator.comparing((Entry e) -> !e.free()).thenComparingInt(Entry::order).thenComparingInt(Entry::minLevel).thenComparingLong(Entry::sp).thenComparingInt(Entry::skillId));
 		return result;
 	}
 

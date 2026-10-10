@@ -1255,7 +1255,7 @@ public class LivingPopulationManager
 	}
 
 	/**
-	 * A class's complete skill tree from the server's skill data, as a living bot learns it: the skills a trainer teaches
+	 * A class's complete skill tree from the server's skill data, as a living bot learns it (in the class's SP priority order, from the zone data file): the skills a trainer teaches
 	 * and the ones given for free, with their SP cost and the price of the spellbook they need. Forgotten Scroll skills
 	 * and skills of another race are left out. Cached per class.
 	 * @param classId the class
@@ -1298,7 +1298,8 @@ public class LivingPopulationManager
 					}
 					bookPrice += price * Math.max(1, item.getCount());
 				}
-				tree.add(new SkillPlanner.Entry(learn.getSkillId(), learn.getSkillLevel(), learn.getGetLevel(), learn.getLevelUpSp(), bookId, unsold ? 0L : bookPrice, learn.isAutoGet()));
+				final int[] rank = _combat.skillRank(id, learn.getSkillId(), learn.getSkillLevel());
+				tree.add(new SkillPlanner.Entry(learn.getSkillId(), learn.getSkillLevel(), learn.getGetLevel(), learn.getLevelUpSp(), bookId, unsold ? 0L : bookPrice, learn.isAutoGet(), (rank == null) ? SkillPlanner.Entry.UNRANKED : rank[0], (rank == null) ? SkillPlanner.Entry.UNRANKED_TIER : rank[1]));
 			}
 			return List.copyOf(tree);
 		});

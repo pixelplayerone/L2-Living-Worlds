@@ -76,6 +76,9 @@ Solo bots hunt buffed, but never with the full buffer party (while this is on, `
 The full buffer party for every bot; off by default and ignored while `StartingBuffs` is on.
 Per role, `BuffShareTank/Melee/Bow/Mage` (0 = unbuffed, 1 = the full buffer party): damage, P.Def and M.Def multipliers by level (`BUFF` rows, from the sim's buffer party: server caps, same-type buffs replace each other). The multiplier is blended by the share.
 
+## SP priority
+`SP <classId> <tier+skillId:level,...>` rows (from `sp_priority.csv` via `build_sp_priority_rows.py`) set the order a cold bot spends SP at a trainer. Free skills first, then the list order. A tier A skill it cannot afford yet is saved for (nothing cheaper is bought); an unaffordable tier B or C skill is passed over. Skills marked skip and skills not listed come last, cheapest first. Without the zone model (or without `SP` rows) bots keep the old cheapest-first order.
+
 ## Data and tooling (`tools/combat_sim`)
 `build_zone_monsters.py` (zone averages, respawns, aggression, exp), `build_curves.py` (gear curves), `build_buff_factors.py` (buff multipliers), `build_rotation_table.py` (rotation rows), `build_zone_combat.py` (writes `zone_combat.tsv`). Re-run them after changing the datapack or the sim; `tools/combat_sim/README.md` has the order and the quick path for a monster-only change (rebuilding `zone_combat.tsv` on the unchanged datapack reproduces it exactly). `tests/java/ZoneCombatReport.java` prints old-vs-new tables.
 

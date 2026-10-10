@@ -754,6 +754,29 @@ public class LivingTravelTest
 		check("free skills cost nothing", SkillPlanner.learn(TREE, new HashMap<>(), 1, 0L, 0L).learned().size() == 1);
 		check("SP wanted", SkillPlanner.spWanted(TREE, new HashMap<>(), 12) == 550L);
 
+		// SP priority: a ranked skill goes before a cheaper unranked one; a tier A skill it cannot pay for is saved for; free skills never wait.
+		final List<SkillPlanner.Entry> ranked = List.of( //
+			new SkillPlanner.Entry(100, 1, 1, 0L, 0, 0L, true), //
+			new SkillPlanner.Entry(201, 1, 5, 400L, 0, 0L, false, 0, SkillPlanner.Entry.TIER_A), //
+			new SkillPlanner.Entry(202, 1, 5, 100L, 0, 0L, false, 1, 1), //
+			new SkillPlanner.Entry(203, 1, 5, 50L, 0, 0L, false, 2, 2), //
+			new SkillPlanner.Entry(204, 1, 5, 10L, 0, 0L, false));
+		final Map<Integer, Integer> saving = new HashMap<>();
+		final SkillPlanner.Lesson saved = SkillPlanner.learn(ranked, saving, 5, 300L, 0L);
+		check("saves SP for a tier A skill and buys nothing lower", saving.equals(Map.of(100, 1)) && (saved.sp() == 0L) && (saved.shortSp() == 4));
+		final Map<Integer, Integer> enough = new HashMap<>();
+		SkillPlanner.learn(ranked, enough, 5, 500L, 0L);
+		check("with the SP it buys the tier A first, then the next on the list, before a cheaper unranked skill", enough.equals(Map.of(100, 1, 201, 1, 202, 1)) && !enough.containsKey(204));
+		final Map<Integer, Integer> plenty = new HashMap<>();
+		SkillPlanner.learn(ranked, plenty, 5, 10_000L, 0L);
+		check("an unlisted skill is learned last", plenty.size() == 5);
+		final List<SkillPlanner.Entry> lower = List.of( //
+			new SkillPlanner.Entry(301, 1, 5, 500L, 0, 0L, false, 0, 1), //
+			new SkillPlanner.Entry(302, 1, 5, 20L, 0, 0L, false, 1, 2));
+		final Map<Integer, Integer> passOver = new HashMap<>();
+		SkillPlanner.learn(lower, passOver, 5, 100L, 0L);
+		check("a tier B skill it cannot pay for is passed over, not saved for", passOver.equals(Map.of(302, 1)));
+
 		final Map<Integer, Integer> granted = new HashMap<>();
 		SkillPlanner.grantAll(TREE, granted, 12);
 		check("an old row keeps its level's skills", granted.equals(Map.of(100, 1, 101, 2, 102, 1, 104, 1)));
