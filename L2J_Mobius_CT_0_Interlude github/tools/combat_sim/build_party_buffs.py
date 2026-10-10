@@ -7,12 +7,30 @@ sys.path.insert(0, HERE)
 import build_buff_factors as B
 import l2data as L, stats_model as S, party_buffs as P
 
-BUFFERS = {98: "hierophant", 100: "sword_muse", 107: "spectral_dancer", 115: "dominator", 116: "doom_cryer", 105: "evas_saint", 112: "shillien_saint"}
+LEAF = {"hierophant": 98, "doom_cryer": 116, "dominator": 115, "sword_muse": 100, "spectral_dancer": 107, "evas_saint": 105, "shillien_saint": 112}
+ORDER = list(LEAF)  # the key of a set joins its lines in this order (ZoneCombat.bufferKey does the same)
+
+
+def buffer_sets():
+    """Every buffer set a virtual party can have, as ZoneCombat builds them: the buffer alone, plus the other main buffer (Hierophant, or Doom Cryer for a Hierophant), plus a minor buffer
+    (a Sword Muse or Spectral Dancer the set does not have yet); a set stacks by the server's rule (same abnormalType replaces, the higher level wins), so it is computed as one."""
+    sets = set()
+    for b in ("hierophant", "doom_cryer", "dominator", "sword_muse", "spectral_dancer", "evas_saint", "shillien_saint"):
+        sets.add((b,))
+    for b in ("hierophant", "doom_cryer", "dominator", "sword_muse", "spectral_dancer"):
+        pair = {b, "doom_cryer" if b == "hierophant" else "hierophant"}
+        sets.add(tuple(sorted(pair, key=ORDER.index)))
+        for m in ("sword_muse", "spectral_dancer"):
+            if m not in pair:
+                sets.add(tuple(sorted(pair | {m}, key=ORDER.index)))
+    return sorted(sets, key=lambda t: [ORDER.index(x) for x in t])
+
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "party_buff_rows.tsv")
 names, parent, trees = B.names, B.parent, B.trees
 rows = []
-for leaf, bname in BUFFERS.items():
-    P.BUFFER_LEAVES = [leaf]
+for bset in buffer_sets():
+    bname = "+".join(bset)
+    P.BUFFER_LEAVES = [LEAF[x] for x in bset]
     for role, (line, wtypes) in B.REPS.items():
         slug = line.lower().replace(" ", "_")
         W = S.read_csv(os.path.join(HERE, f"gear_{slug}_weapons.csv"))
@@ -34,6 +52,6 @@ for leaf, bname in BUFFERS.items():
             pdm, mdm = B.defence_buffs(level)
             rows.append("PBUFF\t%s\t%s\t%d\t%.4f\t%.4f\t%.4f" % (bname, role, level, dmg, pdm, mdm))
 with open(out, "w", encoding="utf-8", newline="") as f:
-    f.write("#PBUFF\tbuffer\trole\tlevel\tdamageMult\tpDefMult\tmDefMult   (one buffer line, see tools/combat_sim/build_party_buffs.py)\n")
+    f.write("#PBUFF\tbuffer\trole\tlevel\tdamageMult\tpDefMult\tmDefMult   (one buffer line or a set of lines joined by +, see tools/combat_sim/build_party_buffs.py)\n")
     f.write("\n".join(rows) + "\n")
 print(len(rows), "rows ->", out)

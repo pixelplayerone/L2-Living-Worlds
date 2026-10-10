@@ -25,11 +25,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.function.DoubleBinaryOperator;
 
 /**
@@ -548,15 +550,13 @@ public final class ZoneCombat
 		return BUFFERS[0].equals(buffer) ? BUFFERS[1] : BUFFERS[0];
 	}
 
-	/** Buffs of several buffers add up their gains over 1. */
-	private double partyBuff(String[] buffers, Role role, int kind, int level)
+	/** The buffer lines in the order a set's key joins them (as tools/combat_sim/build_party_buffs.py does). */
+	private static final List<String> BUFFER_ORDER = List.of("hierophant", "doom_cryer", "dominator", "sword_muse", "spectral_dancer", "evas_saint", "shillien_saint");
+
+	/** @return the key of a set of buffer lines: its PBUFF rows hold what the set gives together, with same-effect buffs replacing each other as on the server instead of adding up */
+	private static String bufferKey(Set<String> lines)
 	{
-		double v = 1.0;
-		for (String b : buffers)
-		{
-			v += partyBuff(b, role, kind, level) - 1.0;
-		}
-		return v;
+		return BUFFER_ORDER.stream().filter(lines::contains).collect(Collectors.joining("+"));
 	}
 
 	private static final Set<Integer> HEALERS = Set.of(15, 16, 97, 29, 30, 105, 42, 43, 112);
@@ -665,7 +665,21 @@ public final class ZoneCombat
 		Collections.shuffle(open, dice);
 		picked.addAll(open.subList(0, size - 4 - picked.size()));
 		final boolean secondBuffer = picked.contains(0);
-		final String[] buffers = secondBuffer ? new String[] { buffer, otherBuffer(buffer) } : new String[] { buffer };
+		final Set<String> lines = new HashSet<>(List.of(buffer));
+		if (secondBuffer)
+		{
+			lines.add(otherBuffer(buffer));
+		}
+		if (picked.contains(2))
+		{
+			final List<String> minors = new ArrayList<>(List.of("sword_muse", "spectral_dancer"));
+			minors.removeAll(lines);
+			if (!minors.isEmpty())
+			{
+				lines.add(minors.get(dice.nextInt(minors.size())));
+			}
+		}
+		final String buffers = bufferKey(lines);
 		final int dpsCount = 1 + Collections.frequency(picked, 1);
 		final int[] dClass = new int[dpsCount];
 		final Role[] dRole = new Role[dpsCount];
