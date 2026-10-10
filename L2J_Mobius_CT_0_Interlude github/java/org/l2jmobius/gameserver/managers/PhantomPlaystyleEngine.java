@@ -714,6 +714,10 @@ public class PhantomPlaystyleEngine
 			{
 				continue; // a pure debuff already on the target
 			}
+			if (PhantomCombatPolicy.walksIntoMelee(caster, skill.getCastRange(), inReach(npc, focus, skill)))
+			{
+				continue;
+			}
 			if (modern ? (PhantomCombatActions.availability(npc, focus, skill, npc.getCharges()) == Availability.UNAVAILABLE)
 				: (!(area ? areaHits(npc, focus, skill) : inReach(npc, focus, skill)) || !skill.checkCondition(npc, focus, false)))
 			{
