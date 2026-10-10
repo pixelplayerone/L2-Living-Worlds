@@ -72,6 +72,8 @@ public class PhantomPlaystyleEngine
 	/** Fallback engagement reach for melee skills that report no cast range, plus slack on all range gates. */
 	private static final int MELEE_REACH = 80;
 	private static final int RANGE_SLACK = 60;
+	private static final int CHARGE_CAP = 7; // the most force / sonic charges any builder reaches
+	private static final int CHARGE_MP_RESERVE = 10; // MP percent left after topping up
 	/** Default affect radius for MOBS_NEAR / the sleeper guard when an AoE skill reports none. */
 	private static final int DEFAULT_AOE_RADIUS = 200;
 	/** How many recent targets the once-per-target ledger remembers (LRU); enough to span a boss + its adds. */
@@ -121,6 +123,7 @@ public class PhantomPlaystyleEngine
 	{
 		Playstyle playstyle; // the resolved lineage playstyle (null when the class has none)
 		boolean lookedUp;
+		long chargeHoldUntil; // charging up outside combat: stay put until the builder can be cast again
 		long nextCastAt; // pacing gate; PANIC ignores it
 		final PhantomCombatController.State combat = new PhantomCombatController.State();
 		// Once-per-target ledger: skill ids already spent, per target object id. An LRU bounded map (not a single
@@ -738,86 +741,44 @@ public class PhantomPlaystyleEngine
 	}
 
 	/**
-	 * Out-of-combat preparation for a charge class: the charge-builder it should bank BEFORE a pull, so it opens
-	 * prepared instead of building reactively (Interlude sonic/force energy persists ~10 minutes, so one pre-charge
-	 * carries many pulls). Returns a self-cast builder when the member is currently below its authored target charge
-	 * and the skill is ready, else {@code null}. Identified purely from the playstyle data: the entry gated on
-	 * {@code CHARGES_BELOW} is by construction "build up to N charges", and its threshold is the target level.
+	 * Out-of-combat preparation for a charge class: the self-cast charge-builder that tops the member up to the
+	 * builder's own maximum (Focused Force / Sonic Focus: one charge per cast, the skill level is the cap), so every
+	 * pull opens fully charged - there is no reason to fight below the maximum when the builder is nearly free. The
+	 * builder is identified from the playstyle data: the self-targeted entry gated on {@code CHARGES_BELOW}. Returns
+	 * {@code null} when the class has none, the member is already full, or the cast is not affordable or ready now.
 	 * @param npc the phantom
 	 * @param state the member's playstyle runtime state
-	 * @param roleName the member's party role name, used to resolve role-split lineages
+	 * @return the builder cast, or {@code null}
 	 */
-	public static CastAction pickPrep(Player npc, PlayState state, String roleName)
+	public static CastAction pickPrep(Player npc, PlayState state)
 	{
-		final int classId = npc.getPlayerClass().getId();
 		state.refreshIfReloaded();
 		if (!state.lookedUp)
 		{
 			state.lookedUp = true;
-			state.playstyle = PhantomPlaystyleData.getInstance().getPlaystyle(classId, roleName);
+			state.playstyle = PhantomPlaystyleData.getInstance().getPlaystyle(npc.getPlayerClass().getId(), null);
 		}
 		if (state.playstyle == null)
 		{
 			return null;
 		}
-		if (FakePlayersConfig.PHANTOM_COMBAT_CONTROLLER)
+		final long now = System.currentTimeMillis();
+		for (PlayEntry builder : state.playstyle.entries)
 		{
-			return pickBudgetedPrep(npc, state);
-		}
-		final int level = npc.getLevel();
-		for (PlayEntry entry : state.playstyle.entries)
-		{
-			if (!entry.appliesAt(level) || !entry.conds.contains(Cond.CHARGES_BELOW))
-			{
-				continue; // only the charge-builder entry drives pre-charging
-			}
-			if (npc.getCharges() >= entry.chargesBelow)
-			{
-				return null; // already at/above the authored target charge - nothing to prepare
-			}
-			final Skill skill = npc.getKnownSkill(entry.skillId);
-			if ((skill == null) || npc.isSkillDisabled(skill) || (npc.getCurrentMp() < skill.getMpConsume()) || !PhantomBuffs.canAffordReagent(npc, skill))
-			{
-				return null; // builder not castable this moment - retry a later tick
-			}
-			if (!skill.checkCondition(npc, npc, false))
-			{
-				return null;
-			}
-			return new CastAction(skill, npc, false, 0, entry.skillId); // self-cast; not a once-per-target ledger entry
-		}
-		return null;
-	}
-
-	private static CastAction pickBudgetedPrep(Player npc, PlayState state)
-	{
-		for (PlayEntry spender : state.playstyle.entries)
-		{
-			final Skill attack = npc.getKnownSkill(spender.skillId);
-			if ((attack == null) || !spender.appliesAt(npc.getLevel()) || (spender.use != Use.ROTATION) || !spender.conds.contains(Cond.CHARGES) || npc.isSkillDisabled(attack))
+			final Skill skill = npc.getKnownSkill(builder.skillId);
+			if ((skill == null) || !builder.appliesAt(npc.getLevel()) || !builder.conds.contains(Cond.CHARGES_BELOW) || (skill.getTargetType() != TargetType.SELF))
 			{
 				continue;
 			}
-			final int needed = Math.max(spender.chargesAtLeast, attack.getChargeConsumeCount());
-			if (!PhantomSkillFeasibility.possible(npc, npc, attack, needed))
+			final int cap = PhantomSkillFeasibility.builderCap(skill, CHARGE_CAP);
+			if ((npc.getCharges() >= cap) || (PhantomCombatActions.availability(npc, npc, skill, npc.getCharges()) != Availability.READY_NOW) || !state.combat.ready(skill.getId(), npc.getObjectId(), now))
 			{
 				continue;
 			}
-			for (PlayEntry builder : state.playstyle.entries)
+			if (PhantomChargePlanner.plan(npc.getCharges(), cap, cap, PhantomCombatActions.mpCost(npc, skill), skill.getHpConsume(), 0, 0,
+				npc.getCurrentMp(), npc.getMaxMp(), npc.getCurrentHp(), npc.getMaxHp(), CHARGE_MP_RESERVE) != null)
 			{
-				final Skill skill = npc.getKnownSkill(builder.skillId);
-				if ((skill == null) || !builder.appliesAt(npc.getLevel()) || !builder.conds.contains(Cond.CHARGES_BELOW) || (skill.getTargetType() != TargetType.SELF)
-					|| (PhantomCombatActions.availability(npc, npc, skill, npc.getCharges()) != Availability.READY_NOW))
-				{
-					continue;
-				}
-				if ((PhantomChargePlanner.plan(npc.getCharges(), needed, PhantomSkillFeasibility.builderCap(skill, builder.chargesBelow),
-					PhantomCombatActions.mpCost(npc, skill), skill.getHpConsume(), PhantomCombatActions.mpCost(npc, attack), attack.getHpConsume(),
-					npc.getCurrentMp(), npc.getMaxMp(), npc.getCurrentHp(), npc.getMaxHp(), 10) != null)
-					&& state.combat.ready(skill.getId(), npc.getObjectId(), System.currentTimeMillis()))
-				{
-					return new CastAction(skill, npc, false, 0, skill.getId(), builder.paceMs, 200, 0);
-				}
+				return new CastAction(skill, npc, false, 0, skill.getId(), builder.paceMs, 200, 0);
 			}
 		}
 		return null;

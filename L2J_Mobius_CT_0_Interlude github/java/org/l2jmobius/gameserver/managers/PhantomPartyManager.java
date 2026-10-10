@@ -2915,15 +2915,6 @@ public class PhantomPartyManager
 			return;
 		}
 
-		// Charge classes bank their sonic/force energy while settled and out of combat, so a pull OPENS prepared
-		// instead of building reactively - an experienced player taps up charges before engaging, and Interlude
-		// charge energy persists ~10 minutes so one pre-charge carries many pulls. Only when standing near the
-		// leader and not already fighting; mid-fight charge upkeep is the playstyle rotation's job. Whether the
-		// class even has a builder is decided by the engine (non-charge classes fall straight through).
-		if (!npc.isInCombat() && (npc.calculateDistance2D(owner) <= SUPPORT_RANGE) && prepCharges(state))
-		{
-			return;
-		}
 		// Out of the fight a stance that drains MP (Vicious Stance) goes off; the next fight turns it back on.
 		if (!npc.isInCombat())
 		{
@@ -6538,30 +6529,6 @@ public class PhantomPartyManager
 		}
 		PhantomBuffs.releaseBuff(target.getObjectId(), buff, state.npc.getObjectId());
 		return false;
-	}
-
-	/**
-	 * Out-of-combat charge banking for a charge class (Gladiator / Tyrant lines): if the member is standing ready
-	 * and below its authored target charge, self-cast the class's charge-builder so the next pull opens prepared.
-	 * A no-op for classes with no builder, for a member that is resting or repositioning, or once it is already
-	 * topped up (the builder stops firing, and Interlude charges then persist ~10 minutes across pulls).
-	 * @return {@code true} if a builder cast launched this tick (caller skips the rest of the tick)
-	 */
-	private boolean prepCharges(Member state)
-	{
-		final Player npc = state.npc;
-		if (npc.isSitting() || npc.isMoving())
-		{
-			return false; // resting to recover, or running to catch up - don't interrupt just to charge
-		}
-		final PhantomPlaystyleEngine.CastAction action = PhantomPlaystyleEngine.pickPrep(npc, state.play, state.role.name());
-		if (action == null)
-		{
-			return false;
-		}
-		npc.setTarget(action.target);
-		castManaged(state, action.skill);
-		return npc.isCastingNow() || npc.isCastingSimultaneouslyNow();
 	}
 
 	/** Living mobs near the tank whose most-hated is a squishy party member (aggro slipped onto a healer/caster/leader). */

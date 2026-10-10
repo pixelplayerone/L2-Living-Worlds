@@ -27,10 +27,11 @@ import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.model.skill.Skill;
 import org.l2jmobius.gameserver.model.skill.enums.SkillFinishType;
 
-/** Class sustain belongs to safe downtime, never to generic buff maintenance. */
+/** Class sustain (meditation, charge banking) belongs to safe downtime, never to generic buff maintenance. */
 public final class PhantomClassRecovery
 {
 	static final int[] RECOVERY_SKILLS = {441, 417};
+	private static final int CHARGE_HOLD_MS = 1200; // the one second builder reuse plus a tick of slack
 
 	private PhantomClassRecovery()
 	{
@@ -42,6 +43,28 @@ public final class PhantomClassRecovery
 		{
 			npc.stopSkillEffects(SkillFinishType.REMOVED, 441);
 		}
+	}
+
+	/** Banks force / sonic charges to the maximum while safe. Holds still between casts so the hunt does not restart after every one. */
+	private static boolean chargeUp(Player npc, PlayState state)
+	{
+		final long now = System.currentTimeMillis();
+		if (now < state.chargeHoldUntil)
+		{
+			return true;
+		}
+		final CastAction action = PhantomPlaystyleEngine.pickPrep(npc, state);
+		if (action == null)
+		{
+			return false;
+		}
+		final PhantomCombatController.Outcome outcome = PhantomCombatActions.execute(npc, null, state, action, false);
+		if ((outcome == PhantomCombatController.Outcome.STARTED) || (outcome == PhantomCombatController.Outcome.BUSY))
+		{
+			state.chargeHoldUntil = now + action.skill.getHitTime() + CHARGE_HOLD_MS;
+			return true;
+		}
+		return false;
 	}
 
 	public static boolean tick(Player npc, PlayState state, boolean safe)
@@ -66,6 +89,11 @@ public final class PhantomClassRecovery
 			{
 				return true;
 			}
+		}
+		if (safe && !npc.isSitting() && !npc.isCastingNow() && !npc.isCastingSimultaneouslyNow() && !npc.isParalyzed() && !npc.isStunned() && !npc.isSleeping()
+			&& (npc.getCurrentMpPercent() >= PhantomPartyDowntime.MP_SIT) && chargeUp(npc, state))
+		{
+			return true;
 		}
 		if (!safe || (npc.getCurrentMpPercent() >= PhantomPartyDowntime.MP_SIT) || npc.isSitting()
 			|| npc.isCastingNow() || npc.isCastingSimultaneouslyNow() || npc.isParalyzed() || npc.isStunned() || npc.isSleeping())
