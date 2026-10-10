@@ -1056,6 +1056,14 @@ public class PhantomPlaystyleEngine
 					}
 					break;
 				}
+				case TARGET_FIGHTER:
+				{
+					if (!(focus instanceof Player enemy) || enemy.isMageClass())
+					{
+						return false;
+					}
+					break;
+				}
 			}
 		}
 		// The once-per-target ledger check (kept out of the switch so the state stays with the caller's loop).
