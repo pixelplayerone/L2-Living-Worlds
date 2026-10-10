@@ -811,6 +811,13 @@ public class LivingPopulationTest
 				levelSizes &= Math.round(1.0 / rot.party("Rot", 97, 70, mage, 1.0, 1.0, false, v).lootShare()) >= 6;
 			}
 			check("party: at 70+ no party is under six, at 76+ none under seven", levelSizes);
+			boolean spoilers = true;
+			for (int v = 0; v < 64; v++)
+			{
+				final ZoneCombat.PartyOutcome o = rot.party("Rot", 97, 61, mage, 1.0, 1.0, false, v);
+				spoilers &= (Math.round(1.0 / o.lootShare()) < 6) || o.spoils();
+			}
+			check("party: from six members a party has a spoiler", spoilers);
 			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
 			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
 			check("party: the party is no worse to die in than going alone (without HP data the tank has the solo rate)", tankParty.deathFactor() <= rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)) + 1e-9);

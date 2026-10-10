@@ -649,9 +649,21 @@ public final class ZoneCombat
 		// The party: tank, healer, one buffer and one damage dealer, plus up to five more members drawn from what is left (a second main buffer, a minor buffer, up to four more damage dealers).
 		final Random dice = new Random((variant & 63) * 7919L + 17L);
 		final int size = partySize(dice.nextDouble(), level);
+		// The main damage dealer is the bot's own, the healer's Archmage, or a reference one; the seats beyond the four core ones are filled by rule: from 6 members a party has a spoiler (never two), from 7 a second main buffer, from 8 also a minor buffer; what is left is drawn at random.
+		final int mainDps = (slot == 1) ? classId : (slot == 3) ? 94 : DPS_CLASSES[Math.floorMod(variant / BUFFERS.length, DPS_CLASSES.length)];
+		final boolean needSpoiler = (size >= 6) && !LivingSupplies.isSpoiler(mainDps);
 		final List<Integer> open = new ArrayList<>(List.of(0, 1, 1, 1, 1, 2)); // 0 second buffer, 1 damage dealer, 2 minor buffer (no data, it only takes a seat)
+		final List<Integer> picked = new ArrayList<>();
+		for (int forced : new int[] { (size >= 7) ? 0 : -1, (size >= 8) ? 2 : -1, needSpoiler ? 1 : -1 })
+		{
+			if (forced >= 0)
+			{
+				picked.add(forced);
+				open.remove(Integer.valueOf(forced));
+			}
+		}
 		Collections.shuffle(open, dice);
-		final List<Integer> picked = open.subList(0, size - 4);
+		picked.addAll(open.subList(0, size - 4 - picked.size()));
 		final boolean secondBuffer = picked.contains(0);
 		final String[] buffers = secondBuffer ? new String[] { buffer, otherBuffer(buffer) } : new String[] { buffer };
 		final int dpsCount = 1 + Collections.frequency(picked, 1);
@@ -668,21 +680,23 @@ public final class ZoneCombat
 			dShots[i] = 1.0;
 			dSelf[i] = 1.0;
 			dShare[i] = 1.0;
-			if (i > 0)
+			if (i == 0)
 			{
-				dClass[i] = DPS_CLASSES[dice.nextInt(DPS_CLASSES.length)];
+				dClass[i] = mainDps;
 			}
-			else if (slot == 1)
+			else if ((i == 1) && needSpoiler)
 			{
-				dClass[i] = classId;
-			}
-			else if (slot == 3)
-			{
-				dClass[i] = 94; // the healer's mage wears its gear
+				dClass[i] = 117; // the party's one spoiler: a Fortune Seeker
 			}
 			else
 			{
-				dClass[i] = DPS_CLASSES[Math.floorMod(variant / BUFFERS.length, DPS_CLASSES.length)];
+				int c;
+				do
+				{
+					c = DPS_CLASSES[dice.nextInt(DPS_CLASSES.length)];
+				}
+				while (LivingSupplies.isSpoiler(c));
+				dClass[i] = c;
 			}
 			dRole[i] = (i == 0) && (slot == 1) ? role : roleOf(dClass[i]);
 			dStats[i] = ((i == 0) && ((slot == 1) || (slot == 3))) ? stats : curveStats(dRole[i], grade, grade);
