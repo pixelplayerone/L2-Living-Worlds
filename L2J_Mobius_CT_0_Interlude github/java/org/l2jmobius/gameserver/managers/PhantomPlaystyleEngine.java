@@ -714,6 +714,10 @@ public class PhantomPlaystyleEngine
 			{
 				continue; // a pure debuff already on the target
 			}
+			if (PhantomCombatPolicy.walksIntoMelee(caster, skill.getCastRange(), inReach(npc, focus, skill)))
+			{
+				continue;
+			}
 			if (modern ? (PhantomCombatActions.availability(npc, focus, skill, npc.getCharges()) == Availability.UNAVAILABLE)
 				: (!(area ? areaHits(npc, focus, skill) : inReach(npc, focus, skill)) || !skill.checkCondition(npc, focus, false)))
 			{
@@ -1051,6 +1055,14 @@ public class PhantomPlaystyleEngine
 				case FOCUS_ON_ME:
 				{
 					if (focus.getTarget() != npc)
+					{
+						return false;
+					}
+					break;
+				}
+				case TARGET_FIGHTER:
+				{
+					if (!(focus instanceof Player enemy) || enemy.isMageClass())
 					{
 						return false;
 					}

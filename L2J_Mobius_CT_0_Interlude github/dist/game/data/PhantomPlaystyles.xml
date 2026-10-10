@@ -35,7 +35,7 @@
 	                 MOBS_UNSPOILED (mobsAtLeast), REAR, CHARGES (chargesAtLeast), CHARGES_BELOW (chargesBelow),
 	                 DEBUFF_MISSING, SELF_ABNORMAL_FREE, NOT_SPOILED, DURABLE_TARGET, HEALER_READY,
 	                 ONCE_PER_TARGET, UNDER_ATTACK, PVP (the target is a player), FOCUS_ON_ME (the target has
-	                 this member selected)
+	                 this member selected), TARGET_FIGHTER (the target is a player of a non-mystic class)
 	  minLevel/maxLevel - the level window this entry applies in. Unlearned skills are skipped anyway, so
 	                 minLevel is rarely needed; maxLevel is what RETIRES an outgrown skill (a level 80
 	                 archer still knows Power Shot, so only an explicit cap stops it being used).
@@ -271,6 +271,7 @@
 		<skill id="121" name="Battle Roar"  use="PANIC"    when="SELF_HP_BELOW" selfHpBelow="40" />
 		<skill id="452" name="Shock Stomp"  use="CONTROL"  when="MOBS_NEAR" mobsAtLeast="2" paceMs="6000" />
 		<skill id="286" name="Provoke"      use="CONTROL"  when="MOBS_NEAR,UNDER_ATTACK,MP_ABOVE" mobsAtLeast="3" mpAbove="30" paceMs="15000" />
+		<skill id="347" name="Earthquake"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="48"  name="Thunder Storm" use="AOE"     when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
@@ -286,6 +287,8 @@
 		<skill id="406" name="Angelic Icon"   use="LIMIT"    when="HEALER_READY,DURABLE_TARGET" />
 		<skill id="404" name="Mass Shackling" use="CONTROL"  when="MOBS_NEAR" mobsAtLeast="3" paceMs="10000" />
 		<skill id="92"  name="Shield Stun"    use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
+		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING" paceMs="10000" />
+		<skill id="400" name="Tribunal"       use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 		<skill id="70"  name="Drain Health"   use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="55" />
 	</playstyle>
 
@@ -293,24 +296,34 @@
 	<playstyle name="Hell Knight" classIds="6,91">
 		<skill id="342" name="Touch of Death" use="DEBUFF"   when="DURABLE_TARGET,ONCE_PER_TARGET" />
 		<skill id="92"  name="Shield Stun"    use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
+		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING" paceMs="10000" />
 		<skill id="127" name="Hamstring"      use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
+		<skill id="401" name="Judgment"       use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 		<skill id="70"  name="Drain Health"   use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="55" />
 	</playstyle>
 
 	<!-- Temple Knight line (TANK). -->
 	<playstyle name="Eva's Templar" classIds="20,99">
 		<skill id="400" name="Tribunal"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
+		<skill id="352" name="Shield Bash"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="102" name="Entangle"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
 		<skill id="3"   name="Power Strike" use="ROTATION" when="MP_ABOVE" mpAbove="45" maxLevel="49" />
 	</playstyle>
 
-	<!-- Shillien Knight line (TANK): the debuff tank - Hex habitually, paralyze the big one. -->
+	<!-- Shillien Knight line (TANK): the debuff tank - Hex and Poison habitually, paralyze the big one. The Palus Knight
+	     skills keep levelling here (Poison 54 -> 144 a second, Drain Health power 46 -> 108), so they stay listed.
+	     Freezing Strike is a slow with a weak hit - players only, or as CONTROL it would outrank Poison on monsters. -->
 	<playstyle name="Shillien Templar" classIds="33,106">
 		<skill id="122" name="Hex"             use="DEBUFF"   when="DEBUFF_MISSING" />
+		<skill id="129" name="Poison"          use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="115" name="Power Break"     use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="342" name="Touch of Death"  use="DEBUFF"   when="DURABLE_TARGET,ONCE_PER_TARGET" />
 		<skill id="352" name="Shield Bash"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
 		<skill id="279" name="Lightning Strike" use="CONTROL" when="DURABLE_TARGET" paceMs="15000" />
-		<skill id="105" name="Freezing Strike" use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" maxLevel="55" />
+		<skill id="105" name="Freezing Strike" use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" maxLevel="55" />
+		<skill id="401" name="Judgment"        use="ROTATION" when="MP_ABOVE" mpAbove="40" />
+		<skill id="223" name="Sting"           use="ROTATION" when="MP_ABOVE" mpAbove="30" />
+		<skill id="70"  name="Drain Health"    use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 		<skill id="289" name="Life Leech"      use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="59" />
 	</playstyle>
 
@@ -321,11 +334,16 @@
 		<skill id="3"   name="Power Strike" use="ROTATION" when="MP_ABOVE" mpAbove="50" maxLevel="49" />
 	</playstyle>
 
-	<!-- Bladedancer line (DANCER): dances dominate (manager-owned); control between refreshes. -->
+	<!-- Bladedancer line (DANCER): dances dominate (manager-owned); control and the Palus Knight debuffs between
+	     refreshes. Freezing Strike is players only for the same reason as the Shillien Knight line. -->
 	<playstyle name="Spectral Dancer" classIds="34,107">
 		<skill id="402" name="Arrest"          use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
-		<skill id="105" name="Freezing Strike" use="CONTROL"  when="DEBUFF_MISSING" paceMs="10000" maxLevel="55" />
-		<skill id="223" name="Sting"           use="ROTATION" when="MP_ABOVE" mpAbove="45" maxLevel="49" />
+		<skill id="105" name="Freezing Strike" use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="10000" maxLevel="55" />
+		<skill id="122" name="Hex"             use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="129" name="Poison"          use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="115" name="Power Break"     use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="223" name="Sting"           use="ROTATION" when="MP_ABOVE" mpAbove="45" />
+		<skill id="70"  name="Drain Health"    use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 	</playstyle>
 
 	<!-- =============================== DAGGERS (role-split) =============================== -->
@@ -345,6 +363,7 @@
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="11"  name="Trick"            use="CONTROL"  when="PVP,FOCUS_ON_ME" />
 		<skill id="12"  name="Switch"           use="CONTROL"  when="PVP,FOCUS_ON_ME" />
+		<skill id="409" name="Critical Blow"    use="ROTATION" when="ALWAYS" />
 		<skill id="263" name="Deadly Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="344" name="Lethal Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="358" name="Bluff"            use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
@@ -360,6 +379,7 @@
 		<skill id="111" name="Ultimate Evasion" use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="40" />
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="12"  name="Switch"           use="CONTROL"  when="PVP,FOCUS_ON_ME" />
+		<skill id="321" name="Blinding Blow"    use="ROTATION" when="ALWAYS" />
 		<skill id="263" name="Deadly Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="344" name="Lethal Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="358" name="Bluff"            use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
@@ -374,7 +394,9 @@
 		<skill id="111" name="Ultimate Evasion" use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="40" />
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="11"  name="Trick"            use="CONTROL"  when="PVP,FOCUS_ON_ME" />
+		<skill id="129" name="Poison"           use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="122" name="Hex"              use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="321" name="Blinding Blow"    use="ROTATION" when="ALWAYS" />
 		<skill id="263" name="Deadly Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="344" name="Lethal Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="358" name="Bluff"            use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
@@ -424,11 +446,12 @@
 
 	<!-- =============================== NUKERS =============================== -->
 
-	<!-- Sorcerer line: fire. Element debuff first on anything durable, then pack AoEs (a real 3+ pack gets the AoE,
+	<!-- Sorcerer line: fire. Element debuff and Decay (about 118 a second for 15 seconds) first on anything durable, then pack AoEs (a real 3+ pack gets the AoE,
 	     not a single-target opener), then the single-target rotation. -->
 	<playstyle name="Archmage" classIds="12,94">
 		<skill id="1177" name="Wind Strike"       use="PULL"     when="ALWAYS" />
 		<skill id="1083" name="Surrender To Fire" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" maxLevel="59" />
+		<skill id="1233" name="Decay"             use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1296" name="Rain of Fire"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1171" name="Blazing Circle"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="69" />
 		<skill id="1181" name="Flame Strike"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
@@ -452,10 +475,12 @@
 		<skill id="1184" name="Ice Bolt"          use="ROTATION" when="MP_ABOVE" mpAbove="30" maxLevel="45" />
 	</playstyle>
 
-	<!-- Spellsinger line: water. Pack AoEs ahead of the single-target rotation. -->
+	<!-- Spellsinger line: water. Element debuff and Freezing Shackle (a damage-over-time like Decay) first on anything
+	     durable, pack AoEs ahead of the single-target rotation. -->
 	<playstyle name="Mystic Muse" classIds="27,103">
 		<skill id="1177" name="Wind Strike"        use="PULL"     when="ALWAYS" />
 		<skill id="1071" name="Surrender To Water" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1183" name="Freezing Shackle"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1174" name="Frost Wall"         use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1181" name="Flame Strike"       use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
 		<skill id="1235" name="Hydro Blast"        use="ROTATION" when="ALWAYS" />
@@ -534,6 +559,7 @@
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
 		<skill id="315" name="Crush of Doom" use="ROTATION" when="ALWAYS" />
+		<skill id="362" name="Armor Crush"  use="ROTATION" when="ALWAYS" />
 		<skill id="190" name="Fatal Strike" use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="100" name="Stun Attack"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="260" name="Hammer Crush" use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
@@ -541,7 +567,7 @@
 	</playstyle>
 
 	<!-- Tyrant line: force charges cycle from level 24 - build with Focused Force, spend on the
-	     fist skills. Force Barrier needs 4 charges, so it is gated on them as well as on HP. -->
+	     fist skills. Soul Breaker and Burning Fist need no charges and are the 2nd-class filler between them. Force Barrier needs 4 charges, so it is gated on them as well as on HP. -->
 	<playstyle name="Grand Khavatari" classIds="47,48,114">
 		<skill id="443" name="Force Barrier"      use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK,CHARGES" selfHpBelow="20" chargesAtLeast="4" />
 		<skill id="292" name="Bison Spirit Totem" use="LIMIT"    when="HEALER_READY,DURABLE_TARGET" />
@@ -549,6 +575,9 @@
 		<skill id="35"  name="Force Storm"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="3" chargesAtLeast="2" />
 		<skill id="17"  name="Force Burst"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="2" chargesAtLeast="2" maxLevel="69" />
 		<skill id="284" name="Hurricane Assault"  use="ROTATION" when="CHARGES" chargesAtLeast="2" />
+		<skill id="81"  name="Punch of Doom"      use="ROTATION" when="ALWAYS" />
+		<skill id="281" name="Soul Breaker"       use="ROTATION" when="MP_ABOVE" mpAbove="30" />
+		<skill id="280" name="Burning Fist"       use="ROTATION" when="MP_ABOVE" mpAbove="35" />
 		<skill id="50"  name="Focused Force"      use="ROTATION" when="CHARGES_BELOW" chargesBelow="5" />
 		<skill id="346" name="Raging Force"       use="ROTATION" when="CHARGES_BELOW" chargesBelow="7" />
 		<skill id="54"  name="Force Blaster"      use="ROTATION" when="CHARGES" chargesAtLeast="1" maxLevel="59" />
@@ -571,6 +600,7 @@
 		<skill id="302" name="Spoil Festival" use="AOE"    when="MOBS_UNSPOILED" mobsAtLeast="3" paceMs="10000" />
 		<skill id="100" name="Stun Attack"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
 		<skill id="260" name="Hammer Crush" use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
+		<skill id="362" name="Armor Crush"  use="ROTATION" when="ALWAYS" />
 		<skill id="347" name="Earthquake"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
@@ -587,6 +617,20 @@
 		<skill id="36"  name="Whirlwind"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" />
 		<skill id="100" name="Stun Attack"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" maxLevel="45" />
 		<skill id="245" name="Wild Sweep"   use="AOE"      when="MOBS_NEAR" mobsAtLeast="2" maxLevel="45" />
+	</playstyle>
+
+	<!-- Overlord / Warcryer lines (2nd and 3rd class). The Orc Shaman entry only covers the exact class 50, so these
+	     four classes had none. Their damage is the damage-over-time spells: the flames share one slot, so the
+	     strongest learned one goes first (Freezing Flame is Warcryer's, about 118 a second) and the weaker ones only
+	     cover the levels before it. Venom stacks beside them. Steal Essence and Life Drain are the direct fillers.
+	     The Seals, Fear, Madness and the buffs stay with upkeep / the manager. -->
+	<playstyle name="Overlord / Warcryer" classIds="51,52,115,116">
+		<skill id="1244" name="Freezing Flame" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1107" name="Frost Flame"    use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1100" name="Chill Flame"    use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1095" name="Venom"          use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1245" name="Steal Essence"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
+		<skill id="1090" name="Life Drain"     use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 	</playstyle>
 
 </list>
