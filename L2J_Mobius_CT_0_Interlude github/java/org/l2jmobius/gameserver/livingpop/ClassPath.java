@@ -233,7 +233,7 @@ public final class ClassPath
 
 	/**
 	 * @param classId a class
-	 * @return whether it is a knight line tank (all of them learn Sword Blunt Mastery, so a sword and a blunt weapon both work)
+	 * @return whether it is a tank that may use a sword or a blunt weapon (the Human and Elven knight lines; the Palus Knight line learns Sting, which needs a sword)
 	 */
 	public static boolean tank(int classId)
 	{
@@ -409,7 +409,7 @@ public final class ClassPath
 		}
 	}
 
-	private static final Set<Integer> TANKS = Set.of(4, 19, 32, 5, 6, 20, 33, 90, 91, 99, 106);
+	private static final Set<Integer> TANKS = Set.of(4, 19, 5, 6, 20, 90, 91, 99);
 
 	private static int mix(long value)
 	{

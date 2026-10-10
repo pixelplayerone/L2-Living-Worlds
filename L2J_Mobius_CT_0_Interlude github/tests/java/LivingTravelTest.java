@@ -671,6 +671,13 @@ public class LivingTravelTest
 			tankWeapons.addAll(ColdLife.fitOf(fits, 19, id).weapons());
 		}
 		check("a tank rolls a sword or a blunt weapon, always the same for the bot", tankWeapons.equals(Set.of("SWORD", "BLUNT")) && ColdLife.fitOf(fits, 19, 5L).equals(ColdLife.fitOf(fits, 19, 5L)));
+		final Set<String> palusWeapons = new HashSet<>();
+		for (long id = 1; id <= 200; id++)
+		{
+			palusWeapons.addAll(ColdLife.fitOf(fits, 32, id).weapons());
+			palusWeapons.addAll(ColdLife.fitOf(fits, 106, id).weapons());
+		}
+		check("the Palus Knight line always keeps the sword for Sting", palusWeapons.equals(Set.of("SWORD")));
 		check("class masters by line", "ElfHumanFighterChange1".equals(ClassPath.master(18, 19)) && "ElfHumanFighterChange2".equals(ClassPath.master(19, 20)) && "ElfHumanFighterChange2".equals(ClassPath.master(20, 99)));
 		check("mystics and priests", "ElfHumanWizardChange1".equals(ClassPath.master(10, 15)) && "ElfHumanClericChange2".equals(ClassPath.master(15, 16)) && "ElfHumanWizardChange2".equals(ClassPath.master(11, 14)));
 		check("dwarves by branch", "DwarfBlacksmithChange1".equals(ClassPath.master(53, 56)) && "DwarfWarehouseChange1".equals(ClassPath.master(53, 54)) && "DwarfWarehouseChange2".equals(ClassPath.master(55, 117)));
