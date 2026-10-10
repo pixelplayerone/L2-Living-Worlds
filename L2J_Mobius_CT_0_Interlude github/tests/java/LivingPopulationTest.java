@@ -791,7 +791,19 @@ public class LivingPopulationTest
 			final ZoneCombat.Stats mage = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			final ZoneCombat.PartyOutcome healerParty = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3);
 			final ZoneCombat.PartyOutcome tankParty = rot.party("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2), 1.0, 1.0, false, 3);
-			check("party: a healer gets a party outcome with the party bonus over four of the experience", (healerParty != null) && (healerParty.slot() == 3) && Math.abs(healerParty.expShare() - 1.3 / 4.0) < 1e-9);
+			check("party: a healer gets a party outcome", (healerParty != null) && (healerParty.slot() == 3));
+			final double[] serverBonus = { 1.0, 1.10, 1.20, 1.30, 1.40, 1.50, 2.0, 2.10, 2.20 };
+			final int[] sizes = new int[10];
+			boolean sharesFit = true;
+			for (int v = 0; v < 64; v++)
+			{
+				final ZoneCombat.PartyOutcome o = rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, v);
+				final int size = (int) Math.round(1.0 / o.lootShare());
+				sharesFit &= (size >= 4) && (size <= 9) && (Math.abs(o.expShare() - (serverBonus[size - 1] / size)) < 1e-9);
+				sizes[Math.max(0, Math.min(9, size))]++;
+			}
+			check("party: 4 to 9 members, exp share is the server's bonus for the size over the size", sharesFit);
+			check("party: four members is the commonest size and nine the rarest", (sizes[4] > sizes[5]) && (sizes[5] >= sizes[9]));
 			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
 			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
 			check("party: the party is no worse to die in than going alone (without HP data the tank has the solo rate)", tankParty.deathFactor() <= rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)) + 1e-9);
@@ -877,7 +889,7 @@ public class LivingPopulationTest
 			final double tankFirst = tankLines.party("Rot", 97, 40, mage, 1.0, 1.0, false, 0).killsPerMinute();
 			final double tankSecond = tankLines.party("Rot", 97, 40, mage, 1.0, 1.0, false, 38).killsPerMinute();
 			check("party: the reference tank is drawn at random from the tank classes (Phoenix Knight, Hell Knight, the Templars)", tankSecond > tankFirst);
-			check("party: each drop is split four ways", Math.abs(tankParty.lootShare() - 0.25) < 1e-9);
+			check("party: each drop is split by the party size", (tankParty.lootShare() <= 0.25 + 1e-9) && (tankParty.lootShare() >= 1.0 / 9.0 - 1e-9));
 			final ZoneCombat.Stats mageFit = rot.curveStats(ZoneCombat.Role.MAGE, 2, 2);
 			final ZoneCombat selfBuffed = ZoneCombat.parse(new java.io.StringReader(rotData.replace("ROT\tduelist", "ROTSELF\tduelist\t40\t2\t2\t2\t2\t2\t2\t2\t0.8\t1.0\t94,312\nROT\tduelist")), ZoneCombat.Params.defaults());
 			selfBuffed.setRotationTtk(true);
@@ -921,7 +933,7 @@ public class LivingPopulationTest
 			final double exposureBefore = noPetHeal.deathFactor("Rot", 94, 40, mageFit);
 			noPetHeal.setSelfHeal(true);
 			check("servitor heal: a healed servitor holds longer, so its summoner is exposed less", noPetHeal.deathFactor("Rot", 94, 40, mageFit) < exposureBefore);
-			rot.setParty(new ZoneCombat.PartyParams(false, 1.0, 0.75, 0.3, 45.0, 0.12, 0.3));
+			rot.setParty(new ZoneCombat.PartyParams(false, 0.75, 0.3, 45.0, 0.12, 0.3));
 			check("party: off gives no outcome", rot.party("Rot", 97, 40, mage, 1.0, 1.0, false, 3) == null);
 			rot.setParty(ZoneCombat.PartyParams.defaults());
 			rot.setRotationTtk(false);

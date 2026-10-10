@@ -330,7 +330,7 @@ public class LivingPopulationManager
 				_combat.setHpDeaths(_hpDeaths[0] > 0.0, _hpDeaths[1], _travelConfig.deathsPerHour());
 				_combat.setShotModel(_shotModel[0] > 0.0, _shotModel[1], _shotModel[2], _shotModel[3]);
 				_combat.setSelfHeal(_selfHeal);
-				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.expBonus(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour()));
+				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour()));
 				_combat.setExtraMonsters(_extraMonsters);
 				_combat.setEvasion(_zoneEvasion);
 				_combat.setAggroRisk(_aggroRisk);

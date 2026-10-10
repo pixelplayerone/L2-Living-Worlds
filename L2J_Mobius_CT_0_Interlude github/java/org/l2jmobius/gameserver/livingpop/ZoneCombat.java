@@ -22,9 +22,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.DoubleBinaryOperator;
@@ -489,20 +492,19 @@ public final class ZoneCombat
 	}
 
 	/**
-	 * The rough party model: a virtual party of a tank, a damage dealer, a buffer and a healer, of which the bot is one (by its class).
+	 * The rough party model: a virtual party of 4 to 9 members (tank, healer, buffer and damage dealer, then members drawn at random from a second buffer, a minor buffer and up to four more damage dealers), of which the bot is one (by its class). The server's party bonus by size sets the exp share.
 	 * @param enabled whether bots may party
-	 * @param expBonus the party's experience bonus; the bot gets expBonus / 4 of a kill's experience (the server gives 1.30 for 4, so 32.5%; 1.0 would be a quarter)
 	 * @param healCoverage the share of the tank's HP loss the healer heals (so the tank sits less)
 	 * @param chainChance when a member dies, the chance the next in line (tank, damage dealer, buffer, healer) dies before the mob does
 	 * @param resetSeconds how long the party takes to resurrect and get going after a death
 	 * @param healMpPerHp mana the healer spends per HP it heals (the healer only heals; Greater Heal and Battle Heal run about 0.1), for its resting
 	 * @param baseDeathsPerHour the death rate a death factor of 1 means
 	 */
-	public record PartyParams(boolean enabled, double expBonus, double healCoverage, double chainChance, double resetSeconds, double healMpPerHp, double baseDeathsPerHour)
+	public record PartyParams(boolean enabled, double healCoverage, double chainChance, double resetSeconds, double healMpPerHp, double baseDeathsPerHour)
 	{
 		public static PartyParams defaults()
 		{
-			return new PartyParams(true, 1.3, 0.75, 0.3, 45.0, 0.12, 0.3);
+			return new PartyParams(true, 0.75, 0.3, 45.0, 0.12, 0.3);
 		}
 	}
 
@@ -521,8 +523,40 @@ public final class ZoneCombat
 	{
 	}
 
-	/** Members in the virtual party: tank, damage dealer, buffer, healer. */
-	public static final int PARTY_SIZE = 4;
+	/** The server's party experience bonus by member count (Party.BONUS_EXP_SP, one member first). */
+	private static final double[] EXP_BONUS = { 1.0, 1.10, 1.20, 1.30, 1.40, 1.50, 2.0, 2.10, 2.20 };
+	/** How likely a virtual party is 4, 5 ... 9 members: small parties are the common ones. */
+	private static final double[] SIZE_CHANCE = { 0.50, 0.25, 0.12, 0.07, 0.04, 0.02 };
+
+	private static int partySize(double roll)
+	{
+		double left = roll * Arrays.stream(SIZE_CHANCE).sum();
+		for (int i = 0; i < SIZE_CHANCE.length; i++)
+		{
+			left -= SIZE_CHANCE[i];
+			if (left < 0.0)
+			{
+				return 4 + i;
+			}
+		}
+		return 4 + SIZE_CHANCE.length - 1;
+	}
+
+	private static String otherBuffer(String buffer)
+	{
+		return BUFFERS[0].equals(buffer) ? BUFFERS[1] : BUFFERS[0];
+	}
+
+	/** Buffs of several buffers add up their gains over 1. */
+	private double partyBuff(String[] buffers, Role role, int kind, int level)
+	{
+		double v = 1.0;
+		for (String b : buffers)
+		{
+			v += partyBuff(b, role, kind, level) - 1.0;
+		}
+		return v;
+	}
 
 	private static final Set<Integer> HEALERS = Set.of(15, 16, 97, 29, 30, 105, 42, 43, 112);
 	private static final Map<Integer, String> BUFFER_OF = Map.ofEntries(Map.entry(17, "hierophant"), Map.entry(98, "hierophant"), Map.entry(21, "sword_muse"), Map.entry(100, "sword_muse"), Map.entry(34, "spectral_dancer"), Map.entry(107, "spectral_dancer"), Map.entry(51, "dominator"), Map.entry(115, "dominator"), Map.entry(52, "doom_cryer"), Map.entry(116, "doom_cryer"));
@@ -611,36 +645,63 @@ public final class ZoneCombat
 		final int tankClass = botTank ? classId : TANK_CLASSES[Math.floorMod(variant / (BUFFERS.length * DPS_CLASSES.length), TANK_CLASSES.length)];
 		final Stats tankStats = botTank ? stats : curveStats(Role.TANK, grade, grade);
 		final double tankSkills = botTank ? skillFraction : 1.0;
-		// The damage dealer: the bot's own, the healer's mage that wears its gear, or a reference one chosen by the variant.
-		final int dpsClass;
-		final Role dpsRole;
-		final Stats dpsStats;
-		final double dpsSkills;
-		if (slot == 1)
+		// The party: tank, healer, one buffer and one damage dealer, plus up to five more members drawn from what is left (a second main buffer, a minor buffer, up to four more damage dealers).
+		final Random dice = new Random((variant & 63) * 7919L + 17L);
+		final int size = partySize(dice.nextDouble());
+		final List<Integer> open = new ArrayList<>(List.of(0, 1, 1, 1, 1, 2)); // 0 second buffer, 1 damage dealer, 2 minor buffer (no data, it only takes a seat)
+		Collections.shuffle(open, dice);
+		final List<Integer> picked = open.subList(0, size - 4);
+		final boolean secondBuffer = picked.contains(0);
+		final String[] buffers = secondBuffer ? new String[] { buffer, otherBuffer(buffer) } : new String[] { buffer };
+		final int dpsCount = 1 + Collections.frequency(picked, 1);
+		final int[] dClass = new int[dpsCount];
+		final Role[] dRole = new Role[dpsCount];
+		final Stats[] dStats = new Stats[dpsCount];
+		final double[] dSkills = new double[dpsCount];
+		final double[] dShots = new double[dpsCount];
+		final double[] dSelf = new double[dpsCount];
+		final double[] dShare = new double[dpsCount];
+		for (int i = 0; i < dpsCount; i++)
 		{
-			dpsClass = classId;
-			dpsRole = role;
-			dpsStats = stats;
-			dpsSkills = skillFraction;
+			dSkills[i] = 1.0;
+			dShots[i] = 1.0;
+			dSelf[i] = 1.0;
+			dShare[i] = 1.0;
+			if (i > 0)
+			{
+				dClass[i] = DPS_CLASSES[dice.nextInt(DPS_CLASSES.length)];
+			}
+			else if (slot == 1)
+			{
+				dClass[i] = classId;
+			}
+			else if (slot == 3)
+			{
+				dClass[i] = 94; // the healer's mage wears its gear
+			}
+			else
+			{
+				dClass[i] = DPS_CLASSES[Math.floorMod(variant / BUFFERS.length, DPS_CLASSES.length)];
+			}
+			dRole[i] = (i == 0) && (slot == 1) ? role : roleOf(dClass[i]);
+			dStats[i] = ((i == 0) && ((slot == 1) || (slot == 3))) ? stats : curveStats(dRole[i], grade, grade);
+			if ((i == 0) && (slot == 1))
+			{
+				dSkills[i] = skillFraction;
+				dShots[i] = shotDamage(role, shotFraction, blessed);
+				dSelf[i] = stats.selfBuffs();
+			}
 		}
-		else if (slot == 3)
-		{
-			dpsClass = 94;
-			dpsRole = Role.MAGE;
-			dpsStats = stats;
-			dpsSkills = 1.0;
-		}
-		else
-		{
-			dpsClass = DPS_CLASSES[Math.floorMod(variant / BUFFERS.length, DPS_CLASSES.length)];
-			dpsRole = roleOf(dpsClass);
-			dpsStats = curveStats(dpsRole, grade, grade);
-			dpsSkills = 1.0;
-		}
+		final Role dpsRole = dRole[0];
+		final int dpsClass = dClass[0];
 		final double tankShots = botTank ? shotDamage(Role.TANK, shotFraction, false) : 1.0;
-		final double dpsShots = (slot == 1) ? shotDamage(role, shotFraction, blessed) : 1.0;
-		final double tankBuff = partyBuff(buffer, Role.TANK, 0, level);
-		final double dpsBuff = partyBuff(buffer, dpsRole, 0, level);
+		final double tankBuff = partyBuff(buffers, Role.TANK, 0, level);
+		final double meleeBuff = partyBuff(buffers, Role.MELEE, 0, level);
+		final double[] dBuff = new double[dpsCount];
+		for (int i = 0; i < dpsCount; i++)
+		{
+			dBuff[i] = partyBuff(buffers, dRole[i], 0, level);
+		}
 		// What the party sits for anyway per kill: the tank's HP the healer does not cover, and the healer's mana (it only heals, and refills at a mage's MP regen). The casters refill their own MP in that sit.
 		final int healerClass = (slot == 3) ? classId : 97;
 		final double dataMpPerHp = _selfHealOn ? healMpPerHp(healerClass, level, curve("matk_mage", grade)) : 0.0; // the healer's own heals (Greater Heal, Battle Heal ...) set the mana per HP when the data has them
@@ -656,15 +717,21 @@ public final class ZoneCombat
 		};
 		// The fight, the casters' share of skills and the party's sit depend on each other: a few passes settle them.
 		double tankShare = 1.0;
-		double dpsShare = 1.0;
 		double fight = 0.0;
 		for (int pass = 0; pass < 4; pass++)
 		{
 			final int w = windowFor(Math.min(pass, 1), fight);
-			final double dps = (rotationDpsShare(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, w, tankShare) * tankShots * tankBuff) + (rotationDpsShare(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w, dpsShare) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
+			double dps = rotationDpsShare(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, w, tankShare) * tankShots * tankBuff;
+			for (int i = 0; i < dpsCount; i++)
+			{
+				dps += (rotationDpsShare(z, dRole[i], dClass[i], level, dStats[i].attack(), dSkills[i], dSelf[i], w, dShare[i]) * dShots[i] * dBuff[i]) + (petDps(z, dClass[i], level, dSkills[i]) * meleeBuff);
+			}
 			fight = z.hp() / Math.max(1e-6, dps);
 			tankShare = partyShare(z, Role.TANK, tankClass, level, tankSkills, fight, fight + 2.5, sharedSit);
-			dpsShare = partyShare(z, dpsRole, dpsClass, level, dpsSkills, fight, fight + 2.5, sharedSit);
+			for (int i = 0; i < dpsCount; i++)
+			{
+				dShare[i] = partyShare(z, dRole[i], dClass[i], level, dSkills[i], fight, fight + 2.5, sharedSit);
+			}
 		}
 		// A ranged damage dealer (archer or mage, the healer's mage included) pulls the mob for the group, so the party walks less between kills.
 		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) * ((dpsRole == Role.BOW || dpsRole == Role.MAGE) ? _rangedWalk : 1.0);
@@ -679,7 +746,7 @@ public final class ZoneCombat
 			factor = cycle / (cycle + Math.max(sharedSit.applyAsDouble(fight, cycle), sitSpoil));
 		}
 		// Deaths: the mobs hit the tank (it holds their attention) and the healer heals a share of its damage as it comes in. The healer tops the tank up to full between fights and the party waits when the healer is out of mana (the rest factor above), so every fight starts at full HP: a party death needs a burst the heals do not cover, or more monsters at once.
-		final double pBuff = partyBuff(buffer, Role.TANK, 1, level);
+		final double pBuff = partyBuff(buffers, Role.TANK, 1, level);
 		final double[] hpRow = restRow(z.name(), Role.TANK, level);
 		final double chain = Math.pow(p.chainChance(), slot); // when the tank dies the next in line may follow
 		double deathsPerHour = -1.0;
@@ -694,7 +761,7 @@ public final class ZoneCombat
 		{
 			// No rest data for the zone: the old threat formula.
 			final double mean = _threatMedian[Role.TANK.ordinal()];
-			final double mBuff = partyBuff(buffer, Role.TANK, 2, level);
+			final double mBuff = partyBuff(buffers, Role.TANK, 2, level);
 			final double tankThreat = threat(z, tankStats.pDef(), tankStats.mDef(), pBuff, mBuff, hitChance(z, Role.TANK, level));
 			final double tankFactor = (mean <= 0) ? 1.0 : Math.max(_params.minDeathFactor(), Math.min(_params.maxDeathFactor(), tankThreat / mean));
 			events = tankFactor * (1.0 + (_aggroRisk * z.aggressivePercent() / 100.0)); // party deaths relative to the base rate
@@ -702,7 +769,12 @@ public final class ZoneCombat
 		final double deathFactor = Math.max(1e-6, events * chain);
 		final double resetShare = Math.min(0.9, (events * p.baseDeathsPerHour() * p.resetSeconds()) / 3600.0);
 		kills = Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare));
-		return new PartyOutcome(kills, deathFactor, deathsPerHour, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE, LivingSupplies.isSpoiler(classId) || LivingSupplies.isSpoiler(dpsClass));
+		boolean spoils = LivingSupplies.isSpoiler(classId);
+		for (int c : dClass)
+		{
+			spoils |= LivingSupplies.isSpoiler(c);
+		}
+		return new PartyOutcome(kills, deathFactor, deathsPerHour, EXP_BONUS[size - 1] / size, slot, buffer, 1.0 / size, spoils);
 	}
 
 	/**
