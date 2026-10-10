@@ -34,6 +34,7 @@ import org.l2jmobius.gameserver.data.SpawnTable;
 import org.l2jmobius.gameserver.data.xml.BuyListData;
 import org.l2jmobius.gameserver.data.xml.InitialEquipmentData;
 import org.l2jmobius.gameserver.data.xml.ItemData;
+import org.l2jmobius.gameserver.data.xml.MultisellData;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Point;
 import org.l2jmobius.gameserver.livingpop.ZoneCatalog.Town;
 import org.l2jmobius.gameserver.managers.FakePlayerGearFilter;
@@ -47,6 +48,9 @@ import org.l2jmobius.gameserver.model.item.Weapon;
 import org.l2jmobius.gameserver.model.item.enums.BodyPart;
 import org.l2jmobius.gameserver.model.item.holders.InitialEquipment;
 import org.l2jmobius.gameserver.model.item.type.ArmorType;
+import org.l2jmobius.gameserver.model.itemcontainer.Inventory;
+import org.l2jmobius.gameserver.model.multisell.Entry;
+import org.l2jmobius.gameserver.model.multisell.ListContainer;
 import org.l2jmobius.gameserver.model.item.type.WeaponType;
 import org.l2jmobius.gameserver.model.spawns.Spawn;
 import org.l2jmobius.gameserver.model.stats.Stat;
@@ -61,12 +65,6 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 {
 	private static final Logger LOGGER = Logger.getLogger(GearCatalog.class.getName());
 
-	/** What a shadow weapon of the usual 300 minutes costs, in percent of the normal weapon (a rough number to tune once the market is reworked). */
-	private static final long SHADOW_PRICE_PERCENT = 20;
-
-	/** The wear time the shadow price percent is for. */
-	private static final long SHADOW_REFERENCE_MINUTES = 300;
-
 	/** A shop NPC this close to a town's arrival point or grocer counts as that town's shop. */
 	private static final double TOWN_RADIUS = 10_000.0;
 
@@ -74,7 +72,6 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 	private final Map<String, List<LivingGear.Offer>> _offers = new ConcurrentHashMap<>();
 	private final Map<Integer, LivingGear.Fit> _fits = new ConcurrentHashMap<>();
 	private volatile List<LivingGear.Piece> _tradePool;
-	private volatile List<LivingGear.Offer> _shadowOffers;
 	private volatile List<ShopList> _shopLists;
 	private final boolean _trade;
 	private final int _tierStep;
@@ -148,45 +145,6 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 	}
 
 	/**
-	 * The shadow weapons of C and B grade for sale. No shop sells them, so they are bought as if from another player, at a
-	 * share of what the normal weapon costs (they cannot be sold and wear out, so they are cheaper): scaled by how long
-	 * the copy lasts.
-	 */
-	private List<LivingGear.Offer> shadowOffers()
-	{
-		List<LivingGear.Offer> offers = _shadowOffers;
-		if (offers != null)
-		{
-			return offers;
-		}
-		offers = new ArrayList<>();
-		for (ItemTemplate item : ItemData.getInstance().getAllItems())
-		{
-			if ((item == null) || !item.getName().startsWith("Shadow Item:"))
-			{
-				continue;
-			}
-			final LivingGear.Piece piece = piece(item.getId());
-			if ((piece == null) || (piece.kind() != LivingGear.Kind.WEAPON) || ((piece.grade() != 2) && (piece.grade() != 3)))
-			{
-				continue;
-			}
-			final ItemTemplate original = shadowOriginal(piece);
-			if ((original == null) || (original.getReferencePrice() <= 0) || (item.getDuration() <= 0))
-			{
-				continue;
-			}
-			offers.add(new LivingGear.Offer(piece, Math.max(1L, (original.getReferencePrice() * SHADOW_PRICE_PERCENT * item.getDuration()) / (100L * SHADOW_REFERENCE_MINUTES)), false));
-		}
-		offers = List.copyOf(offers);
-		if (!offers.isEmpty())
-		{
-			_shadowOffers = offers; // only cached once the gear allow-list is loaded
-		}
-		return offers;
-	}
-
-	/**
 	 * What a bot pays for a piece of gear no shop in its town sells, as if it bought it from another player: the item's
 	 * reference price. This is a stand-in for a real market until bots trade with each other; change it here (or turn it
 	 * off with GearTrade) when the player and bot economy is reworked.
@@ -219,7 +177,7 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 	{
 		if (town == null)
 		{
-			return withShadow(tradeOffers(Map.of()));
+			return tradeOffers(Map.of());
 		}
 		return _offers.computeIfAbsent(town.name(), name ->
 		{
@@ -245,9 +203,7 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 			}
 			final List<LivingGear.Offer> traded = tradeOffers(sold);
 			offers.addAll(traded);
-			final List<LivingGear.Offer> shadow = shadowOffers();
-			offers.addAll(shadow);
-			LOGGER.info("LivingPopulation: " + name + " sells " + (offers.size() - traded.size() - shadow.size()) + " gear pieces" + (_trade ? (", and " + traded.size() + " more can be bought from players") : "") + ", plus " + shadow.size() + " shadow weapons from players");
+			LOGGER.info("LivingPopulation: " + name + " sells " + (offers.size() - traded.size()) + " gear pieces" + (_trade ? (", and " + traded.size() + " more can be bought from players") : ""));
 			return List.copyOf(offers);
 		});
 	}
@@ -300,13 +256,6 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 		final Map<LivingGear.Slot, Integer> gear = new EnumMap<>(LivingGear.Slot.class);
 		LivingGear.shop(gear, fit(classId), 80, Long.MAX_VALUE, pool, this);
 		return gear;
-	}
-
-	private List<LivingGear.Offer> withShadow(List<LivingGear.Offer> offers)
-	{
-		final List<LivingGear.Offer> all = new ArrayList<>(offers);
-		all.addAll(shadowOffers());
-		return all;
 	}
 
 	private List<LivingGear.Offer> tradeOffers(Map<Integer, Long> sold)
@@ -383,25 +332,58 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 			{
 				continue;
 			}
-			final List<Point> merchants = new ArrayList<>();
-			for (int npcId : holder.getNpcsAllowed())
+			final List<Point> merchants = merchantSpots(holder.getNpcsAllowed());
+			if (!merchants.isEmpty())
 			{
-				if ((npcId >= 35000) && (npcId < 37000))
+				lists.add(new ShopList(merchants, prices));
+			}
+		}
+		// Multisell lists that trade adena for a single piece of gear: the shadow weapons the weapon merchants sell.
+		for (ListContainer list : MultisellData.getInstance().getLists())
+		{
+			if (list.getNpcsAllowed() == null)
+			{
+				continue;
+			}
+			final Map<Integer, Long> prices = new HashMap<>();
+			for (Entry entry : list.getEntries())
+			{
+				if ((entry.getIngredients().size() != 1) || (entry.getProducts().size() != 1) || (entry.getIngredients().get(0).getItemId() != Inventory.ADENA_ID))
 				{
-					continue; // castle, fortress and clan hall NPCs: not a town shop anyone can use
+					continue;
 				}
-				for (Spawn spawn : SpawnTable.getInstance().getSpawns(npcId))
+				final int itemId = entry.getProducts().get(0).getItemId();
+				if (wearable(itemId))
 				{
-					merchants.add(new Point(spawn.getX(), spawn.getY(), spawn.getZ()));
+					prices.put(itemId, (long) entry.getIngredients().get(0).getItemCount());
 				}
 			}
-			if (!merchants.isEmpty())
+			final List<Point> merchants = merchantSpots(list.getNpcsAllowed());
+			if (!prices.isEmpty() && !merchants.isEmpty())
 			{
 				lists.add(new ShopList(merchants, prices));
 			}
 		}
 		_shopLists = List.copyOf(lists);
 		return _shopLists;
+	}
+
+	/** Where these shop NPCs stand (castle, fortress and clan hall NPCs are left out: not a town shop anyone can use). */
+	private static List<Point> merchantSpots(Collection<Integer> npcIds)
+	{
+		final List<Point> merchants = new ArrayList<>();
+		for (int npcId : npcIds)
+		{
+			if ((npcId >= 35000) && (npcId < 37000))
+			{
+				continue;
+			}
+			for (Spawn spawn : SpawnTable.getInstance().getSpawns(npcId))
+			{
+				merchants.add(new Point(spawn.getX(), spawn.getY(), spawn.getZ()));
+			}
+		}
+		return merchants;
 	}
 
 	/** The buylist ids, from the buylist file names (the file name is the list id). */
