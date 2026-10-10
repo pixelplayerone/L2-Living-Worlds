@@ -124,6 +124,12 @@ public final class PhantomCombatPolicy
 		return !"ARCHER".equals(role) && (cost <= Math.max(1, maxMp) * 0.04);
 	}
 
+	/** A caster does not walk up to its target for a contact-range spell (Aura Burn / Aura Flare, range 150); it casts one only when the target is already in reach. */
+	public static boolean walksIntoMelee(boolean caster, int range, boolean inReach)
+	{
+		return caster && (range < 400) && !inReach;
+	}
+
 	/** Compare useful damage and casting time, cap overkill, and account for the weapon damage a physical cast interrupts. */
 	public static double damageScore(double damage, double targetHp, double cost, int castMs, double lostWeaponDamage, boolean caster, boolean sustain)
 	{
