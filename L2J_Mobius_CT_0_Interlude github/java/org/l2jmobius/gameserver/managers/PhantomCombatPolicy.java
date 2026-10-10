@@ -114,7 +114,7 @@ public final class PhantomCombatPolicy
 		}
 		if (caster)
 		{
-			return magic && (range >= 400); // Aura Burn / Aura Flare reach 150 - a caster never walks into melee for them
+			return magic;
 		}
 		if (pvp || pressure || durable)
 		{
@@ -122,6 +122,12 @@ public final class PhantomCombatPolicy
 		}
 		// Ordinary farming favors the weapon. Bow skills are held for danger or a durable target; melee spending is bounded.
 		return !"ARCHER".equals(role) && (cost <= Math.max(1, maxMp) * 0.04);
+	}
+
+	/** A caster does not walk up to its target for a contact-range spell (Aura Burn / Aura Flare, range 150); it casts one only when the target is already in reach. */
+	public static boolean walksIntoMelee(boolean caster, int range, boolean inReach)
+	{
+		return caster && (range < 400) && !inReach;
 	}
 
 	/** Compare useful damage and casting time, cap overkill, and account for the weapon damage a physical cast interrupts. */
