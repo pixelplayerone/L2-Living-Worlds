@@ -840,8 +840,8 @@ public class LivingPopulationManager
 	}
 
 	/**
-	 * Whether the bot hunts in its virtual party now: healers always (option), others by a roll that holds for a few hours in a zone, and only
-	 * where the party beats going alone after the experience each death costs. Loot and shots are not touched (still at the solo rate).
+	 * Whether the bot hunts in its virtual party now: healers always (option), others always once alone is a loss (kills minus the experience each death costs), else by a level-based chance
+	 * rolled for a few hours in a zone (`ZoneCombat.partyChance`). Loot and shots are not touched (still at the solo rate).
 	 * @param perKill experience a kill pays (0 to use only the death-free comparison: then healers only and rolled bots take the party)
 	 * @return the party's outcome, or null for hunting alone
 	 */
@@ -872,11 +872,9 @@ public class LivingPopulationManager
 		final double loss = (ColdRisk.expLossPercent(level) / 100.0) * Math.max(1L, expToNextLevel.applyAsLong(level));
 		final double soloModel = combat.deathsPerHour(bot.getZone(), bot.getClassId(), level, stats); // deaths an hour from the HP model, or -1 without it
 		final double soloDeaths = (soloModel >= 0.0) ? soloModel : (base * combat.deathFactor(bot.getZone(), bot.getClassId(), level, stats));
-		final double partyDeaths = (outcome.deathsPerHour() >= 0.0) ? outcome.deathsPerHour() : (base * outcome.deathFactor());
 		final double soloNet = (perKill * soloKills * 60.0) - (soloDeaths * loss);
-		final double partyNet = (perKill * outcome.expShare() * outcome.killsPerMinute() * 60.0) - (partyDeaths * loss);
-		// A bot hunts alone while that earns it experience, and looks for a party once alone is a loss (its deaths cost more than its kills give).
-		return (soloNet < 0.0) ? outcome : null;
+		// A bot looks for a party once alone is a loss (its deaths cost more than its kills give); while alone still earns, it takes one with a chance that grows with level.
+		return ((soloNet < 0.0) || ((hash % 1000) < (ZoneCombat.partyChance(level) * 1000.0))) ? outcome : null;
 	}
 
 	/**

@@ -818,6 +818,7 @@ public class LivingPopulationTest
 				spoilers &= (Math.round(1.0 / o.lootShare()) < 6) || o.spoils();
 			}
 			check("party: from six members a party has a spoiler", spoilers);
+			check("party chance by level: none below 20, 15% at 20, 50% at 50, 90% at 76 and up", (ZoneCombat.partyChance(19) == 0.0) && (ZoneCombat.partyChance(20) == 0.15) && (ZoneCombat.partyChance(49) == 0.35) && (ZoneCombat.partyChance(50) == 0.5) && (ZoneCombat.partyChance(76) == 0.9) && (ZoneCombat.partyChance(85) == 0.9));
 			check("party: the party kills faster than a lone healer", healerParty.killsPerMinute() > rot.killsPerMinute("Rot", 97, 40, mage, 1.0, 1.0));
 			check("party: the tank takes the hits (the healer dies less than the tank)", tankParty.deathFactor() > healerParty.deathFactor());
 			check("party: the party is no worse to die in than going alone (without HP data the tank has the solo rate)", tankParty.deathFactor() <= rot.deathFactor("Rot", 90, 40, rot.curveStats(ZoneCombat.Role.TANK, 2, 2)) + 1e-9);

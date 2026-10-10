@@ -530,6 +530,22 @@ public final class ZoneCombat
 	/** How likely a virtual party is 4, 5 ... 9 members: small parties are the common ones, and the higher the level the bigger they get. Rows by level: below 61, 61+, 70+, 76+. */
 	private static final double[][] SIZE_CHANCE = { { 0.50, 0.25, 0.12, 0.07, 0.04, 0.02 }, { 0.30, 0.25, 0.175, 0.125, 0.10, 0.05 }, { 0.0, 0.0, 0.35, 0.25, 0.25, 0.15 }, { 0.0, 0.0, 0.0, 0.20, 0.30, 0.50 } };
 
+	/** @return the chance a non-healer bot that earns alone still joins a party (while alone is a loss it always does): none below level 20, 15% at 20, 25% at 30, 35% at 40, 50% at 50, 65% at 60, 80% at 70, 90% at 76 */
+	public static double partyChance(int level)
+	{
+		final int[] from = { 20, 30, 40, 50, 60, 70, 76 };
+		final double[] chance = { 0.15, 0.25, 0.35, 0.50, 0.65, 0.80, 0.90 };
+		double result = 0.0;
+		for (int i = 0; i < from.length; i++)
+		{
+			if (level >= from[i])
+			{
+				result = chance[i];
+			}
+		}
+		return result;
+	}
+
 	private static int partySize(double roll, int level)
 	{
 		final double[] chance = SIZE_CHANCE[(level >= 76) ? 3 : (level >= 70) ? 2 : (level >= 61) ? 1 : 0];
