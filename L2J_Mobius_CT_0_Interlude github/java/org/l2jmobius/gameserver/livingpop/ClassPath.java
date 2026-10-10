@@ -233,6 +233,15 @@ public final class ClassPath
 
 	/**
 	 * @param classId a class
+	 * @return whether it fights with dual swords (Duelist, Spectral Dancer)
+	 */
+	public static boolean dualWielder(int classId)
+	{
+		return DUAL_WIELDERS.contains(classId);
+	}
+
+	/**
+	 * @param classId a class
 	 * @return whether it is a tank that may use a sword or a blunt weapon (the Human and Elven knight lines; the Palus Knight line learns Sting, which needs a sword)
 	 */
 	public static boolean tank(int classId)
@@ -408,6 +417,13 @@ public final class ClassPath
 			return (stage == Stage.TAKE) || (stage == Stage.RETURN);
 		}
 	}
+
+	/** The human dual sword class. */
+	public static final int DUELIST = 88;
+	/** The dark elf dual sword class. */
+	public static final int SPECTRAL_DANCER = 107;
+
+	private static final Set<Integer> DUAL_WIELDERS = Set.of(DUELIST, SPECTRAL_DANCER);
 
 	private static final Set<Integer> TANKS = Set.of(4, 19, 5, 6, 20, 90, 91, 99);
 

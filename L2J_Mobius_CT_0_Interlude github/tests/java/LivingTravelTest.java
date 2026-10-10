@@ -668,16 +668,33 @@ public class LivingTravelTest
 		final Set<String> tankWeapons = new HashSet<>();
 		for (long id = 1; id <= 200; id++)
 		{
-			tankWeapons.addAll(ColdLife.fitOf(fits, 19, id).weapons());
+			tankWeapons.addAll(ColdLife.fitOf(fits, 19, id, 30).weapons());
 		}
-		check("a tank rolls a sword or a blunt weapon, always the same for the bot", tankWeapons.equals(Set.of("SWORD", "BLUNT")) && ColdLife.fitOf(fits, 19, 5L).equals(ColdLife.fitOf(fits, 19, 5L)));
+		check("a tank rolls a sword or a blunt weapon, always the same for the bot", tankWeapons.equals(Set.of("SWORD", "BLUNT")) && ColdLife.fitOf(fits, 19, 5L, 30).equals(ColdLife.fitOf(fits, 19, 5L, 30)));
 		final Set<String> palusWeapons = new HashSet<>();
 		for (long id = 1; id <= 200; id++)
 		{
-			palusWeapons.addAll(ColdLife.fitOf(fits, 32, id).weapons());
-			palusWeapons.addAll(ColdLife.fitOf(fits, 106, id).weapons());
+			palusWeapons.addAll(ColdLife.fitOf(fits, 32, id, 30).weapons());
+			palusWeapons.addAll(ColdLife.fitOf(fits, 106, id, 30).weapons());
 		}
 		check("the Palus Knight line always keeps the sword for Sting", palusWeapons.equals(Set.of("SWORD")));
+		final Set<String> duelistEarly = new HashSet<>();
+		final Set<String> dancerEarly = new HashSet<>();
+		boolean later = true;
+		for (long id = 1; id <= 400; id++)
+		{
+			if (ClassPath.gearClass(0, id) == ClassPath.DUELIST)
+			{
+				duelistEarly.addAll(ColdLife.fitOf(fits, 0, id, 25).weapons());
+				later &= ColdLife.fitOf(fits, 0, id, 40).equals(fits.fit(ClassPath.DUELIST));
+			}
+			if (ClassPath.gearClass(31, id) == ClassPath.SPECTRAL_DANCER)
+			{
+				dancerEarly.addAll(ColdLife.fitOf(fits, 31, id, 25).weapons());
+			}
+		}
+		check("a duelist-bound fighter rolls a one-handed sword or blunt until level 40, then takes duals", duelistEarly.equals(Set.of("SWORD", "BLUNT")) && later);
+		check("a Spectral Dancer-bound dark fighter carries a sword until level 40", dancerEarly.equals(Set.of("SWORD")));
 		check("class masters by line", "ElfHumanFighterChange1".equals(ClassPath.master(18, 19)) && "ElfHumanFighterChange2".equals(ClassPath.master(19, 20)) && "ElfHumanFighterChange2".equals(ClassPath.master(20, 99)));
 		check("mystics and priests", "ElfHumanWizardChange1".equals(ClassPath.master(10, 15)) && "ElfHumanClericChange2".equals(ClassPath.master(15, 16)) && "ElfHumanWizardChange2".equals(ClassPath.master(11, 14)));
 		check("dwarves by branch", "DwarfBlacksmithChange1".equals(ClassPath.master(53, 56)) && "DwarfWarehouseChange1".equals(ClassPath.master(53, 54)) && "DwarfWarehouseChange2".equals(ClassPath.master(55, 117)));

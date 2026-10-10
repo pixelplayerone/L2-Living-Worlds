@@ -1047,19 +1047,31 @@ public final class ColdLife
 		return (back == null) ? 0L : Math.max(0L, back.fee());
 	}
 
+	/** The level a fighter learns Dual Weapon Mastery (the second class change), and C grade dual swords open up. */
+	private static final int DUAL_WEAPON_LEVEL = 40;
+
 	/**
-	 * What a bot shops for: the gear of the class it will change into while it is a base class, and for a tank a stable
-	 * 50/50 roll between a one-handed sword and a one-handed blunt weapon (both are covered by its mastery).
+	 * What a bot shops for: the gear of the class its path ends in, and for a tank a stable 50/50 roll between a
+	 * one-handed sword and a one-handed blunt weapon (the Palus Knight line always takes the sword). A bot bound for dual
+	 * swords has none to buy before it learns Dual Weapon Mastery at the second class change, so until then it carries a
+	 * one-handed weapon and a shield: a Human fighter rolls sword or blunt like a tank, a dark elf takes the sword.
 	 * @param shop the shop
 	 * @param classId the bot's class
 	 * @param botId the bot's id
+	 * @param level the bot's level
 	 * @return what it wears
 	 */
-	public static LivingGear.Fit fitOf(GearShop shop, int classId, long botId)
+	public static LivingGear.Fit fitOf(GearShop shop, int classId, long botId, int level)
 	{
 		final int gearClass = ClassPath.gearClass(classId, botId);
-		final LivingGear.Fit fit = shop.fit(gearClass);
-		if (!ClassPath.tank(gearClass) || ((Long.hashCode(botId * 0x9E3779B97F4A7C15L >>> 17) & 1) == 0))
+		LivingGear.Fit fit = shop.fit(gearClass);
+		final boolean early = ClassPath.dualWielder(gearClass) && (level < DUAL_WEAPON_LEVEL);
+		if (early)
+		{
+			fit = new LivingGear.Fit(fit.armor(), Set.of("SWORD"), false, true, 1);
+		}
+		final boolean rolls = ClassPath.tank(gearClass) || (early && (gearClass == ClassPath.DUELIST));
+		if (!rolls || ((Long.hashCode(botId * 0x9E3779B97F4A7C15L >>> 17) & 1) == 0))
 		{
 			return fit;
 		}
@@ -1073,7 +1085,7 @@ public final class ColdLife
 		{
 			return new String[3];
 		}
-		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId(), bot.getLevel());
 		final List<LivingGear.Offer> offers = offersIn(shop, town);
 		// What it will have for gear in town: its purse once the loot is sold, less the supplies it buys first (counting
 		// the Scroll of Escape the trip itself uses, when it uses one rather than walking).
@@ -1126,7 +1138,7 @@ public final class ColdLife
 		{
 			return;
 		}
-		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId(), bot.getLevel());
 		final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
 		long adena = bot.getAdena();
 		final List<String> old = new ArrayList<>();
@@ -1189,7 +1201,7 @@ public final class ColdLife
 			return 0L;
 		}
 		final LivingGear.Items items = shop.items();
-		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId(), bot.getLevel());
 		final List<LivingGear.Piece> pieces = new ArrayList<>();
 		final List<String> kept = new ArrayList<>();
 		long loot = 0;
