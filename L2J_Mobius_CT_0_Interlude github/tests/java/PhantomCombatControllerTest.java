@@ -172,6 +172,9 @@ public class PhantomCombatControllerTest
 		check(PhantomCombatPolicy.worthwhile("ARCHER", false, false, true, false, 5, 100, 700, false), "an archer can spend a ranged skill under pressure");
 		check(!PhantomCombatPolicy.worthwhile("ARCHER", false, true, true, true, 1, 100, 40, false), "a bow user never switches to a generic melee skill");
 		check(!PhantomCombatPolicy.worthwhile("WARRIOR", false, false, false, false, 10, 100, 40, false), "ordinary melee farming avoids expensive skill spam");
+		check(!PhantomCombatPolicy.walksIntoMelee(true, 150, true), "a caster casts a contact-range spell when the target is already in reach");
+		check(PhantomCombatPolicy.walksIntoMelee(true, 150, false), "a caster does not walk into melee for a contact-range spell");
+		check(!PhantomCombatPolicy.walksIntoMelee(true, 400, false) && !PhantomCombatPolicy.walksIntoMelee(false, 40, false), "ranged spells and physical fighters are unaffected");
 		check(PhantomCombatPolicy.priority("PANIC") > PhantomCombatPolicy.priority("ROTATION"), "an emergency outranks ordinary damage");
 		check(!PhantomCombatPolicy.pressured(true, 100, 1, false), "ordinary aggro alone is not farming pressure");
 		check(PhantomCombatPolicy.pressured(true, 60, 1, false), "falling health warrants spending MP");
