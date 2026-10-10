@@ -45,6 +45,12 @@ public class DamOverTime extends AbstractEffect
 	}
 	
 	@Override
+	public double getDamagePerSecond()
+	{
+		return _power; // each tick deals power x (ticks x tick ratio / 1000), and ticks come every ticks x tick ratio
+	}
+	
+	@Override
 	public EffectType getEffectType()
 	{
 		return EffectType.DMG_OVER_TIME;

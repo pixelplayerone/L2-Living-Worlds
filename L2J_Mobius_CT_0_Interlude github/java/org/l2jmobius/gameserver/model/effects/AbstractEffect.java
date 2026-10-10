@@ -131,6 +131,15 @@ public abstract class AbstractEffect
 	}
 	
 	/**
+	 * Gets the damage this effect deals each second while it lasts, for effects that damage over time.
+	 * @return the damage per second, 0 for any other effect
+	 */
+	public double getDamagePerSecond()
+	{
+		return 0;
+	}
+	
+	/**
 	 * Gets the effect name.
 	 * @return the name
 	 */
