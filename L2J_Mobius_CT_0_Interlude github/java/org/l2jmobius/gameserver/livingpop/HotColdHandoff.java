@@ -1661,7 +1661,7 @@ public class HotColdHandoff
 			ColdLife.setGear(bot, PhantomManager.getInstance().livingGearOf(player), shop);
 			return;
 		}
-		final LivingGear.Fit fit = shop.fit(bot.getClassId());
+		final LivingGear.Fit fit = ColdLife.fitOf(shop, bot.getClassId(), bot.getId());
 		final PhantomManager.LivingBag bag = PhantomManager.getInstance().livingReviewBag(player, fit, shop.items(), shop::wearable, true);
 		for (LivingGear.Change change : bag.worn())
 		{

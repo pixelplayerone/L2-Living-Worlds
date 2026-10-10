@@ -627,6 +627,45 @@ public class LivingTravelTest
 		check("bots spread over the branches", branches.equals(Set.of(19, 22)));
 		check("summoners are included", wizards.equals(Set.of(12, 13, 14)));
 		check("no class after the third", ClassPath.next(99, 1L) == -1);
+		check("a base class bot shops for the class it will change into", (ClassPath.gearClass(18, 7L) == ClassPath.next(18, 7L)) && (ClassPath.gearClass(19, 7L) == 19) && (ClassPath.gearClass(99, 7L) == 99));
+		final ColdLife.GearShop fits = new ColdLife.GearShop()
+		{
+			@Override
+			public LivingGear.Items items()
+			{
+				return null;
+			}
+
+			@Override
+			public LivingGear.Fit fit(int classId)
+			{
+				return new LivingGear.Fit("HEAVY", Set.of("SWORD"), false, true, 1);
+			}
+
+			@Override
+			public List<LivingGear.Offer> offers(ZoneCatalog.Town town)
+			{
+				return List.of();
+			}
+
+			@Override
+			public boolean wearable(int itemId)
+			{
+				return true;
+			}
+
+			@Override
+			public int tierStep()
+			{
+				return 10;
+			}
+		};
+		final Set<String> tankWeapons = new HashSet<>();
+		for (long id = 1; id <= 200; id++)
+		{
+			tankWeapons.addAll(ColdLife.fitOf(fits, 19, id).weapons());
+		}
+		check("a tank rolls a sword or a blunt weapon, always the same for the bot", tankWeapons.equals(Set.of("SWORD", "BLUNT")) && ColdLife.fitOf(fits, 19, 5L).equals(ColdLife.fitOf(fits, 19, 5L)));
 		check("class masters by line", "ElfHumanFighterChange1".equals(ClassPath.master(18, 19)) && "ElfHumanFighterChange2".equals(ClassPath.master(19, 20)) && "ElfHumanFighterChange2".equals(ClassPath.master(20, 99)));
 		check("mystics and priests", "ElfHumanWizardChange1".equals(ClassPath.master(10, 15)) && "ElfHumanClericChange2".equals(ClassPath.master(15, 16)) && "ElfHumanWizardChange2".equals(ClassPath.master(11, 14)));
 		check("dwarves by branch", "DwarfBlacksmithChange1".equals(ClassPath.master(53, 56)) && "DwarfWarehouseChange1".equals(ClassPath.master(53, 54)) && "DwarfWarehouseChange2".equals(ClassPath.master(55, 117)));

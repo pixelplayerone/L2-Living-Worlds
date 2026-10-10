@@ -21,6 +21,7 @@ package org.l2jmobius.gameserver.livingpop;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The Interlude class tree as a living bot climbs it: which classes follow each one, at what level, which bot takes
@@ -213,6 +214,32 @@ public final class ClassPath
 	}
 
 	/**
+	 * The class a bot buys gear for: a base class bot already knows what it will change into, so it shops for that class
+	 * from level 1; after the first change it shops for the class it is.
+	 * @param classId its class
+	 * @param botId its id
+	 * @return the class whose gear it wants
+	 */
+	public static int gearClass(int classId, long botId)
+	{
+		if (tier(classId) != 0)
+		{
+			return classId;
+		}
+		final int next = next(classId, botId);
+		return (next < 0) ? classId : next;
+	}
+
+	/**
+	 * @param classId a class
+	 * @return whether it is a knight line tank (all of them learn Sword Blunt Mastery, so a sword and a blunt weapon both work)
+	 */
+	public static boolean tank(int classId)
+	{
+		return TANKS.contains(classId);
+	}
+
+	/**
 	 * The class master script that handles changing from this class (the masters also teach the class its skills). The
 	 * third class change has no master of its own in the data, so the second class masters stand in for it.
 	 * @param classId the class it changes from
@@ -380,6 +407,8 @@ public final class ClassPath
 			return (stage == Stage.TAKE) || (stage == Stage.RETURN);
 		}
 	}
+
+	private static final Set<Integer> TANKS = Set.of(4, 19, 32, 5, 6, 20, 33, 90, 91, 99, 106);
 
 	private static int mix(long value)
 	{

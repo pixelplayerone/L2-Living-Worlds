@@ -1047,6 +1047,25 @@ public final class ColdLife
 		return (back == null) ? 0L : Math.max(0L, back.fee());
 	}
 
+	/**
+	 * What a bot shops for: the gear of the class it will change into while it is a base class, and for a tank a stable
+	 * 50/50 roll between a one-handed sword and a one-handed blunt weapon (both are covered by its mastery).
+	 * @param shop the shop
+	 * @param classId the bot's class
+	 * @param botId the bot's id
+	 * @return what it wears
+	 */
+	public static LivingGear.Fit fitOf(GearShop shop, int classId, long botId)
+	{
+		final int gearClass = ClassPath.gearClass(classId, botId);
+		final LivingGear.Fit fit = shop.fit(gearClass);
+		if (!ClassPath.tank(gearClass) || ((Long.hashCode(botId * 0x9E3779B97F4A7C15L >>> 17) & 1) == 0))
+		{
+			return fit;
+		}
+		return new LivingGear.Fit(fit.armor(), Set.of("BLUNT"), fit.mage(), fit.shield(), fit.hands());
+	}
+
 	private static String[] gearErrand(ColdBot bot, Town town, Context context)
 	{
 		final GearShop shop = context.gear();
@@ -1054,7 +1073,7 @@ public final class ColdLife
 		{
 			return new String[3];
 		}
-		final LivingGear.Fit fit = shop.fit(bot.getClassId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId());
 		final List<LivingGear.Offer> offers = offersIn(shop, town);
 		// What it will have for gear in town: its purse once the loot is sold, less the supplies it buys first (counting
 		// the Scroll of Escape the trip itself uses, when it uses one rather than walking).
@@ -1107,7 +1126,7 @@ public final class ColdLife
 		{
 			return;
 		}
-		final LivingGear.Fit fit = shop.fit(bot.getClassId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId());
 		final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
 		long adena = bot.getAdena();
 		final List<String> old = new ArrayList<>();
@@ -1170,7 +1189,7 @@ public final class ColdLife
 			return 0L;
 		}
 		final LivingGear.Items items = shop.items();
-		final LivingGear.Fit fit = shop.fit(bot.getClassId());
+		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId());
 		final List<LivingGear.Piece> pieces = new ArrayList<>();
 		final List<String> kept = new ArrayList<>();
 		long loot = 0;
