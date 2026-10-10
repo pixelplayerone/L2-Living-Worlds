@@ -357,7 +357,7 @@ public class PhantomPlaystyleEngine
 				{
 					continue; // a damage cast must improve on the weapon attacks it interrupts
 				}
-				if ((entry.use == Use.CONTROL) && (focus instanceof Player enemy) && !controlWorthIt(npc, enemy, state, skill))
+				if ((entry.use == Use.CONTROL) && (skill.getAbnormalTime() > 0) && (focus instanceof Player enemy) && !controlWorthIt(npc, enemy, state, skill))
 				{
 					continue; // the odds of landing it, against the damage the cast gives up, no longer favor another try
 				}
@@ -586,7 +586,8 @@ public class PhantomPlaystyleEngine
 	}
 
 	/**
-	 * Whether another attempt at a control skill against a player is worth it. A landed control saves the damage the
+	 * Whether another attempt at a control skill against a player is worth it. Only for controls that last: Trick, Switch
+	 * and Provoke change the target's aggro instantly, have no duration to weigh, and keep their own conditions. A landed control saves the damage the
 	 * enemy would deal during it, and a try gives up the member's own damage for the cast (less what the skill itself
 	 * hits for), so a try pays when {@code landRate x duration x enemyDps > cast x ownDps}. The land rate starts at the
 	 * server's own chance for this skill against this target and moves toward what the fight shows (a miss lowers it,
