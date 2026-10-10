@@ -189,8 +189,8 @@
 	<!-- Human Knight (4) -> Paladin / Dark Avenger. Taunts and UD are manager-owned. -->
 	<playstyle name="Human Knight (1st class)" classIds="4">
 		<skill id="92" name="Shield Stun"   use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
-		<skill id="70" name="Drain Health"  use="ROTATION" when="MP_ABOVE" mpAbove="35" />
 		<skill id="3"  name="Power Strike"  use="ROTATION" when="MP_ABOVE" mpAbove="50" />
+		<skill id="70" name="Drain Health"  use="ROTATION" when="MP_ABOVE,SELF_HP_BELOW" mpAbove="35" selfHpBelow="60" />
 	</playstyle>
 
 	<!-- Elven Knight (19) -> Temple Knight / Swordsinger. Very thin at this tier by design. -->
@@ -199,18 +199,35 @@
 		<skill id="3"   name="Power Strike" use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 	</playstyle>
 
-	<!-- Palus Knight (32) -> Shillien Knight / Bladedancer. The DE tank line debuffs early. -->
+	<!-- Palus Knight (32) -> Shillien Knight / Bladedancer. The DE tank line debuffs early. Poison is its strongest
+	     skill (about 54 damage a second for 30 seconds); Freezing Strike is a slow with a weak hit, so it is kept for
+	     players - listed as CONTROL against monsters it would outrank Poison. -->
 	<playstyle name="Palus Knight (1st class)" classIds="32">
-		<skill id="105" name="Freezing Strike" use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
-		<skill id="115" name="Power Break"     use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="105" name="Freezing Strike" use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" />
 		<skill id="129" name="Poison"          use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="115" name="Power Break"     use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="223" name="Sting"           use="ROTATION" when="MP_ABOVE" mpAbove="30" />
+		<skill id="3"   name="Power Strike"    use="ROTATION" when="MP_ABOVE" mpAbove="45" />
 		<skill id="70"  name="Drain Health"    use="ROTATION" when="MP_ABOVE" mpAbove="40" />
+	</playstyle>
+
+	<!-- Orc Shaman (50) -> Overlord / Warcryer. Its damage is the damage-over-time spells: Frost Flame (about 60 a second
+	     for 15 seconds) and Chill Flame (30) share one slot, so Frost Flame goes first and Chill Flame covers the levels
+	     before it; Venom is a separate poison that stacks. Life Drain is the direct filler. Fear, Madness, Dreaming
+	     Spirit and the Seals are left to upkeep / the manager, as for the Orc Mystic. -->
+	<playstyle name="Orc Shaman (1st class)" classIds="50">
+		<skill id="1107" name="Frost Flame" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1100" name="Chill Flame" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1095" name="Venom"       use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1090" name="Life Drain"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 	</playstyle>
 
 	<!-- Human Wizard (11) -> Sorcerer / Necromancer / Warlock. Sleep (1069) is manager-owned CC. -->
 	<playstyle name="Human Wizard (1st class)" classIds="11">
 		<skill id="1177" name="Wind Strike"  use="PULL"     when="ALWAYS" />
+		<skill id="1168" name="Curse: Poison"   use="DEBUFF" when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1083" name="Surrender To Fire" use="DEBUFF" when="DEBUFF_MISSING,DURABLE_TARGET" maxLevel="59" />
+		<skill id="1164" name="Curse: Weakness" use="DEBUFF" when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1181" name="Flame Strike" use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1220" name="Blaze"        use="ROTATION" when="MP_ABOVE" mpAbove="35" />
 		<skill id="1274" name="Energy Bolt"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
@@ -221,6 +238,8 @@
 	<!-- Elven Wizard (26) -> Spellsinger / Elemental Summoner. -->
 	<playstyle name="Elven Wizard (1st class)" classIds="26">
 		<skill id="1177" name="Wind Strike"  use="PULL"     when="ALWAYS" />
+		<skill id="1206" name="Wind Shackle"    use="CONTROL" when="DEBUFF_MISSING,DURABLE_TARGET" paceMs="8000" />
+		<skill id="1164" name="Curse: Weakness" use="DEBUFF"  when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1181" name="Flame Strike" use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1175" name="Aqua Swirl"   use="ROTATION" when="MP_ABOVE" mpAbove="35" />
 		<skill id="1274" name="Energy Bolt"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
@@ -231,6 +250,8 @@
 	<!-- Dark Wizard (39) -> Spellhowler / Phantom Summoner. -->
 	<playstyle name="Dark Wizard (1st class)" classIds="39">
 		<skill id="1177" name="Wind Strike"   use="PULL"     when="ALWAYS" />
+		<skill id="1206" name="Wind Shackle"  use="CONTROL"  when="DEBUFF_MISSING,DURABLE_TARGET" paceMs="8000" />
+		<skill id="1168" name="Curse: Poison" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1181" name="Flame Strike"  use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1178" name="Twister"       use="ROTATION" when="MP_ABOVE" mpAbove="35" />
 		<skill id="1266" name="Shadow Spark"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
@@ -374,6 +395,7 @@
 		<skill id="111" name="Ultimate Evasion" use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="40" />
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="11"  name="Trick"            use="CONTROL"  when="PVP,FOCUS_ON_ME" />
+		<skill id="129" name="Poison"           use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="122" name="Hex"              use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="263" name="Deadly Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="344" name="Lethal Blow"      use="ROTATION" when="ALWAYS" />
