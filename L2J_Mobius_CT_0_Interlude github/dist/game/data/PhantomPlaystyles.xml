@@ -287,7 +287,7 @@
 		<skill id="406" name="Angelic Icon"   use="LIMIT"    when="HEALER_READY,DURABLE_TARGET" />
 		<skill id="404" name="Mass Shackling" use="CONTROL"  when="MOBS_NEAR" mobsAtLeast="3" paceMs="10000" />
 		<skill id="92"  name="Shield Stun"    use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
-		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING,ONCE_PER_TARGET" paceMs="10000" />
+		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING" paceMs="10000" />
 		<skill id="70"  name="Drain Health"   use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="55" />
 	</playstyle>
 
@@ -295,7 +295,7 @@
 	<playstyle name="Hell Knight" classIds="6,91">
 		<skill id="342" name="Touch of Death" use="DEBUFF"   when="DURABLE_TARGET,ONCE_PER_TARGET" />
 		<skill id="92"  name="Shield Stun"    use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
-		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING,ONCE_PER_TARGET" paceMs="10000" />
+		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING" paceMs="10000" />
 		<skill id="127" name="Hamstring"      use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
 		<skill id="70"  name="Drain Health"   use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="55" />
 	</playstyle>
