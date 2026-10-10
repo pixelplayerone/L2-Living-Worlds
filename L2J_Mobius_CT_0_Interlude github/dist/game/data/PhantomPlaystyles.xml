@@ -570,6 +570,7 @@
 		<skill id="35"  name="Force Storm"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="3" chargesAtLeast="2" />
 		<skill id="17"  name="Force Burst"        use="AOE"      when="MOBS_NEAR,CHARGES" mobsAtLeast="2" chargesAtLeast="2" maxLevel="69" />
 		<skill id="284" name="Hurricane Assault"  use="ROTATION" when="CHARGES" chargesAtLeast="2" />
+		<skill id="81"  name="Punch of Doom"      use="ROTATION" when="ALWAYS" />
 		<skill id="281" name="Soul Breaker"       use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="280" name="Burning Fist"       use="ROTATION" when="MP_ABOVE" mpAbove="35" />
 		<skill id="50"  name="Focused Force"      use="ROTATION" when="CHARGES_BELOW" chargesBelow="5" />
