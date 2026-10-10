@@ -214,20 +214,21 @@ public final class ClassPath
 	}
 
 	/**
-	 * The class a bot buys gear for: a base class bot already knows what it will change into, so it shops for that class
-	 * from level 1; after the first change it shops for the class it is.
+	 * The class a bot buys gear for: the last class of its path. Every class change is a stable pick per bot (see
+	 * {@link #next}), so the whole path first, second and third class is settled from level 1, and a bot buys weapon and
+	 * armor for where it is going from the start (a fighter bound for a dagger third class carries daggers at level 1).
 	 * @param classId its class
 	 * @param botId its id
-	 * @return the class whose gear it wants
+	 * @return the class at the end of its path (its own class when no change is left)
 	 */
 	public static int gearClass(int classId, long botId)
 	{
-		if (tier(classId) != 0)
+		int result = classId;
+		for (int next = next(result, botId); next >= 0; next = next(result, botId))
 		{
-			return classId;
+			result = next;
 		}
-		final int next = next(classId, botId);
-		return (next < 0) ? classId : next;
+		return result;
 	}
 
 	/**

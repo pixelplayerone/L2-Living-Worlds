@@ -627,7 +627,12 @@ public class LivingTravelTest
 		check("bots spread over the branches", branches.equals(Set.of(19, 22)));
 		check("summoners are included", wizards.equals(Set.of(12, 13, 14)));
 		check("no class after the third", ClassPath.next(99, 1L) == -1);
-		check("a base class bot shops for the class it will change into", (ClassPath.gearClass(18, 7L) == ClassPath.next(18, 7L)) && (ClassPath.gearClass(19, 7L) == 19) && (ClassPath.gearClass(99, 7L) == 99));
+		int end = 18;
+		for (int next = ClassPath.next(end, 7L); next >= 0; next = ClassPath.next(end, 7L))
+		{
+			end = next;
+		}
+		check("a bot shops for the end of its class path from level 1", (ClassPath.tier(end) == 3) && (ClassPath.gearClass(18, 7L) == end) && (ClassPath.gearClass(ClassPath.next(18, 7L), 7L) == end) && (ClassPath.gearClass(99, 7L) == 99));
 		final ColdLife.GearShop fits = new ColdLife.GearShop()
 		{
 			@Override
