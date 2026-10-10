@@ -350,6 +350,7 @@ public class LivingPopulationManager
 		}
 
 		_stockSaving = _townStockDao.load(_townStock);
+		_handoff.setTownStock(_townStock);
 		_dao.ensureColumns(); // add columns a newer module version needs to an older table (no manual migration)
 		final long now = System.currentTimeMillis();
 		final List<ColdBot> loaded = _dao.loadAll();
@@ -449,6 +450,7 @@ public class LivingPopulationManager
 		}
 		_handoff.shutdown();
 		_handoff.setLife(null);
+		_handoff.setTownStock(null);
 		if (_stockSaving && _townStock.dirty())
 		{
 			_townStockDao.save(_townStock);

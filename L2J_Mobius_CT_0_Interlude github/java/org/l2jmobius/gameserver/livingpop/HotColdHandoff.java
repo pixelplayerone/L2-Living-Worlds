@@ -173,6 +173,7 @@ public class HotColdHandoff
 	private volatile int _gearTierLevelStep;
 	private volatile boolean _stopped;
 	private volatile ColdLife.Context _life; // Phase 5 travel for hot bots; null when travel is off
+	private volatile TownStock _townStock; // where the items of a hot bot's loot are kept, or null
 	private final AtomicBoolean _refreshing = new AtomicBoolean(); // one hot refresh at a time, never overlapping
 
 	public HotColdHandoff(ColdBotDao dao)
@@ -213,6 +214,15 @@ public class HotColdHandoff
 	public void setLife(ColdLife.Context life)
 	{
 		_life = life;
+	}
+
+	/**
+	 * Sets where a hot bot's sold-off loot goes as items.
+	 * @param townStock the town stock, or null to keep only the loot's value
+	 */
+	public void setTownStock(TownStock townStock)
+	{
+		_townStock = townStock;
 	}
 
 	/**
@@ -1670,6 +1680,11 @@ public class HotColdHandoff
 		if (bag.loot() > 0)
 		{
 			bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + bag.loot()));
+			final TownStock townStock = _townStock;
+			if ((townStock != null) && (bot.getTown() != null))
+			{
+				bag.items().forEach((itemId, count) -> townStock.add(bot.getTown(), bot.getId(), itemId, count));
+			}
 		}
 		ColdLife.setGear(bot, PhantomManager.getInstance().livingGearOf(player), shop);
 	}

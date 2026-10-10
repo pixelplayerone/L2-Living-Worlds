@@ -3757,8 +3757,9 @@ public class PhantomManager implements IXmlReader
 	 * @param worn the pieces it put on (the pieces they replaced are among the sold items)
 	 * @param loot what the rest sells for at a shop
 	 * @param sold how many items went to the loot
+	 * @param items the items that went to the loot, with how many of each
 	 */
-	public record LivingBag(List<LivingGear.Change> worn, long loot, int sold)
+	public record LivingBag(List<LivingGear.Change> worn, long loot, int sold, Map<Integer, Long> items)
 	{
 	}
 
@@ -3819,6 +3820,7 @@ public class PhantomManager implements IXmlReader
 
 		long loot = 0;
 		int sold = 0;
+		final Map<Integer, Long> soldItems = new HashMap<>();
 		if (sell)
 		{
 			for (Item item : new ArrayList<>(phantom.getInventory().getItems()))
@@ -3829,6 +3831,7 @@ public class PhantomManager implements IXmlReader
 				}
 				loot += (item.getTemplate().getReferencePrice() / 2L) * item.getCount();
 				sold++;
+				soldItems.merge(item.getId(), (long) item.getCount(), Long::sum);
 				phantom.getInventory().destroyItem(ItemProcessType.DESTROY, item, phantom, null);
 			}
 		}
@@ -3836,7 +3839,7 @@ public class PhantomManager implements IXmlReader
 		{
 			phantom.broadcastUserInfo();
 		}
-		return new LivingBag(List.copyOf(worn), loot, sold);
+		return new LivingBag(List.copyOf(worn), loot, sold, soldItems);
 	}
 
 	/** Whether an item is one of the supplies a living bot keeps: shots, potions, Scrolls of Escape, arrows. */
