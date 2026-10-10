@@ -389,7 +389,7 @@ public class LivingTravelTest
 		check("too poor for a gatekeeper it walks to the nearest fitting zone", ColdLife.TO_ZONE.equals(broke.getActivity()) && "Beyond".equals(broke.getZone()) && (broke.getAdena() == 600L) && (broke.getLeg().to().x() == 121000));
 		check("the walk says why", events.stream().anyMatch(e -> e.text().contains("on foot, as it cannot afford a gatekeeper")));
 
-		// No zone fits its level at all: then it waits in town.
+		// No zone fits its level at all: it hunts the highest one it has outgrown rather than wait in town (FPC-297).
 		final ColdBot stuck = bot(21, "Far Hills", 600L, 10L, 2L, 0);
 		stuck.setActivity(ColdLife.IN_TOWN);
 		stuck.setTown("Alpha");
@@ -398,8 +398,8 @@ public class LivingTravelTest
 		stuck.setLeg(TravelLeg.stay(new Point(0, 0, 0), 0L, 0L));
 		events.clear();
 		ColdLife.advance(stuck, 1L, 1L, context, events);
-		check("with no fitting zone it waits in town", ColdLife.IN_TOWN.equals(stuck.getActivity()) && (stuck.getLeg().durationMs() == 300_000L));
-		check("the wait is a keyed decision", events.stream().anyMatch(e -> "stuck-Alpha".equals(e.key())));
+		check("with no fitting zone it walks to the highest one below its level", ColdLife.TO_ZONE.equals(stuck.getActivity()) && "Beyond".equals(stuck.getZone()));
+		check("and no longer waits in town", events.stream().noneMatch(e -> "stuck-Alpha".equals(e.key())));
 	}
 
 	private static void testErrandPosition() throws Exception
@@ -1090,7 +1090,11 @@ public class LivingTravelTest
 		final Map<String, Integer> fullHills = new HashMap<>();
 		fullHills.put("Far Hills", 8);
 		check("and prefers one that is not full", "Beyond".equals(ZoneChooser.walkFallback(new ZoneChooser.Situation(25, "Elf", null, alpha, 0L, fullHills, 8), catalog).zone().name()));
-		check("no fitting zone, no walk", ZoneChooser.walkFallback(new ZoneChooser.Situation(31, "Elf", null, alpha, 0L, null, 8), catalog) == null);
+		// FPC-297: a bot that has outgrown every zone on its land takes the highest one below its level, not none.
+		final ZoneChooser.Choice outgrown = ZoneChooser.walkFallback(new ZoneChooser.Situation(31, "Elf", null, alpha, 0L, null, 8), catalog);
+		check("outgrown every zone: walks to the highest one below its level", (outgrown != null) && "Beyond".equals(outgrown.zone().name()) && (outgrown.way() == ZoneChooser.Way.WALK));
+		final ZoneCatalog isles = ZoneCatalog.parse(ISLAND_XML);
+		check("and none on an island with nothing it can hunt", ZoneChooser.walkFallback(new ZoneChooser.Situation(5, "Elf", null, isles.town("Isle"), 0L, null, 8), isles) == null);
 
 		// A bot that picks a zone is counted there at once, so the next one leaving in the same tick sees it.
 		final ColdLife.Context context = context(0);
@@ -1157,6 +1161,15 @@ public class LivingTravelTest
 		+ "<zone name=\"Rock\" minLevel=\"30\" maxLevel=\"40\"><teleport town=\"Main\" x=\"65000\" y=\"0\" z=\"0\" fee=\"300\"/><spot x=\"65000\" y=\"0\" z=\"0\"/></zone>" //
 		+ "</zones>";
 
+	// FPC-296. One land: Home's newbie grounds lie 20000 out of town (past the walk range), Far is a whole continent away
+	// with a gatekeeper route to Home, Lone has no route there.
+	private static final String STARTER_XML = "<zones>" //
+		+ "<town name=\"Home\" x=\"0\" y=\"0\" z=\"0\"><gatekeeper npcId=\"1\" x=\"100\" y=\"0\" z=\"0\"/><grocer npcId=\"2\" x=\"0\" y=\"100\" z=\"0\"/></town>" //
+		+ "<town name=\"Far\" x=\"-100000\" y=\"0\" z=\"0\"><gatekeeper npcId=\"3\" x=\"-100100\" y=\"0\" z=\"0\"/><grocer npcId=\"4\" x=\"-100000\" y=\"100\" z=\"0\"/><route town=\"Home\" fee=\"700\"/></town>" //
+		+ "<town name=\"Lone\" x=\"0\" y=\"100000\" z=\"0\"><gatekeeper npcId=\"5\" x=\"100\" y=\"100000\" z=\"0\"/><grocer npcId=\"6\" x=\"0\" y=\"100100\" z=\"0\"/></town>" //
+		+ "<zone name=\"Home Newbies\" minLevel=\"1\" maxLevel=\"10\" starterRace=\"Elf\"><spot x=\"20000\" y=\"0\" z=\"0\"/></zone>" //
+		+ "</zones>";
+
 	private static void testIslands() throws Exception
 	{
 		final ZoneCatalog catalog = ZoneCatalog.parse(ISLAND_XML);
@@ -1167,6 +1180,13 @@ public class LivingTravelTest
 		check("never on foot to newbie grounds across the water", ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Main"), catalog).way() == ZoneChooser.Way.GATEKEEPER);
 		check("the newbie grounds trip pays the gatekeeper to the island's town", (ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Main"), catalog).fee() == 500L) && ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Main"), catalog).arrival().equals(new Point(0, 0, 0)));
 		check("newbie grounds on the same island are walked to", ZoneChooser.route(catalog.zone("Isle Newbies"), catalog.town("Isle"), catalog).way() == ZoneChooser.Way.WALK);
+
+		// FPC-296: far newbie grounds on the same land go through the gatekeeper to their town, on foot only without one.
+		final ZoneCatalog land = ZoneCatalog.parse(STARTER_XML);
+		final ZoneChooser.Choice gate = ZoneChooser.route(land.zone("Home Newbies"), land.town("Far"), land);
+		check("far newbie grounds on the same land take the gatekeeper", (gate != null) && (gate.way() == ZoneChooser.Way.GATEKEEPER) && (gate.fee() == 700L) && gate.arrival().equals(new Point(0, 0, 0)));
+		check("from their own town they are walked to", ZoneChooser.route(land.zone("Home Newbies"), land.town("Home"), land).way() == ZoneChooser.Way.WALK);
+		check("with no gatekeeper going there they are still walked to", ZoneChooser.route(land.zone("Home Newbies"), land.town("Lone"), land).way() == ZoneChooser.Way.WALK);
 
 		final ColdLife.Params travel = new ColdLife.Params(100.0, 20_000L, 10_000L, 0, 60_000L, 60_000L, 4.0, 8, 300_000L, 2500.0);
 		final ColdLife.Context context = new ColdLife.Context(catalog, supply(), travel, (level, tier) -> prices(), new HashMap<>(), new Random(7));
@@ -1260,6 +1280,24 @@ public class LivingTravelTest
 		check("no terrain data gives no plan", LivingRoute.plan(RIVER, new Point(30000, 0, 0), new Point(31000, 0, 0)) == null);
 		final List<Point> out = LivingRoute.plan(RIVER, new Point(1200, 0, -200), new Point(0, 0, 0));
 		check("a bot already in the water finds its way out", (out != null) && out.get(out.size() - 1).equals(new Point(0, 0, 0)));
+
+		// FPC-292: a bot going hot appears at its own dry spot around the shared point, the same one every time.
+		final Point shared = new Point(800, 0, 0);
+		boolean dry = true;
+		boolean inRing = true;
+		final java.util.Set<Point> spots = new java.util.HashSet<>();
+		for (long id = 1; id <= 40; id++)
+		{
+			final Point spot = LivingRoute.spread(RIVER, id, shared, shared, 80, 320);
+			dry &= !RIVER.water(spot.x(), spot.y(), spot.z());
+			inRing &= (spot.distance(shared) >= 79) && (spot.distance(shared) <= 321);
+			spots.add(spot);
+		}
+		check("spread spots stay out of the river", dry);
+		check("spread spots sit in the ring around the point", inRing);
+		check("spread spots are not stacked", spots.size() >= 35);
+		check("a bot always gets the same spot", LivingRoute.spread(RIVER, 7, shared, shared, 80, 320).equals(LivingRoute.spread(RIVER, 7, shared, shared, 80, 320)));
+		check("no terrain data keeps the point", LivingRoute.spread(RIVER, 7, new Point(30000, 0, 0), new Point(30000, 0, 0), 80, 320).equals(new Point(30000, 0, 0)));
 	}
 
 	private static void check(String label, boolean condition)

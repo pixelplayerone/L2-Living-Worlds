@@ -313,6 +313,46 @@ public final class LivingRoute
 		return true;
 	}
 
+	/**
+	 * A spot of this bot's own around a point, so bots that share one cold position (a zone's hunting spot, a shop, the
+	 * town respawn point) do not appear stacked on it when they go hot (FPC-292). The angle and distance come from the
+	 * bot id, so a bot gets the same spot every time. The spot must have terrain data, be dry, and be reachable on foot
+	 * in a straight line from {@code from}; up to eight angles are tried, and when none fits the point itself is kept.
+	 * @param terrain the terrain
+	 * @param id the bot id
+	 * @param around the point to spread around
+	 * @param from where the spot must be walkable from (usually {@code around})
+	 * @param minRadius the nearest the spot may be
+	 * @param maxRadius the farthest the spot may be
+	 * @return the spot, or {@code around} when no spot fits
+	 */
+	public static Point spread(Terrain terrain, long id, Point around, Point from, double minRadius, double maxRadius)
+	{
+		if (!terrain.known(around.x(), around.y()))
+		{
+			return around;
+		}
+		final long mixed = (id * 0x9E3779B97F4A7C15L) ^ (id >>> 17);
+		final double angle = ((mixed >>> 11) & 0xFFFF) * ((2 * Math.PI) / 0x10000);
+		final double radius = minRadius + ((((mixed >>> 33) & 0xFF) / 255.0) * (maxRadius - minRadius));
+		for (int attempt = 0; attempt < 8; attempt++)
+		{
+			final double turn = angle + (attempt * (Math.PI / 4));
+			final int x = (int) Math.round(around.x() + (Math.cos(turn) * radius));
+			final int y = (int) Math.round(around.y() + (Math.sin(turn) * radius));
+			if (!terrain.known(x, y))
+			{
+				continue;
+			}
+			final int z = terrain.height(x, y, around.z());
+			if (!terrain.water(x, y, z) && terrain.canWalk(from.x(), from.y(), from.z(), x, y, z))
+			{
+				return new Point(x, y, z);
+			}
+		}
+		return around;
+	}
+
 	private static long key(int i, int j)
 	{
 		return (((long) i) << 32) ^ (j & 0xffffffffL);

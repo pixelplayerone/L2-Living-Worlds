@@ -226,6 +226,7 @@ public class AutoPlayTaskManager
 						if ((droppedItem == null) //
 							|| (!droppedItem.isSpawned()) //
 							|| AutoPlayConfig.IGNORED_AUTO_PICK_ITEMS.contains(droppedItem.getId()) //
+							|| (droppedItem.isProtected() && (droppedItem.getOwnerId() != player.getObjectId())) // Living World: someone else's drop, do not walk to it (FPC-291)
 							|| !GeoEngine.getInstance().canMoveToTarget(player.getX(), player.getY(), player.getZ(), droppedItem.getX(), droppedItem.getY(), droppedItem.getZ(), player.getInstanceId()))
 						{
 							continue PICKUP;
@@ -243,11 +244,8 @@ public class AutoPlayTaskManager
 						}
 						
 						// Try to pick it up.
-						if (!droppedItem.isProtected() || (droppedItem.getOwnerId() == player.getObjectId()))
-						{
-							player.doPickupItem(droppedItem);
-							continue PLAY; // Avoid pickup being skipped.
-						}
+						player.doPickupItem(droppedItem);
+						continue PLAY; // Avoid pickup being skipped.
 					}
 				}
 				

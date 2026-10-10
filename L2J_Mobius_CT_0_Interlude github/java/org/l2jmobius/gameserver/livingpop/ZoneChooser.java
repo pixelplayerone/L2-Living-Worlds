@@ -203,16 +203,23 @@ public final class ZoneChooser
 	{
 		// Never on foot across water (FPC-277): a zone on another island is reached through the gatekeepers only.
 		final boolean sameLand = catalog.sameLand(zone.center(), town.arrival());
-		if (sameLand && (zone.isStarter() || (zone.center().distance(town.arrival()) <= WALK_RANGE)))
+		if (sameLand && (zone.center().distance(town.arrival()) <= WALK_RANGE))
 		{
 			return new Choice(zone, Way.WALK, null, 0L, town.arrival());
 		}
 		if (zone.isStarter())
 		{
-			// Newbie grounds across the water: the gatekeeper to the shopping town on their land, then on foot.
+			// Far newbie grounds: the gatekeeper to the shopping town on their land, then on foot. Walking them from any
+			// town on the same land sent bots across the whole continent, Giran to the Elven Village (FPC-296); on foot
+			// only from that town itself or when no gatekeeper goes there.
 			final Town home = catalog.nearestShoppingTown(zone.center());
-			final long fee = (home == null) ? -1L : town.feeTo(home.name());
-			return ((fee < 0) || !catalog.sameLand(zone.center(), home.arrival())) ? null : new Choice(zone, Way.GATEKEEPER, null, fee, home.arrival());
+			final boolean homeOnLand = (home != null) && catalog.sameLand(zone.center(), home.arrival());
+			final long fee = !homeOnLand || home.name().equals(town.name()) ? -1L : town.feeTo(home.name());
+			if (fee >= 0)
+			{
+				return new Choice(zone, Way.GATEKEEPER, null, fee, home.arrival());
+			}
+			return sameLand ? new Choice(zone, Way.WALK, null, 0L, town.arrival()) : null;
 		}
 		final Teleport direct = zone.teleportFrom(town.name());
 		if (direct != null)
@@ -238,10 +245,11 @@ public final class ZoneChooser
 
 	/**
 	 * The way on for a bot too poor for any gatekeeper: on foot, however far, to the zone nearest its town that fits its
-	 * level and lies on the same land, one that is not full when there is one.
+	 * level and lies on the same land, one that is not full when there is one. A bot that has outgrown every zone on its
+	 * land takes the highest one below its level.
 	 * @param situation the situation
 	 * @param catalog the catalog
-	 * @return the walk, or null when no zone fits its level
+	 * @return the walk, or null when no zone on its land fits or lies below its level
 	 */
 	public static Choice walkFallback(Situation situation, ZoneCatalog catalog)
 	{
@@ -267,6 +275,24 @@ public final class ZoneChooser
 				best = zone;
 				bestFull = full;
 				bestDistance = distance;
+			}
+		}
+		if (best == null)
+		{
+			// Outgrown every zone on this land (a level 17 on Talking Island, whose zones end at 16) and too poor to leave:
+			// hunt the highest zone it has outgrown rather than wait in town forever (FPC-297).
+			for (Zone zone : catalog.zones())
+			{
+				if (zone.isStarter() || (zone.maxLevel() >= situation.level()) || situation.avoids(zone) || !catalog.sameLand(zone.center(), town.arrival()))
+				{
+					continue;
+				}
+				final double distance = zone.center().distance(town.arrival());
+				if ((best == null) || (zone.maxLevel() > best.maxLevel()) || ((zone.maxLevel() == best.maxLevel()) && (distance < bestDistance)))
+				{
+					best = zone;
+					bestDistance = distance;
+				}
 			}
 		}
 		return (best == null) ? null : new Choice(best, Way.WALK, null, 0L, town.arrival());
