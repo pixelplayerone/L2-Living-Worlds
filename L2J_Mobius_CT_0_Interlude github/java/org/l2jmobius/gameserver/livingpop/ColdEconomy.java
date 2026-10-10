@@ -71,6 +71,15 @@ public final class ColdEconomy
 		{
 			return new Params(adenaPerMobLevel, killsPerMinute, soulshotMilestoneLevel, soulshotMilestoneGrant, Math.max(0.0, perKill), soulshotRestockThreshold, soulshotRestockBatch, soulshotCost, potionRestockThreshold, potionRestockBatch, potionCost, gearTierLevelStep, gearUpgradeCost);
 		}
+
+		/**
+		 * @param rate a bot's own kills per minute
+		 * @return these params with that kill rate
+		 */
+		public Params withKillsPerMinute(double rate)
+		{
+			return new Params(adenaPerMobLevel, rate, soulshotMilestoneLevel, soulshotMilestoneGrant, soulshotsPerKill, soulshotRestockThreshold, soulshotRestockBatch, soulshotCost, potionRestockThreshold, potionRestockBatch, potionCost, gearTierLevelStep, gearUpgradeCost);
+		}
 	}
 
 	/**

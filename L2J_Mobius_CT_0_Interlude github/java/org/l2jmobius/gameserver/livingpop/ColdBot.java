@@ -78,9 +78,29 @@ public class ColdBot
 	private volatile String _gear;
 	private final DecisionLog _decisions = new DecisionLog();
 	// Lifetime hunting counters for the monitor, persisted next to the decision log in stats_json (no schema change).
+	private volatile double _partyDeathFactor; // zone model: the death factor while hunting in the virtual party (0 = hunting alone); not saved
+	private volatile double _partyDeaths = -1.0; // zone model: deaths an hour in the virtual party from the HP model (-1 = none); not saved
 	private volatile double _kills;
 	private volatile long _adenaEarned;
 	private volatile long _shoppedAt; // when it last finished its errands in town (0 = never), kept with the counters
+
+	/** @return the death factor of the virtual party the bot hunts in, 0 when it hunts alone (not saved) */
+	public double getPartyDeathFactor()
+	{
+		return _partyDeathFactor;
+	}
+
+	/** @return deaths an hour in the virtual party from the HP model, -1 when it has none (hunting alone, or the zone has no rest data) */
+	public double getPartyDeathsPerHour()
+	{
+		return _partyDeaths;
+	}
+
+	public void setPartyDeaths(double factor, double deathsPerHour)
+	{
+		_partyDeathFactor = factor;
+		_partyDeaths = deathsPerHour;
+	}
 
 	public long getId()
 	{

@@ -174,9 +174,15 @@ public final class ColdLife
 	 *            that never change class
 	 * @param skills the skill trees, or null for bots that do not track their skills (a hot one then learns everything)
 	 * @param gear gear kept per slot, or null for bots that buy whole gear tiers
+	 * @param combat the zone combat model for kill and death rates, or null for the flat rates
 	 */
-	public record Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills, GearShop gear)
+	public record Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills, GearShop gear, ZoneCombat combat)
 	{
+		public Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills, GearShop gear)
+		{
+			this(catalog, supply, travel, priceBook, occupancy, random, risk, expToNext, classQuestMs, skills, gear, null);
+		}
+
 		public Context(ZoneCatalog catalog, SupplyPlanner.Params supply, Params travel, PriceBook priceBook, Map<String, Integer> occupancy, Random random, ColdRisk.Params risk, IntToLongFunction expToNext, long[] classQuestMs, SkillBook skills)
 		{
 			this(catalog, supply, travel, priceBook, occupancy, random, risk, expToNext, classQuestMs, skills, null);
@@ -347,7 +353,13 @@ public final class ColdLife
 	private static void hunt(ColdBot bot, long now, long elapsedMs, Context context, List<DecisionLog.Event> events)
 	{
 		// Drink potions as if taking real damage while hunting. Fractional rates are rolled so the average is right.
-		final double expected = (Math.max(0L, elapsedMs) / 3_600_000.0) * context.travel().potionsPerHour() * LivingSupplies.potionUseFactor(bot.getClassId());
+		double perHour = context.travel().potionsPerHour() * LivingSupplies.potionUseFactor(bot.getClassId());
+		final ZoneCombat model = context.combat();
+		if ((model != null) && model.knows(bot.getZone()) && (bot.getPotions() > 0))
+		{
+			perHour = model.potionsPerHour(bot.getZone(), bot.getClassId(), bot.getLevel(), statsOf(bot, context.gear(), model), 1.0, perHour); // only what its hunting gives a use for
+		}
+		final double expected = (Math.max(0L, elapsedMs) / 3_600_000.0) * perHour;
 		long drunk = (long) Math.floor(expected);
 		if (context.random().nextDouble() < (expected - drunk))
 		{
@@ -531,7 +543,12 @@ public final class ColdLife
 		// Gear behind its level: tiers not bought yet, or with gear kept per slot, grades its weapon or chest armor lag.
 		final int gearHave = (shop == null) ? bot.getGearTier() : 0;
 		final int gearWant = (shop == null) ? SupplyPlanner.tierCeiling(bot.getLevel(), context.supply()) : LivingGear.behind(gearOf(bot), bot.getLevel(), shop.items());
-		final ColdRisk.Danger danger = ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId());
+		final ZoneCombat combat = context.combat();
+		// The HP model's deaths an hour, in the party or alone, are the answer as they are; without rest data for the zone the old factor times the base rate applies.
+		final boolean zoned = (combat != null) && combat.knows(zone.name());
+		final double modelRate = (bot.getPartyDeathsPerHour() >= 0.0) ? bot.getPartyDeathsPerHour() : ((bot.getPartyDeathFactor() <= 0.0) && zoned) ? combat.deathsPerHour(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : -1.0;
+		final double zoneFactor = (bot.getPartyDeathFactor() > 0.0) ? bot.getPartyDeathFactor() : zoned ? combat.deathFactor(zone.name(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat)) : 0.0;
+		final ColdRisk.Danger danger = (modelRate >= 0.0) ? ColdRisk.fromRate(modelRate, bot.getPotions()) : ColdRisk.danger(risk, bot.getLevel(), zone.minLevel(), zone.maxLevel(), bot.getPotions(), gearHave, gearWant, bot.getClassId(), zoneFactor);
 		if (context.random().nextDouble() >= ColdRisk.deathChance(danger.deathsPerHour(), elapsedMs))
 		{
 			return false;
@@ -600,12 +617,18 @@ public final class ColdLife
 
 	/**
 	 * Sits down for a rest once it has hunted long enough since the last one, as a player recovers HP and MP between
-	 * fights. Casters and archers rest longer.
+	 * fights. Casters and archers rest longer. Only without the zone model's rest estimate, which replaces it.
 	 * @return whether it sat down
 	 */
 	private static boolean rests(ColdBot bot, long now, long elapsedMs, Context context)
 	{
 		final ColdRisk.Params risk = context.risk();
+		if ((context.combat() != null) && context.combat().restModeled(bot.getZone()))
+		{
+			// The zone model already takes the sitting out of the kill rate; a fixed rest on top would count it twice.
+			bot.setRisk(bot.getRisk().withHunted(0L));
+			return false;
+		}
 		final long hunted = bot.getRisk().huntedSinceRestMs() + elapsedMs;
 		if ((risk.restEveryMs() <= 0) || (risk.restMs() <= 0) || (hunted < risk.restEveryMs()))
 		{
@@ -1266,6 +1289,115 @@ public final class ColdLife
 
 	/**
 	 * @param bot a bot
+	 * @param shop the gear shop, or null for bots that buy whole tiers
+	 * @param tierStep levels per whole gear tier
+	 * @return its weapon grade and its armor grade (0 no grade to 5 S)
+	 */
+	static int[] gradesOf(ColdBot bot, GearShop shop, int tierStep)
+	{
+		if ((shop != null) && (bot.getGear() != null))
+		{
+			final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
+			final int weapon = LivingGear.weaponGrade(gear, shop.items());
+			final int armor = Math.max(0, LivingGear.allowedGrade(bot.getLevel()) - LivingGear.behind(gear, bot.getLevel(), shop.items())); // the lower of weapon and chest
+			return new int[] { weapon, armor };
+		}
+		final int grade = ZoneCombat.gradeOfTier(bot.getGearTier(), tierStep);
+		return new int[] { grade, grade };
+	}
+
+	/**
+	 * What the bot's worn gear gives: the weapon's P.Atk (M.Atk for a mage), the P.Def of its armor and shield, the M.Def of its jewelry.
+	 * Empty slots count at their naked values (underwear 4; fighter chest 31, legs 18, head 12, gloves 8, feet 7; mystic chest 15, legs 8; jewelry 13, 9, 9, 5, 5);
+	 * a full-body chest covers the legs. Set bonuses and enchants are not counted. A bot without a gear record gets the curves of its grade.
+	 */
+	/**
+	 * @param skills the share of its skills it has learned
+	 * @param blessed whether it fires blessed spiritshots
+	 * @return the shots a kill of its zone takes it at its level, from its hits per kill; negative when the zone model does not give it
+	 */
+	static double shotsPerKill(ColdBot bot, GearShop shop, ZoneCombat combat, double skills, boolean blessed)
+	{
+		if ((combat == null) || !combat.shotModel() || !combat.knows(bot.getZone()))
+		{
+			return -1.0;
+		}
+		return combat.shotsPerKill(bot.getZone(), bot.getClassId(), bot.getLevel(), statsOf(bot, shop, combat), skills, blessed);
+	}
+
+	static ZoneCombat.Stats statsOf(ColdBot bot, GearShop shop, ZoneCombat combat)
+	{
+		if ((shop == null) || (bot.getGear() == null))
+		{
+			final int[] grades = gradesOf(bot, shop, combat.tierStep());
+			return combat.curveStats(ZoneCombat.roleOf(bot.getClassId()), grades[0], grades[1]);
+		}
+		final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
+		final LivingGear.Items items = shop.items();
+		final boolean mystic = LivingSupplies.isMystic(bot.getClassId());
+		final boolean mage = ZoneCombat.roleOf(bot.getClassId()) == ZoneCombat.Role.MAGE;
+		final LivingGear.Piece weapon = piece(gear, LivingGear.Slot.WEAPON, items);
+		final double attack = (weapon == null) ? 4.0 : (mage ? weapon.mAtk() : weapon.pAtk());
+		final LivingGear.Piece chest = piece(gear, LivingGear.Slot.CHEST, items);
+		double pDef = 4.0;
+		pDef += (chest != null) ? chest.pDef() : (mystic ? 15 : 31);
+		final boolean fullBody = (chest != null) && chest.fullBody();
+		final LivingGear.Piece legs = piece(gear, LivingGear.Slot.LEGS, items);
+		pDef += fullBody ? 0.0 : ((legs != null) ? legs.pDef() : (mystic ? 8 : 18));
+		pDef += slotDef(gear, LivingGear.Slot.HEAD, items, 12);
+		pDef += slotDef(gear, LivingGear.Slot.GLOVES, items, 8);
+		pDef += slotDef(gear, LivingGear.Slot.FEET, items, 7);
+		final LivingGear.Piece shield = piece(gear, LivingGear.Slot.SHIELD, items);
+		pDef += (shield != null) ? shield.pDef() : 0.0;
+		double mDef = 0.0;
+		mDef += jewel(gear, LivingGear.Slot.NECK, items, 13);
+		mDef += jewel(gear, LivingGear.Slot.EAR1, items, 9);
+		mDef += jewel(gear, LivingGear.Slot.EAR2, items, 9);
+		mDef += jewel(gear, LivingGear.Slot.RING1, items, 5);
+		mDef += jewel(gear, LivingGear.Slot.RING2, items, 5);
+		return new ZoneCombat.Stats(attack, pDef, mDef, selfBuffShare(bot, combat));
+	}
+
+	/** The share of the class's damage and defence self buffs the bot has bought, or -1 when its skills are not tracked or the class has none to compare. */
+	private static double selfBuffShare(ColdBot bot, ZoneCombat combat)
+	{
+		final int[] ids = combat.selfBuffIds(bot.getClassId(), bot.getLevel());
+		if ((ids.length == 0) || (bot.getSkills() == null))
+		{
+			return -1.0;
+		}
+		final Map<Integer, Integer> known = SkillPlanner.decode(bot.getSkills());
+		int have = 0;
+		for (int id : ids)
+		{
+			if (known.containsKey(id))
+			{
+				have++;
+			}
+		}
+		return (double) have / ids.length;
+	}
+
+	private static LivingGear.Piece piece(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, LivingGear.Items items)
+	{
+		final Integer id = gear.get(slot);
+		return ((id == null) || (id <= 0)) ? null : items.piece(id);
+	}
+
+	private static double slotDef(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, LivingGear.Items items, double naked)
+	{
+		final LivingGear.Piece piece = piece(gear, slot, items);
+		return (piece != null) ? piece.pDef() : naked;
+	}
+
+	private static double jewel(Map<LivingGear.Slot, Integer> gear, LivingGear.Slot slot, LivingGear.Items items, double naked)
+	{
+		final LivingGear.Piece piece = piece(gear, slot, items);
+		return (piece != null) ? piece.mDef() : naked;
+	}
+
+	/**
+	 * @param bot a bot
 	 * @return the gear it wears (empty when not recorded)
 	 */
 	static Map<LivingGear.Slot, Integer> gearOf(ColdBot bot)
@@ -1289,6 +1421,11 @@ public final class ColdLife
 	private static SupplyPlanner.Params supplyFor(ColdBot bot, Context context)
 	{
 		final SupplyPlanner.Params supply = context.supply().withPotionStock(LivingSupplies.potionStockFor(bot.getClassId(), context.supply().potionStock()));
+		final double hits = shotsPerKill(bot, context.gear(), context.combat(), 1.0, false); // its hits per kill, when the zone model has them
+		if (hits > 0.0)
+		{
+			return supply.withSoulshotsPerKill(hits);
+		}
 		return LivingSupplies.isMystic(bot.getClassId()) ? supply.withSoulshotsPerKill(context.travel().spiritshotsPerKill()) : supply;
 	}
 

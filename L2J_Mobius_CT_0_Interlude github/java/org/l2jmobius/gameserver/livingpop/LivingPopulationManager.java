@@ -18,6 +18,7 @@
  */
 package org.l2jmobius.gameserver.livingpop;
 
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
@@ -98,6 +100,29 @@ public class LivingPopulationManager
 	private LivingPopulationConfig _config = LivingPopulationConfig.defaults();
 	private TravelConfig _travelConfig = TravelConfig.defaults();
 	private volatile ZoneCatalog _catalog = ZoneCatalog.empty();
+	private volatile ZoneCombat _combat = ZoneCombat.off(); // zone-based kill and death rates, or off for the flat ones
+	private volatile ZoneCombat.Params _combatParams = new ZoneCombat.Params(false, 12.0, 0.5, 0.5, 24.0, 0.25, 4.0, 10);
+	private static final double MIN_RESPAWN_RATE = 0.3; // kills per minute a bot always manages, whatever the zone's respawns
+	private volatile boolean _zoneExp; // experience per kill from the zone's real monsters, not level x ColdExpPerMobLevel
+	private volatile boolean _respawnLimit = true; // zone combat: a zone's respawns cap what its bots can kill
+	private volatile double _respawnShare = 0.5; // share of a zone's spawns a bot can practically reach
+	private volatile double _aggroRisk = 1.0; // zone combat: extra death multiple where every monster is aggressive
+	private volatile double _soulshotDamage = 2.0; // zone combat: damage with soulshots over without
+	private volatile double _spiritshotDamage = Math.sqrt(2.0);
+	private volatile double _blessedDamage = 2.0; // zone combat: damage with blessed spiritshots over without
+	private boolean _lossTableLoaded; // the server's death experience loss table was handed to ColdRisk
+	private volatile boolean _partyOn = true; // zone combat: bots may hunt in a virtual party (tank, damage dealer, buffer, healer)
+	private volatile boolean _partyHealers = true; // healers always hunt in the party
+	private volatile ZoneCombat.PartyParams _partyParams = ZoneCombat.PartyParams.defaults();
+	private static final long PARTY_WINDOW_MS = 4L * 3_600_000L; // a bot keeps its roll (party or alone, who is in it) for this long in a zone
+	private volatile boolean _zoneRest = true; // zone combat: sitting to refill HP and MP lowers kills (potions cover some HP)
+	private volatile boolean _zoneEvasion = true; // zone combat: monsters miss a bot with evasion
+	private volatile boolean _rotationTtk = true; // zone combat: time to kill from the sim rotations (real seconds)
+	private volatile double _blessedShare; // share of mages that fire blessed spiritshots (until buying decides it per bot)
+	private volatile double[] _buffShares = new double[4]; // buffed leveling: share of the full buffer party, per role
+	private volatile boolean _combatRates = true; // kill and death rates from the zone model
+	private volatile boolean _expGap = true; // no hunting experience when outleveled for the zone, like the server
+	private volatile String _combatFile = "modules/living-population/data/zone_combat.tsv";
 	private volatile long[] _kitPrices; // gear kit price by grade, from the item data (see kitPrices)
 	private final Map<String, DropYield.Yield> _zoneYields = new ConcurrentHashMap<>(); // zone|level|spoiler|gear -> per kill
 	private final Map<String, Map<Integer, Double>> _zoneGear = new ConcurrentHashMap<>(); // zone|level|spoiler -> gear drop chances
@@ -130,7 +155,114 @@ public class LivingPopulationManager
 	}
 
 	/**
-	 * Starts the simulation with the Phase 5 travel configuration.
+	 * Sets the zone combat model's tuning and data file. Call before {@link #start(LivingPopulationConfig, TravelConfig)}.
+	 * @param params the tuning ({@code enabled} false keeps the flat kill and death rates)
+	 * @param dataFile the generated zone_combat.tsv
+	 * @param buffShares per role (tank, melee, bow, mage) the share of the buffer party's buffs the bots have while leveling, 0 to 1 (null or zeros = unbuffed)
+	 * @param expLevelGap whether hunting gives no experience when the bot is {@code MonsterExpMaxLevelDifference} or more levels away from the zone's monsters (uses the same data file)
+	 */
+	public void setZoneLimits(boolean respawnLimit, double respawnShare, double aggroRisk, boolean zoneExp)
+	{
+		_zoneExp = zoneExp;
+		_respawnLimit = respawnLimit;
+		_respawnShare = respawnShare;
+		_aggroRisk = aggroRisk;
+	}
+
+	private volatile boolean _startingBuffs = true;
+	private volatile double _rangedWalk = 0.5;
+	private volatile int _rotationWindow = 60;
+	private volatile double[] _hpDeaths = { 0.0, 0.002 };
+	private volatile double[] _extraMonsters = { 0.15, 0.075, 0.04, 0.02, 0.01 };
+	private volatile double[] _shotModel = { 0.0, 1.4, 2.4, 2.2 };
+	private volatile boolean _selfHeal = true;
+
+	public void setParty(boolean on, boolean healers, ZoneCombat.PartyParams params)
+	{
+		_partyOn = on;
+		_partyHealers = healers;
+		_partyParams = params;
+	}
+
+	public void setRestAndEvasion(boolean rest, boolean evasion)
+	{
+		_zoneRest = rest;
+		_zoneEvasion = evasion;
+	}
+
+	public void setRotationTtk(boolean on)
+	{
+		_rotationTtk = on;
+	}
+
+	public void setStartingBuffs(boolean on)
+	{
+		_startingBuffs = on;
+	}
+
+	public void setRangedWalk(double factor)
+	{
+		_rangedWalk = factor;
+	}
+
+	/** @param on whether a kill's shots follow its hits; the seconds between attacks of melee, archers and mage casts */
+	/** @param on whether cold deaths come from the HP model; how many standard deviations above an average fight's damage a bot keeps in HP before it sits */
+	public void setExtraMonsters(double[] chances)
+	{
+		_extraMonsters = chances.clone();
+	}
+
+	public void setHpDeaths(boolean on, double fightRisk)
+	{
+		_hpDeaths = new double[] { on ? 1.0 : 0.0, fightRisk };
+	}
+
+	/** @param seconds the rotation window cold fights read (60 = the one-minute average; 0 = nearest the fight) */
+	public void setRotationWindow(int seconds)
+	{
+		_rotationWindow = seconds;
+	}
+
+	public void setShotModel(boolean on, double meleeInterval, double bowInterval, double castInterval)
+	{
+		_shotModel = new double[] { on ? 1.0 : 0.0, meleeInterval, bowInterval, castInterval };
+	}
+
+	/** @param on whether mages, healers and summoners heal themselves (and summoners their servitor) with the heals they have learned */
+	public void setSelfHeal(boolean on)
+	{
+		_selfHeal = on;
+	}
+
+	public void setBlessedSpiritshots(double damage, double share)
+	{
+		_blessedDamage = damage;
+		_blessedShare = Math.max(0.0, Math.min(1.0, share));
+	}
+
+	/** @return whether this bot fires blessed spiritshots: a fixed share of the mages by bot id (a stand-in until a bot's purchases decide it) */
+	private boolean usesBlessed(ColdBot bot)
+	{
+		return (_blessedShare > 0.0) && (Math.floorMod(bot.getId() * 2654435761L, 100L) < Math.round(_blessedShare * 100.0));
+	}
+
+	public void setShotDamage(double soulshot, double spiritshot)
+	{
+		_soulshotDamage = soulshot;
+		_spiritshotDamage = spiritshot;
+	}
+
+	public void setZoneCombat(ZoneCombat.Params params, String dataFile, boolean expLevelGap, double[] buffShares)
+	{
+		_buffShares = (buffShares == null) ? new double[4] : buffShares.clone();
+		_expGap = expLevelGap;
+		_combatRates = (params != null) && params.enabled();
+		_combatParams = (params == null) ? _combatParams : params;
+		_combatFile = (dataFile == null) ? _combatFile : dataFile;
+	}
+
+	/**
+	 * Starts the module (see {@link #setZoneCombat} for the zone combat model's tuning, set before this).
 	 * @param config the module configuration
 	 * @param travel the travel, town and supply configuration
 	 */
@@ -179,6 +311,39 @@ public class LivingPopulationManager
 		}
 
 		_gear = (_travel && _travelConfig.gearSlots()) ? new GearCatalog(_travelConfig.gearTrade(), config.gearTierLevelStep()) : null;
+
+		// Zone combat: kill and death rates from each bot's stats against its zone's monsters. Needs the zone data file.
+		_combat = ZoneCombat.off();
+		if (_combatRates || _expGap || _zoneExp)
+		{
+			try (Reader reader = Files.newBufferedReader(Path.of(_combatFile), StandardCharsets.UTF_8))
+			{
+				_combat = ZoneCombat.parse(reader, new ZoneCombat.Params(true, Math.max(0.01, config.killsPerMinute()), _combatParams.fightShare(), _combatParams.skillFloor(), _combatParams.maxKillsPerMinute(), _combatParams.minDeathFactor(), _combatParams.maxDeathFactor(), config.gearTierLevelStep()));
+				_combat.setBuffShares(_buffShares);
+				_combat.setShotDamage(_soulshotDamage, _spiritshotDamage);
+				_combat.setBlessedDamage(_blessedDamage);
+				_combat.setRotationTtk(_rotationTtk);
+				_combat.setRest(_zoneRest);
+				_combat.setStartingBuffs(_startingBuffs);
+				_combat.setRangedWalk(_rangedWalk);
+				_combat.setRotationWindow(_rotationWindow);
+				_combat.setHpDeaths(_hpDeaths[0] > 0.0, _hpDeaths[1], _travelConfig.deathsPerHour());
+				_combat.setShotModel(_shotModel[0] > 0.0, _shotModel[1], _shotModel[2], _shotModel[3]);
+				_combat.setSelfHeal(_selfHeal);
+				_combat.setParty(new ZoneCombat.PartyParams(_partyOn && _partyParams.enabled(), _partyParams.healCoverage(), _partyParams.chainChance(), _partyParams.resetSeconds(), _partyParams.healMpPerHp(), _partyParams.baseDeathsPerHour()));
+				_combat.setExtraMonsters(_extraMonsters);
+				_combat.setEvasion(_zoneEvasion);
+				_combat.setAggroRisk(_aggroRisk);
+				if (!_combat.enabled())
+				{
+					LOGGER.warning("LivingPopulation: " + _combatFile + " has no usable zone data; cold bots keep the flat kill and death rates.");
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.log(Level.WARNING, "LivingPopulation: could not read " + _combatFile + ": " + e.getMessage() + "; cold bots keep the flat kill and death rates and the experience level gap is not applied.", e);
+			}
+		}
 
 		_dao.ensureColumns(); // add columns a newer module version needs to an older table (no manual migration)
 		final long now = System.currentTimeMillis();
@@ -463,11 +628,29 @@ public class LivingPopulationManager
 		// Follow the server and model real hunting: honor its XP rate, use its real experience table for the per-level
 		// requirement, and earn experience per kill. A cold bot is assumed to clear level-appropriate mobs, so its
 		// experience per minute is (level * expPerMobLevel) * killsPerMinute * server XP rate. Read once per tick.
+		if (!_lossTableLoaded)
+		{
+			_lossTableLoaded = true;
+			try
+			{
+				final org.l2jmobius.gameserver.data.xml.ExperienceLossData loss = org.l2jmobius.gameserver.data.xml.ExperienceLossData.getInstance();
+				final double[] table = new double[ExperienceData.getInstance().getMaxLevel() + 1];
+				for (int level = 1; level < table.length; level++)
+				{
+					table[level] = loss.getPercentLost(level);
+				}
+				ColdRisk.setExpLossTable(table); // cold deaths cost what a real death costs
+			}
+			catch (RuntimeException e)
+			{
+				// keep the estimate
+			}
+		}
 		final ExperienceData experience = ExperienceData.getInstance();
 		final double rate = Math.max(0.01, RatesConfig.RATE_XP);
 		final int maxLevel = Math.min(_config.maxLevel(), experience.getMaxLevel());
-		final double expPerKillUnit = Math.max(0.0, _config.expPerMobLevel()) * Math.max(0.0, _config.killsPerMinute()) * rate;
 		final IntToLongFunction expToNextLevel = level -> Math.max(1L, experience.getExpForLevel(level + 1) - experience.getExpForLevel(level));
+		_combat.setExpModel(expToNextLevel, rate);
 
 		// Population director: bias leveling toward the online players' level so the world stays peered to them. With
 		// the director off or no players online the target is 0 (neutral). It is folded per level into the experience
@@ -476,11 +659,11 @@ public class LivingPopulationManager
 		final int targetLevel = !_config.directorEnabled() ? 0 : (_config.levelGoal() > 0) ? Math.min(_config.levelGoal(), maxLevel) : PopulationDirector.targetLevel(humanPlayerLevels());
 		_targetLevel = targetLevel;
 		final PopulationDirector.Params directorParams = _config.directorParams();
-		final IntToLongFunction expPerMinuteForLevel = level ->
-		{
-			final double base = Math.max(0.0, level * expPerKillUnit);
-			return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
-		};
+		final ZoneCombat combat = _combatRates ? _combat : ZoneCombat.off(); // rates
+		final ZoneCombat gapData = (_expGap || _zoneExp) ? _combat : ZoneCombat.off(); // zone monster levels and exp
+		final int maxLevelGap = RatesConfig.MONSTER_EXP_MAX_LEVEL_DIFFERENCE;
+		final double flatKillsPerMinute = Math.max(0.0, _config.killsPerMinute());
+		final double expPerKillUnitPerRate = Math.max(0.0, _config.expPerMobLevel()) * rate; // times a kill rate: experience per mob level per minute
 
 		// Phase 4: the cold goal/needs economy (adena, soulshots, gear tier, goal). Read the tuning once per tick.
 		final boolean economy = _config.economyEnabled();
@@ -503,7 +686,8 @@ public class LivingPopulationManager
 				return LivingPopulationManager.this.prices(level, gearTier, classId);
 			}
 		};
-		final ColdLife.Context life = travel ? new ColdLife.Context(_catalog, _travelConfig.supplyParams(_config), _travelConfig.travelParams(), priceBook, zoneOccupancy(), _random, _travelConfig.riskParams(), expToNextLevel, _travelConfig.classQuestParams(), _travelConfig.skillTraining() ? this::skillTree : null, _gear) : null;
+		final Map<String, Integer> occupancy = (travel || (_respawnLimit && combat.enabled())) ? zoneOccupancy() : null;
+		final ColdLife.Context life = travel ? new ColdLife.Context(_catalog, _travelConfig.supplyParams(_config), _travelConfig.travelParams(), priceBook, occupancy, _random, _travelConfig.riskParams(), expToNextLevel, _travelConfig.classQuestParams(), _travelConfig.skillTraining() ? this::skillTree : null, _gear, combat.enabled() ? combat : null) : null;
 		_handoff.setLife(life); // hot bots make the same decisions, acted out by their live characters
 
 		// Resolve up to resolveBatch due bots, starting from a rotating cursor so a population larger than the batch is
@@ -527,9 +711,43 @@ public class LivingPopulationManager
 			final long elapsed = Math.max(0L, now - bot.getLastResolvedAt());
 			// With travel on, experience, adena and soulshot use accrue only while hunting (not while traveling or in town).
 			final long huntedMs = (!travel || ColdLife.isHunting(bot.getActivity())) ? elapsed : 0L;
+			// This bot's own kill rate: its stats against the average monster of the zone it hunts (the flat rate when the model is off).
+			final java.util.function.IntToDoubleFunction perKillAt = level ->
+			{
+				// Like the server, a kill pays no experience when the bot is too many levels away from the zone's monsters.
+				if (_expGap && ZoneCombat.outleveled(level, gapData.mobLevel(bot.getZone()), maxLevelGap))
+				{
+					return 0.0;
+				}
+				// Experience per kill: the zone's real average (option), else a representative level x ColdExpPerMobLevel.
+				final double zoneExp = _zoneExp ? gapData.expPerKill(bot.getZone()) : -1.0;
+				return (zoneExp > 0.0) ? (zoneExp * rate) : (level * expPerKillUnitPerRate);
+			};
+			final IntToLongFunction expPerMinuteForLevel = level ->
+			{
+				final double perKill = perKillAt.applyAsDouble(level);
+				if (perKill <= 0.0)
+				{
+					return 0L;
+				}
+				final double soloRate = ratePerMinute(combat, bot, level, flatKillsPerMinute, huntedMs, economyParams, occupancy);
+				final ZoneCombat.PartyOutcome party = partyChoice(combat, bot, level, perKill, soloRate, now, expToNextLevel);
+				final double kills = (party == null) ? soloRate : capToZone(combat, bot, party.killsPerMinute(), occupancy);
+				final double base = Math.max(0.0, perKill * kills * ((party == null) ? 1.0 : party.expShare()));
+				return (long) Math.max(0.0, base * PopulationDirector.pressure(level, targetLevel, directorParams));
+			};
 			final ColdProgression.Progress progress = ColdProgression.resolve(bot.getLevel(), bot.getExpIntoLevel(), huntedMs, maxLevel, expToNextLevel, expPerMinuteForLevel);
+			// The rate at the level it ends the span on drives the span's kills, adena, soulshots and drops (a span is short).
+			final double botKillsPerMinute = ratePerMinute(combat, bot, progress.level(), flatKillsPerMinute, huntedMs, economyParams, occupancy);
 			// Kills at the modeled kill rate (a monitor counter), and the experience this span added (it earns SP).
-			final double huntKills = Math.max(0.0, _config.killsPerMinute()) * (huntedMs / 60_000.0);
+			final double huntKills = botKillsPerMinute * (huntedMs / 60_000.0);
+			final ZoneCombat.PartyOutcome partyNow = partyChoice(combat, bot, progress.level(), perKillAt.applyAsDouble(progress.level()), botKillsPerMinute, now, expToNextLevel);
+			bot.setPartyDeaths((partyNow == null) ? 0.0 : partyNow.deathFactor(), (partyNow == null) ? -1.0 : partyNow.deathsPerHour());
+			// A solo bot spoils when its class does; in a party it is the party's damage dealer that spoils (a spoiler that is only a simulated member does not).
+			final boolean spoils = (partyNow != null) ? partyNow.spoils() : LivingSupplies.isSpoiler(bot.getClassId());
+			// In a party the kills are the party's, and each drop is split four ways: the bot gets a quarter of the adena and a quarter of the chance at each item.
+			// Shots and potions stay at the bot's own rate (it attacks the whole time).
+			final double lootScale = (partyNow == null) ? 1.0 : (capToZone(combat, bot, partyNow.killsPerMinute(), occupancy) * partyNow.lootShare() / Math.max(1e-9, botKillsPerMinute));
 			final long huntExp = (experience.getExpForLevel(progress.level()) + progress.expIntoLevel()) - (experience.getExpForLevel(bot.getLevel()) + bot.getExpIntoLevel());
 			long huntAdena = 0L;
 			final List<DecisionLog.Event> events = new ArrayList<>();
@@ -555,14 +773,15 @@ public class LivingPopulationManager
 			{
 				final ColdEconomy.State before = new ColdEconomy.State(bot.getAdena(), bot.getSoulshots(), bot.getPotions(), bot.getGearTier(), bot.isRewardClaimed(), bot.getGoal());
 				// A kill pays from the zone monsters' real drop lists when the catalog has them: adena now, loot sold in town.
-				final DropYield.Yield yield = _travelConfig.dropIncome() ? zoneYield(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId())) : null;
-				// A mystic fires spiritshots, at its own rate per kill.
-				final ColdEconomy.Params shotParams = LivingSupplies.isMystic(bot.getClassId()) ? economyParams.withSoulshotsPerKill(_travelConfig.spiritshotsPerKill()) : economyParams;
-				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, shotParams, (yield == null) ? -1.0 : yield.adena(), events);
+				final DropYield.Yield yield = _travelConfig.dropIncome() ? zoneYield(bot.getZone(), progress.level(), spoils) : null;
+				// A mystic fires spiritshots, at its own rate per kill. A bot's own kill rate (zone combat) replaces the flat one.
+				final ColdEconomy.Params shotParams = economyParams.withSoulshotsPerKill(shotsPerKillOf(combat, bot, progress.level(), economyParams));
+				final ColdEconomy.Params botEconomy = combat.enabled() ? shotParams.withKillsPerMinute(botKillsPerMinute) : shotParams;
+				final ColdEconomy.State after = ColdEconomy.accrue(before, progress.level(), huntedMs, botEconomy, (yield == null) ? -1.0 : (yield.adena() * lootScale), events);
 				huntAdena = Math.max(0L, after.adena() - before.adena());
 				if ((yield != null) && (huntedMs > 0))
 				{
-					final double kills = economyParams.killsPerMinute() * (huntedMs / 60_000.0);
+					final double kills = botKillsPerMinute * lootScale * (huntedMs / 60_000.0);
 					final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
 					bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
 					huntAdena += lootValue;
@@ -570,10 +789,10 @@ public class LivingPopulationManager
 				// Gear kept per slot: the weapons and armor its kills dropped are rolled for real; it wears the better ones.
 				if ((_gear != null) && _travelConfig.dropIncome() && (huntedMs > 0))
 				{
-					final Map<Integer, Double> chances = zoneGear(bot.getZone(), progress.level(), LivingSupplies.isSpoiler(bot.getClassId()));
+					final Map<Integer, Double> chances = zoneGear(bot.getZone(), progress.level(), spoils);
 					if (!chances.isEmpty())
 					{
-						final double kills = economyParams.killsPerMinute() * (huntedMs / 60_000.0);
+						final double kills = botKillsPerMinute * lootScale * (huntedMs / 60_000.0);
 						final long found = ColdLife.findDrops(bot, LivingGear.roll(chances, kills, _random), life, events);
 						bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + found));
 						huntAdena += found;
@@ -608,6 +827,144 @@ public class LivingPopulationManager
 			resolved++;
 		}
 		_resolveCursor = index; // resume here next tick so the budget rotates across the whole population
+	}
+
+	/** The zone's respawns cap what a bot (or a party) kills; the same cap as for a bot alone. */
+	private double capToZone(ZoneCombat combat, ColdBot bot, double rate, Map<String, Integer> occupancy)
+	{
+		if (_respawnLimit && (occupancy != null))
+		{
+			return Math.min(rate, Math.max(MIN_RESPAWN_RATE, combat.respawnCap(bot.getZone(), occupancy.getOrDefault(bot.getZone(), 1), _respawnShare)));
+		}
+		return rate;
+	}
+
+	/**
+	 * Whether the bot hunts in its virtual party now: healers always (option), others always once alone is a loss (kills minus the experience each death costs), else by a level-based chance
+	 * rolled for a few hours in a zone (`ZoneCombat.partyChance`). Loot and shots are not touched (still at the solo rate).
+	 * @param perKill experience a kill pays (0 to use only the death-free comparison: then healers only and rolled bots take the party)
+	 * @return the party's outcome, or null for hunting alone
+	 */
+	private ZoneCombat.PartyOutcome partyChoice(ZoneCombat combat, ColdBot bot, int level, double perKill, double soloKills, long now, IntToLongFunction expToNextLevel)
+	{
+		if (!_partyOn || !combat.enabled() || !combat.knows(bot.getZone()))
+		{
+			return null;
+		}
+		final boolean healer = _partyHealers && ZoneCombat.isHealer(bot.getClassId());
+		final int hash = Objects.hash(bot.getId(), bot.getZone(), now / PARTY_WINDOW_MS) & 0x7fffffff;
+		final ZoneCombat.Stats stats = ColdLife.statsOf(bot, _gear, combat);
+		double skills = 1.0;
+		if (_travelConfig.skillTraining() && (bot.getSkills() != null))
+		{
+			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
+		}
+		final ZoneCombat.PartyOutcome outcome = combat.party(bot.getZone(), bot.getClassId(), level, stats, skills, 1.0, usesBlessed(bot), hash / 1000);
+		if ((outcome == null) || healer)
+		{
+			return outcome;
+		}
+		if (perKill <= 0.0)
+		{
+			return null; // no experience here to compare (or only the death rate was asked for): stay alone
+		}
+		final double base = _partyParams.baseDeathsPerHour();
+		final double loss = (ColdRisk.expLossPercent(level) / 100.0) * Math.max(1L, expToNextLevel.applyAsLong(level));
+		final double soloModel = combat.deathsPerHour(bot.getZone(), bot.getClassId(), level, stats); // deaths an hour from the HP model, or -1 without it
+		final double soloDeaths = (soloModel >= 0.0) ? soloModel : (base * combat.deathFactor(bot.getZone(), bot.getClassId(), level, stats));
+		final double soloNet = (perKill * soloKills * 60.0) - (soloDeaths * loss);
+		// A bot looks for a party once alone is a loss (its deaths cost more than its kills give); while alone still earns, it takes one with a chance that grows with level.
+		return ((soloNet < 0.0) || ((hash % 1000) < (ZoneCombat.partyChance(level) * 1000.0))) ? outcome : null;
+	}
+
+	/**
+	 * @param combat the zone combat model
+	 * @param bot a bot (its zone, class, gear and skills)
+	 * @param level the level to rate it at
+	 * @param flat the flat rate to fall back on
+	 * @param shotFraction the share of the time it has its soulshots (spiritshots for a mystic)
+	 * @return the bot's kills per minute in its zone
+	 */
+	private double ratePerMinute(ZoneCombat combat, ColdBot bot, int level, double flat, long huntedMs, ColdEconomy.Params economyParams, Map<String, Integer> occupancy)
+	{
+		final double full = killsPerMinuteOf(combat, bot, level, flat, 1.0);
+		if (!combat.knows(bot.getZone()))
+		{
+			return full;
+		}
+		final double shots = shotFractionOf(bot, level, full, huntedMs, economyParams);
+		double rate = (shots >= 1.0) ? full : killsPerMinuteOf(combat, bot, level, flat, shots);
+		if (_respawnLimit && (occupancy != null))
+		{
+			// The zone only supplies so many monsters a minute, and its bots share them.
+			rate = Math.min(rate, Math.max(MIN_RESPAWN_RATE, combat.respawnCap(bot.getZone(), occupancy.getOrDefault(bot.getZone(), 1), _respawnShare)));
+		}
+		return rate;
+	}
+
+	/** @return the shots a kill takes this bot: its hits per kill in the zone model, or the flat setting (mystics have their own) when that is off or the zone unknown */
+	private double shotsPerKillOf(ZoneCombat combat, ColdBot bot, int level, ColdEconomy.Params economyParams)
+	{
+		if ((combat != null) && combat.shotModel() && combat.knows(bot.getZone()))
+		{
+			double skills = 1.0;
+			if (_travelConfig.skillTraining() && (bot.getSkills() != null))
+			{
+				skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
+			}
+			final double perKill = combat.shotsPerKill(bot.getZone(), bot.getClassId(), level, ColdLife.statsOf(bot, _gear, combat), skills, usesBlessed(bot));
+			if (perKill > 0.0)
+			{
+				return perKill;
+			}
+		}
+		return LivingSupplies.isMystic(bot.getClassId()) ? _travelConfig.spiritshotsPerKill() : economyParams.soulshotsPerKill();
+	}
+
+	private double killsPerMinuteOf(ZoneCombat combat, ColdBot bot, int level, double flat, double shotFraction)
+	{
+		if (!combat.knows(bot.getZone()))
+		{
+			return flat;
+		}
+		final ZoneCombat.Stats stats = ColdLife.statsOf(bot, _gear, combat);
+		double skills = 1.0;
+		if (_travelConfig.skillTraining() && (bot.getSkills() != null))
+		{
+			skills = ZoneCombat.skillFraction(skillTree(bot.getClassId()), SkillPlanner.decode(bot.getSkills()), level);
+		}
+		return combat.killsPerMinute(bot.getZone(), bot.getClassId(), level, stats, skills, shotFraction, usesBlessed(bot), (bot.getPotions() > 0) ? (_travelConfig.potionsPerHour() * LivingSupplies.potionUseFactor(bot.getClassId())) : 0.0);
+	}
+
+	/**
+	 * Whether the bot has the shots for the damage bonus. Its stock lasts as long as its kills use them up; a span longer
+	 * than that is part shot, part not. Below the level shots are first handed out, or with the economy off, nothing is tracked
+	 * and it counts as shot (what the calibration assumes).
+	 * @param bot the bot
+	 * @param level its level
+	 * @param fullKillsPerMinute its kill rate with shots
+	 * @param huntedMs the hunting time of the span
+	 * @param economyParams the economy tuning, or null when it is off
+	 * @return the share of the span it fires shots, 0 to 1
+	 */
+	private double shotFractionOf(ColdBot bot, int level, double fullKillsPerMinute, long huntedMs, ColdEconomy.Params economyParams)
+	{
+		if ((economyParams == null) || (level < economyParams.soulshotMilestoneLevel()))
+		{
+			return 1.0;
+		}
+		final double perKill = shotsPerKillOf(_combat, bot, level, economyParams);
+		final double perMinute = fullKillsPerMinute * Math.max(0.0, perKill);
+		final double minutes = huntedMs / 60_000.0;
+		if (perMinute <= 0.0)
+		{
+			return 1.0;
+		}
+		if (minutes <= 0.0)
+		{
+			return (bot.getSoulshots() > 0) ? 1.0 : 0.0;
+		}
+		return Math.max(0.0, Math.min(1.0, (bot.getSoulshots() / perMinute) / minutes));
 	}
 
 	/** Bots in or heading to each zone, counted once per resolver tick for zone capacity. */

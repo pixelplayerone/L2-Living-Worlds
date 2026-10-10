@@ -24,6 +24,7 @@ import org.l2jmobius.gameserver.handler.IVoicedCommandHandler;
 import org.l2jmobius.gameserver.livingpop.LivingPopulationConfig;
 import org.l2jmobius.gameserver.livingpop.LivingPopulationManager;
 import org.l2jmobius.gameserver.livingpop.TravelConfig;
+import org.l2jmobius.gameserver.livingpop.ZoneCombat;
 import org.l2jmobius.gameserver.model.actor.Player;
 import org.l2jmobius.gameserver.modules.GameModule;
 import org.l2jmobius.gameserver.modules.ModuleContext;
@@ -124,9 +125,77 @@ public class LivingPopulationModule implements GameModule
 			context.config().getBoolean("GearSlots", true), //
 			context.config().getBoolean("GearTrade", true));
 
+		// Zone combat: each cold bot's kill and death rates come from its gear and skills against its zone's monsters.
+		LivingPopulationManager.getInstance().setZoneCombat(new ZoneCombat.Params( //
+			context.config().getBoolean("ZoneCombat", true), //
+			config.killsPerMinute(), //
+			Math.max(0.05, Math.min(0.95, context.config().getDouble("ColdFightShare", 0.5))), //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("SkillDamageFloor", 0.5))), //
+			Math.max(0.1, context.config().getDouble("MaxKillsPerMinute", 24.0)), //
+			Math.max(0.01, context.config().getDouble("MinDeathFactor", 0.25)), //
+			Math.max(0.01, context.config().getDouble("MaxDeathFactor", 4.0)), //
+			config.gearTierLevelStep()), //
+			context.config().getString("ZoneCombatFile", "modules/living-population/data/zone_combat.tsv"), //
+			context.config().getBoolean("ExpLevelGap", true), //
+			// Buffed leveling: emulate buffers keeping the bots buffed. Off gives every role a share of 0.
+			context.config().getBoolean("BuffedLeveling", false)
+				? new double[]
+				{
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareTank", 1.0))),
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareMelee", 1.0))),
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareBow", 1.0))),
+					Math.max(0.0, Math.min(1.0, context.config().getDouble("BuffShareMage", 1.0)))
+				}
+				: new double[4]);
+		// Shots: a bot without its soulshots (spiritshots for a mystic) does less damage. 1.0 turns a shot's bonus off.
+		final boolean shotsMatter = context.config().getBoolean("ShotsMatter", true);
+		LivingPopulationManager.getInstance().setShotDamage( //
+			shotsMatter ? Math.max(1.0, context.config().getDouble("SoulshotDamage", 2.0)) : 1.0, //
+			shotsMatter ? Math.max(1.0, context.config().getDouble("SpiritshotDamage", 1.41)) : 1.0);
+		LivingPopulationManager.getInstance().setParty( //
+			context.config().getBoolean("ColdParty", true), //
+			context.config().getBoolean("PartyHealers", true), //
+			new ZoneCombat.PartyParams(true, Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyHealCoverage", 0.75))), Math.max(0.0, Math.min(1.0, context.config().getDouble("PartyChainChance", 0.3))), Math.max(0.0, context.config().getDouble("PartyResetSeconds", 45.0)), Math.max(0.0, context.config().getDouble("PartyHealMpPerHp", 0.12)), Math.max(0.0, context.config().getDouble("ColdDeathsPerHour", 0.3))));
+		LivingPopulationManager.getInstance().setRangedWalk(context.config().getDouble("ZoneRangedWalk", 0.5));
+		LivingPopulationManager.getInstance().setHpDeaths(context.config().getBoolean("ZoneHpDeaths", true), context.config().getDouble("ZoneFightRisk", 0.002));
+		LivingPopulationManager.getInstance().setExtraMonsters(chancesOf(context.config().getString("ZoneExtraMonsterChances", "0.15,0.075,0.04,0.02,0.01")));
+		LivingPopulationManager.getInstance().setRotationWindow(context.config().getInt("ZoneRotationWindowSeconds", 60));
+		LivingPopulationManager.getInstance().setShotModel(context.config().getBoolean("ShotsFromHits", true), context.config().getDouble("MeleeAttackSeconds", 1.4), context.config().getDouble("BowAttackSeconds", 2.4), context.config().getDouble("CastSeconds", 2.2));
+		LivingPopulationManager.getInstance().setSelfHeal(context.config().getBoolean("SelfHeal", true));
+		LivingPopulationManager.getInstance().setStartingBuffs(context.config().getBoolean("StartingBuffs", true));
+		LivingPopulationManager.getInstance().setRestAndEvasion(context.config().getBoolean("ZoneRest", true), context.config().getBoolean("ZoneEvasion", true));
+		LivingPopulationManager.getInstance().setRotationTtk(context.config().getBoolean("ZoneRotationTtk", true));
+		LivingPopulationManager.getInstance().setBlessedSpiritshots( //
+			shotsMatter ? Math.max(1.0, context.config().getDouble("BlessedSpiritshotDamage", 2.0)) : 1.0, //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("BlessedSpiritshotShare", 0.0))));
+		// Zone limits: the zone's respawns cap what its bots can kill; aggressive zones are riskier (packs, pulls).
+		LivingPopulationManager.getInstance().setZoneLimits( //
+			context.config().getBoolean("RespawnLimit", true), //
+			Math.max(0.0, Math.min(1.0, context.config().getDouble("RespawnUsableShare", 0.5))), //
+			context.config().getBoolean("AggroPulls", true) ? Math.max(0.0, context.config().getDouble("AggroPullRisk", 1.0)) : 0.0, //
+			context.config().getBoolean("ZoneExp", true));
 		LivingPopulationManager.getInstance().start(config, travel);
 		context.handlers().registerVoicedCommand(new LivingPopulationStatusCommand());
 		context.logging().info("Living Population module enabled: " + LivingPopulationManager.getInstance().statusText());
+	}
+
+	/** @return the chances in a comma list ("0.15,0.075,..."), each between 0 and 1; a bad entry counts as 0 */
+	private static double[] chancesOf(String list)
+	{
+		final String[] parts = list.split(",");
+		final double[] chances = new double[parts.length];
+		for (int i = 0; i < parts.length; i++)
+		{
+			try
+			{
+				chances[i] = Math.max(0.0, Math.min(1.0, Double.parseDouble(parts[i].trim())));
+			}
+			catch (NumberFormatException e)
+			{
+				chances[i] = 0.0;
+			}
+		}
+		return chances;
 	}
 
 	private static class LivingPopulationStatusCommand implements IVoicedCommandHandler
