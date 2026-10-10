@@ -5637,6 +5637,827 @@ ROTU	shillien saint	76	0.000	425.326	378.068	378.068	378.068	389.882	385.944	383
 ROTU	shillien saint	77	0.000	427.652	380.135	380.135	380.135	392.014	388.055	386.075
 ROTU	shillien saint	78	0.000	429.979	382.204	382.204	382.204	394.147	390.166	388.175
 ROTU	shillien saint	80	0.000	434.637	386.344	386.344	386.344	398.417	394.393	392.381
+#ROTMP	line	level	mpPerSecond   (MP the 60 s rotation spends per second; the cold model picks the share of skills a class can sustain from it)
+ROTMP	adventurer	5	0.000
+ROTMP	adventurer	10	0.000
+ROTMP	adventurer	15	0.000
+ROTMP	adventurer	20	0.000
+ROTMP	adventurer	24	4.283
+ROTMP	adventurer	28	4.750
+ROTMP	adventurer	32	5.433
+ROTMP	adventurer	36	6.583
+ROTMP	adventurer	40	11.083
+ROTMP	adventurer	43	11.483
+ROTMP	adventurer	46	11.883
+ROTMP	adventurer	49	13.717
+ROTMP	adventurer	52	14.683
+ROTMP	adventurer	55	16.133
+ROTMP	adventurer	58	17.300
+ROTMP	adventurer	60	17.750
+ROTMP	adventurer	61	17.750
+ROTMP	adventurer	62	17.900
+ROTMP	adventurer	64	18.350
+ROTMP	adventurer	66	19.250
+ROTMP	adventurer	68	19.550
+ROTMP	adventurer	70	20.150
+ROTMP	adventurer	72	20.450
+ROTMP	adventurer	74	20.750
+ROTMP	adventurer	76	30.667
+ROTMP	adventurer	77	30.667
+ROTMP	adventurer	78	30.667
+ROTMP	adventurer	80	30.667
+ROTMP	arcana lord	1	1.167
+ROTMP	arcana lord	7	2.533
+ROTMP	arcana lord	14	5.300
+ROTMP	arcana lord	20	11.067
+ROTMP	arcana lord	25	13.833
+ROTMP	arcana lord	30	15.817
+ROTMP	arcana lord	35	17.800
+ROTMP	arcana lord	40	20.700
+ROTMP	arcana lord	44	20.700
+ROTMP	arcana lord	48	20.700
+ROTMP	arcana lord	52	20.800
+ROTMP	arcana lord	56	21.160
+ROTMP	arcana lord	58	21.160
+ROTMP	arcana lord	60	21.160
+ROTMP	arcana lord	61	23.460
+ROTMP	arcana lord	62	23.460
+ROTMP	arcana lord	64	23.460
+ROTMP	arcana lord	66	23.460
+ROTMP	arcana lord	68	23.460
+ROTMP	arcana lord	70	23.460
+ROTMP	arcana lord	72	23.460
+ROTMP	arcana lord	74	23.460
+ROTMP	arcana lord	76	19.600
+ROTMP	arcana lord	77	19.600
+ROTMP	arcana lord	78	19.600
+ROTMP	arcana lord	80	19.600
+ROTMP	archmage	1	1.167
+ROTMP	archmage	7	2.533
+ROTMP	archmage	14	5.300
+ROTMP	archmage	20	11.067
+ROTMP	archmage	25	13.833
+ROTMP	archmage	30	15.817
+ROTMP	archmage	35	17.800
+ROTMP	archmage	40	34.883
+ROTMP	archmage	44	36.896
+ROTMP	archmage	48	39.579
+ROTMP	archmage	52	41.333
+ROTMP	archmage	56	44.850
+ROTMP	archmage	58	48.511
+ROTMP	archmage	60	49.220
+ROTMP	archmage	61	53.954
+ROTMP	archmage	62	55.775
+ROTMP	archmage	64	57.308
+ROTMP	archmage	66	58.458
+ROTMP	archmage	68	61.468
+ROTMP	archmage	70	62.867
+ROTMP	archmage	72	63.997
+ROTMP	archmage	74	65.627
+ROTMP	archmage	76	54.833
+ROTMP	archmage	77	54.833
+ROTMP	archmage	78	54.833
+ROTMP	archmage	80	54.833
+ROTMP	cardinal	1	1.167
+ROTMP	cardinal	7	2.533
+ROTMP	cardinal	14	5.300
+ROTMP	cardinal	20	6.033
+ROTMP	cardinal	25	6.400
+ROTMP	cardinal	30	6.400
+ROTMP	cardinal	35	6.400
+ROTMP	cardinal	40	7.533
+ROTMP	cardinal	44	7.533
+ROTMP	cardinal	48	7.552
+ROTMP	cardinal	52	7.533
+ROTMP	cardinal	56	7.733
+ROTMP	cardinal	58	7.733
+ROTMP	cardinal	60	7.733
+ROTMP	cardinal	61	8.663
+ROTMP	cardinal	62	8.663
+ROTMP	cardinal	64	8.663
+ROTMP	cardinal	66	8.663
+ROTMP	cardinal	68	8.663
+ROTMP	cardinal	70	8.663
+ROTMP	cardinal	72	8.663
+ROTMP	cardinal	74	8.663
+ROTMP	cardinal	76	8.500
+ROTMP	cardinal	77	8.500
+ROTMP	cardinal	78	8.075
+ROTMP	cardinal	80	8.075
+ROTMP	dominator	1	0.000
+ROTMP	dominator	7	3.433
+ROTMP	dominator	14	5.033
+ROTMP	dominator	20	9.433
+ROTMP	dominator	25	9.350
+ROTMP	dominator	30	11.667
+ROTMP	dominator	35	13.167
+ROTMP	dominator	40	24.265
+ROTMP	dominator	44	25.300
+ROTMP	dominator	48	29.550
+ROTMP	dominator	52	31.150
+ROTMP	dominator	56	35.217
+ROTMP	dominator	58	36.250
+ROTMP	dominator	60	38.983
+ROTMP	dominator	61	43.433
+ROTMP	dominator	62	44.067
+ROTMP	dominator	64	45.083
+ROTMP	dominator	66	46.267
+ROTMP	dominator	68	48.467
+ROTMP	dominator	70	49.567
+ROTMP	dominator	72	50.433
+ROTMP	dominator	74	51.867
+ROTMP	dominator	76	51.867
+ROTMP	dominator	77	51.867
+ROTMP	dominator	78	49.590
+ROTMP	dominator	80	49.590
+ROTMP	doom cryer	1	0.000
+ROTMP	doom cryer	7	3.433
+ROTMP	doom cryer	14	5.033
+ROTMP	doom cryer	20	9.433
+ROTMP	doom cryer	25	9.350
+ROTMP	doom cryer	30	11.667
+ROTMP	doom cryer	35	13.167
+ROTMP	doom cryer	40	23.498
+ROTMP	doom cryer	44	25.875
+ROTMP	doom cryer	48	28.500
+ROTMP	doom cryer	52	31.950
+ROTMP	doom cryer	56	32.817
+ROTMP	doom cryer	58	33.617
+ROTMP	doom cryer	60	36.450
+ROTMP	doom cryer	61	40.200
+ROTMP	doom cryer	62	41.333
+ROTMP	doom cryer	64	44.167
+ROTMP	doom cryer	66	45.300
+ROTMP	doom cryer	68	46.367
+ROTMP	doom cryer	70	47.433
+ROTMP	doom cryer	72	48.867
+ROTMP	doom cryer	74	49.833
+ROTMP	doom cryer	76	49.833
+ROTMP	doom cryer	77	49.833
+ROTMP	doom cryer	78	47.595
+ROTMP	doom cryer	80	47.595
+ROTMP	dreadnought	5	0.000
+ROTMP	dreadnought	10	0.000
+ROTMP	dreadnought	15	0.000
+ROTMP	dreadnought	20	1.467
+ROTMP	dreadnought	24	1.667
+ROTMP	dreadnought	28	2.000
+ROTMP	dreadnought	32	2.200
+ROTMP	dreadnought	36	2.467
+ROTMP	dreadnought	40	8.233
+ROTMP	dreadnought	43	8.567
+ROTMP	dreadnought	46	9.083
+ROTMP	dreadnought	49	9.717
+ROTMP	dreadnought	52	10.050
+ROTMP	dreadnought	55	10.683
+ROTMP	dreadnought	58	11.200
+ROTMP	dreadnought	60	11.600
+ROTMP	dreadnought	61	12.517
+ROTMP	dreadnought	62	12.783
+ROTMP	dreadnought	64	13.183
+ROTMP	dreadnought	66	13.517
+ROTMP	dreadnought	68	13.983
+ROTMP	dreadnought	70	14.317
+ROTMP	dreadnought	72	14.650
+ROTMP	dreadnought	74	14.917
+ROTMP	dreadnought	76	15.533
+ROTMP	dreadnought	77	15.717
+ROTMP	dreadnought	78	18.183
+ROTMP	dreadnought	80	18.183
+ROTMP	duelist	5	0.733
+ROTMP	duelist	10	0.933
+ROTMP	duelist	15	1.267
+ROTMP	duelist	20	4.100
+ROTMP	duelist	24	4.400
+ROTMP	duelist	28	4.900
+ROTMP	duelist	32	6.300
+ROTMP	duelist	36	7.100
+ROTMP	duelist	40	4.167
+ROTMP	duelist	43	18.150
+ROTMP	duelist	46	19.667
+ROTMP	duelist	49	31.783
+ROTMP	duelist	52	33.550
+ROTMP	duelist	55	35.700
+ROTMP	duelist	58	38.017
+ROTMP	duelist	60	28.817
+ROTMP	duelist	61	43.283
+ROTMP	duelist	62	39.550
+ROTMP	duelist	64	40.950
+ROTMP	duelist	66	44.850
+ROTMP	duelist	68	46.267
+ROTMP	duelist	70	47.600
+ROTMP	duelist	72	48.750
+ROTMP	duelist	74	50.033
+ROTMP	duelist	76	50.033
+ROTMP	duelist	77	50.033
+ROTMP	duelist	78	40.683
+ROTMP	duelist	80	40.683
+ROTMP	elemental master	1	1.517
+ROTMP	elemental master	7	2.667
+ROTMP	elemental master	14	4.000
+ROTMP	elemental master	20	13.067
+ROTMP	elemental master	25	15.867
+ROTMP	elemental master	30	18.133
+ROTMP	elemental master	35	20.400
+ROTMP	elemental master	40	23.460
+ROTMP	elemental master	52	23.460
+ROTMP	elemental master	61	25.990
+ROTMP	elemental master	76	21.600
+ROTMP	elemental master	77	21.600
+ROTMP	elemental master	78	21.600
+ROTMP	elemental master	80	21.600
+ROTMP	eva's saint	1	1.517
+ROTMP	eva's saint	7	2.667
+ROTMP	eva's saint	14	4.000
+ROTMP	eva's saint	20	4.800
+ROTMP	eva's saint	25	5.000
+ROTMP	eva's saint	30	5.200
+ROTMP	eva's saint	35	5.200
+ROTMP	eva's saint	40	5.980
+ROTMP	eva's saint	44	5.980
+ROTMP	eva's saint	48	5.980
+ROTMP	eva's saint	52	6.000
+ROTMP	eva's saint	56	6.000
+ROTMP	eva's saint	58	6.000
+ROTMP	eva's saint	60	6.000
+ROTMP	eva's saint	61	6.670
+ROTMP	eva's saint	62	6.670
+ROTMP	eva's saint	64	6.670
+ROTMP	eva's saint	66	6.670
+ROTMP	eva's saint	68	6.670
+ROTMP	eva's saint	70	6.670
+ROTMP	eva's saint	72	6.670
+ROTMP	eva's saint	74	6.670
+ROTMP	eva's saint	76	6.600
+ROTMP	eva's saint	77	6.600
+ROTMP	eva's saint	78	6.270
+ROTMP	eva's saint	80	6.270
+ROTMP	eva's templar	5	0.000
+ROTMP	eva's templar	10	1.167
+ROTMP	eva's templar	15	1.583
+ROTMP	eva's templar	20	1.900
+ROTMP	eva's templar	24	1.900
+ROTMP	eva's templar	28	0.000
+ROTMP	eva's templar	32	0.000
+ROTMP	eva's templar	36	0.000
+ROTMP	eva's templar	40	0.000
+ROTMP	eva's templar	43	0.000
+ROTMP	eva's templar	46	0.000
+ROTMP	eva's templar	49	0.000
+ROTMP	eva's templar	52	0.000
+ROTMP	eva's templar	55	6.417
+ROTMP	eva's templar	58	6.883
+ROTMP	eva's templar	60	7.233
+ROTMP	eva's templar	61	7.233
+ROTMP	eva's templar	62	7.350
+ROTMP	eva's templar	64	7.700
+ROTMP	eva's templar	66	7.933
+ROTMP	eva's templar	68	8.167
+ROTMP	eva's templar	70	8.400
+ROTMP	eva's templar	72	8.633
+ROTMP	eva's templar	74	8.867
+ROTMP	eva's templar	76	8.867
+ROTMP	eva's templar	80	8.867
+ROTMP	fortune seeker	5	0.000
+ROTMP	fortune seeker	10	0.000
+ROTMP	fortune seeker	15	0.000
+ROTMP	fortune seeker	20	2.100
+ROTMP	fortune seeker	24	2.300
+ROTMP	fortune seeker	28	2.700
+ROTMP	fortune seeker	32	3.000
+ROTMP	fortune seeker	36	3.400
+ROTMP	fortune seeker	40	3.900
+ROTMP	fortune seeker	43	4.200
+ROTMP	fortune seeker	46	4.500
+ROTMP	fortune seeker	49	4.900
+ROTMP	fortune seeker	52	5.200
+ROTMP	fortune seeker	55	5.500
+ROTMP	fortune seeker	58	5.900
+ROTMP	fortune seeker	60	6.200
+ROTMP	fortune seeker	61	6.200
+ROTMP	fortune seeker	62	6.300
+ROTMP	fortune seeker	64	6.600
+ROTMP	fortune seeker	66	6.800
+ROTMP	fortune seeker	68	7.000
+ROTMP	fortune seeker	70	7.200
+ROTMP	fortune seeker	72	7.400
+ROTMP	fortune seeker	74	7.600
+ROTMP	fortune seeker	76	15.767
+ROTMP	fortune seeker	77	10.517
+ROTMP	fortune seeker	78	10.517
+ROTMP	fortune seeker	80	10.517
+ROTMP	ghost hunter	5	0.000
+ROTMP	ghost hunter	10	0.000
+ROTMP	ghost hunter	15	0.000
+ROTMP	ghost hunter	20	0.267
+ROTMP	ghost hunter	24	1.867
+ROTMP	ghost hunter	28	1.867
+ROTMP	ghost hunter	32	2.317
+ROTMP	ghost hunter	36	6.283
+ROTMP	ghost hunter	40	10.783
+ROTMP	ghost hunter	43	11.183
+ROTMP	ghost hunter	46	11.583
+ROTMP	ghost hunter	49	13.750
+ROTMP	ghost hunter	52	14.150
+ROTMP	ghost hunter	55	14.683
+ROTMP	ghost hunter	58	16.483
+ROTMP	ghost hunter	60	16.883
+ROTMP	ghost hunter	61	20.033
+ROTMP	ghost hunter	62	20.283
+ROTMP	ghost hunter	64	21.033
+ROTMP	ghost hunter	66	22.667
+ROTMP	ghost hunter	68	23.317
+ROTMP	ghost hunter	70	23.850
+ROTMP	ghost hunter	72	24.383
+ROTMP	ghost hunter	74	24.917
+ROTMP	ghost hunter	76	32.600
+ROTMP	ghost hunter	77	32.600
+ROTMP	ghost hunter	78	32.600
+ROTMP	ghost hunter	80	32.600
+ROTMP	ghost sentinel	5	0.000
+ROTMP	ghost sentinel	10	1.350
+ROTMP	ghost sentinel	15	1.850
+ROTMP	ghost sentinel	20	0.000
+ROTMP	ghost sentinel	24	2.500
+ROTMP	ghost sentinel	28	2.950
+ROTMP	ghost sentinel	32	3.250
+ROTMP	ghost sentinel	36	8.117
+ROTMP	ghost sentinel	40	11.950
+ROTMP	ghost sentinel	43	12.467
+ROTMP	ghost sentinel	46	13.267
+ROTMP	ghost sentinel	49	14.050
+ROTMP	ghost sentinel	52	14.733
+ROTMP	ghost sentinel	55	15.683
+ROTMP	ghost sentinel	58	16.500
+ROTMP	ghost sentinel	60	17.133
+ROTMP	ghost sentinel	61	17.133
+ROTMP	ghost sentinel	62	17.533
+ROTMP	ghost sentinel	64	18.033
+ROTMP	ghost sentinel	66	18.617
+ROTMP	ghost sentinel	68	19.117
+ROTMP	ghost sentinel	70	19.567
+ROTMP	ghost sentinel	72	20.067
+ROTMP	ghost sentinel	74	20.517
+ROTMP	ghost sentinel	76	23.717
+ROTMP	ghost sentinel	77	23.200
+ROTMP	ghost sentinel	78	23.200
+ROTMP	ghost sentinel	80	23.200
+ROTMP	grand khavatari	5	0.733
+ROTMP	grand khavatari	10	1.000
+ROTMP	grand khavatari	15	1.333
+ROTMP	grand khavatari	20	3.283
+ROTMP	grand khavatari	24	5.417
+ROTMP	grand khavatari	28	6.200
+ROTMP	grand khavatari	32	6.850
+ROTMP	grand khavatari	36	12.483
+ROTMP	grand khavatari	40	16.483
+ROTMP	grand khavatari	43	21.967
+ROTMP	grand khavatari	46	23.867
+ROTMP	grand khavatari	49	25.517
+ROTMP	grand khavatari	52	26.817
+ROTMP	grand khavatari	55	20.750
+ROTMP	grand khavatari	58	22.100
+ROTMP	grand khavatari	60	28.917
+ROTMP	grand khavatari	61	30.817
+ROTMP	grand khavatari	62	31.783
+ROTMP	grand khavatari	64	32.750
+ROTMP	grand khavatari	66	33.983
+ROTMP	grand khavatari	68	34.950
+ROTMP	grand khavatari	70	35.917
+ROTMP	grand khavatari	72	36.800
+ROTMP	grand khavatari	74	37.767
+ROTMP	grand khavatari	76	35.500
+ROTMP	grand khavatari	77	35.500
+ROTMP	grand khavatari	78	39.617
+ROTMP	grand khavatari	80	39.617
+ROTMP	hell knight	5	0.733
+ROTMP	hell knight	10	0.933
+ROTMP	hell knight	15	1.267
+ROTMP	hell knight	20	0.000
+ROTMP	hell knight	24	0.000
+ROTMP	hell knight	28	0.000
+ROTMP	hell knight	32	0.000
+ROTMP	hell knight	36	0.000
+ROTMP	hell knight	40	0.000
+ROTMP	hell knight	43	0.000
+ROTMP	hell knight	46	0.000
+ROTMP	hell knight	49	0.000
+ROTMP	hell knight	52	0.000
+ROTMP	hell knight	55	6.417
+ROTMP	hell knight	58	6.883
+ROTMP	hell knight	60	7.233
+ROTMP	hell knight	61	7.233
+ROTMP	hell knight	62	7.350
+ROTMP	hell knight	64	7.700
+ROTMP	hell knight	66	7.933
+ROTMP	hell knight	68	8.167
+ROTMP	hell knight	70	8.400
+ROTMP	hell knight	72	8.633
+ROTMP	hell knight	74	8.867
+ROTMP	hell knight	76	8.867
+ROTMP	hell knight	80	8.867
+ROTMP	hierophant	1	1.167
+ROTMP	hierophant	7	2.533
+ROTMP	hierophant	14	5.300
+ROTMP	hierophant	20	6.033
+ROTMP	hierophant	25	6.400
+ROTMP	hierophant	30	6.400
+ROTMP	hierophant	35	6.400
+ROTMP	hierophant	40	7.533
+ROTMP	hierophant	44	7.533
+ROTMP	hierophant	48	7.552
+ROTMP	hierophant	52	7.533
+ROTMP	hierophant	56	7.733
+ROTMP	hierophant	58	7.733
+ROTMP	hierophant	60	7.733
+ROTMP	hierophant	61	8.663
+ROTMP	hierophant	62	8.663
+ROTMP	hierophant	64	8.663
+ROTMP	hierophant	66	8.663
+ROTMP	hierophant	68	8.663
+ROTMP	hierophant	70	8.663
+ROTMP	hierophant	72	8.663
+ROTMP	hierophant	74	8.663
+ROTMP	hierophant	76	8.500
+ROTMP	hierophant	77	8.500
+ROTMP	hierophant	78	8.075
+ROTMP	hierophant	80	8.075
+ROTMP	maestro	5	0.000
+ROTMP	maestro	10	0.000
+ROTMP	maestro	15	0.000
+ROTMP	maestro	20	2.100
+ROTMP	maestro	24	2.300
+ROTMP	maestro	28	2.700
+ROTMP	maestro	32	3.000
+ROTMP	maestro	36	3.400
+ROTMP	maestro	40	3.900
+ROTMP	maestro	43	4.200
+ROTMP	maestro	46	4.500
+ROTMP	maestro	49	4.900
+ROTMP	maestro	52	5.200
+ROTMP	maestro	55	5.500
+ROTMP	maestro	58	5.900
+ROTMP	maestro	60	6.200
+ROTMP	maestro	61	6.200
+ROTMP	maestro	62	6.300
+ROTMP	maestro	64	6.600
+ROTMP	maestro	66	6.800
+ROTMP	maestro	68	7.000
+ROTMP	maestro	70	7.200
+ROTMP	maestro	72	7.400
+ROTMP	maestro	74	7.600
+ROTMP	maestro	76	7.600
+ROTMP	maestro	77	10.517
+ROTMP	maestro	78	10.517
+ROTMP	maestro	80	10.517
+ROTMP	moonlight sentinel	5	1.050
+ROTMP	moonlight sentinel	10	1.350
+ROTMP	moonlight sentinel	15	1.850
+ROTMP	moonlight sentinel	20	2.200
+ROTMP	moonlight sentinel	24	2.500
+ROTMP	moonlight sentinel	28	2.950
+ROTMP	moonlight sentinel	32	3.250
+ROTMP	moonlight sentinel	36	8.117
+ROTMP	moonlight sentinel	40	7.950
+ROTMP	moonlight sentinel	43	8.200
+ROTMP	moonlight sentinel	46	8.600
+ROTMP	moonlight sentinel	49	14.050
+ROTMP	moonlight sentinel	52	9.300
+ROTMP	moonlight sentinel	55	15.683
+ROTMP	moonlight sentinel	58	16.500
+ROTMP	moonlight sentinel	60	17.133
+ROTMP	moonlight sentinel	61	17.133
+ROTMP	moonlight sentinel	62	17.533
+ROTMP	moonlight sentinel	64	22.000
+ROTMP	moonlight sentinel	66	22.817
+ROTMP	moonlight sentinel	68	23.517
+ROTMP	moonlight sentinel	70	24.167
+ROTMP	moonlight sentinel	72	24.867
+ROTMP	moonlight sentinel	74	25.517
+ROTMP	moonlight sentinel	76	23.717
+ROTMP	moonlight sentinel	77	25.150
+ROTMP	moonlight sentinel	78	15.400
+ROTMP	moonlight sentinel	80	15.400
+ROTMP	mystic muse	1	1.517
+ROTMP	mystic muse	7	2.667
+ROTMP	mystic muse	14	4.000
+ROTMP	mystic muse	20	13.067
+ROTMP	mystic muse	25	15.867
+ROTMP	mystic muse	30	18.133
+ROTMP	mystic muse	35	20.400
+ROTMP	mystic muse	40	40.403
+ROTMP	mystic muse	44	42.761
+ROTMP	mystic muse	48	45.904
+ROTMP	mystic muse	52	48.262
+ROTMP	mystic muse	56	51.865
+ROTMP	mystic muse	58	56.580
+ROTMP	mystic muse	60	57.404
+ROTMP	mystic muse	61	62.982
+ROTMP	mystic muse	62	65.128
+ROTMP	mystic muse	64	66.930
+ROTMP	mystic muse	66	68.291
+ROTMP	mystic muse	68	70.591
+ROTMP	mystic muse	70	72.603
+ROTMP	mystic muse	72	73.849
+ROTMP	mystic muse	74	75.766
+ROTMP	mystic muse	76	62.733
+ROTMP	mystic muse	77	62.733
+ROTMP	mystic muse	78	62.733
+ROTMP	mystic muse	80	62.733
+ROTMP	phoenix knight	5	0.733
+ROTMP	phoenix knight	10	0.933
+ROTMP	phoenix knight	15	1.267
+ROTMP	phoenix knight	20	0.000
+ROTMP	phoenix knight	24	0.000
+ROTMP	phoenix knight	28	0.000
+ROTMP	phoenix knight	32	0.000
+ROTMP	phoenix knight	36	0.000
+ROTMP	phoenix knight	40	0.000
+ROTMP	phoenix knight	43	0.000
+ROTMP	phoenix knight	46	0.000
+ROTMP	phoenix knight	49	0.000
+ROTMP	phoenix knight	52	0.000
+ROTMP	phoenix knight	55	6.417
+ROTMP	phoenix knight	58	6.883
+ROTMP	phoenix knight	60	7.233
+ROTMP	phoenix knight	61	7.233
+ROTMP	phoenix knight	62	7.350
+ROTMP	phoenix knight	64	7.700
+ROTMP	phoenix knight	66	7.933
+ROTMP	phoenix knight	68	8.167
+ROTMP	phoenix knight	70	8.400
+ROTMP	phoenix knight	72	8.633
+ROTMP	phoenix knight	74	8.867
+ROTMP	phoenix knight	76	8.867
+ROTMP	phoenix knight	80	8.867
+ROTMP	sagittarius	5	0.000
+ROTMP	sagittarius	10	0.900
+ROTMP	sagittarius	15	1.233
+ROTMP	sagittarius	20	0.000
+ROTMP	sagittarius	24	0.000
+ROTMP	sagittarius	28	0.000
+ROTMP	sagittarius	32	2.167
+ROTMP	sagittarius	36	8.117
+ROTMP	sagittarius	40	7.950
+ROTMP	sagittarius	43	8.200
+ROTMP	sagittarius	46	8.600
+ROTMP	sagittarius	49	9.050
+ROTMP	sagittarius	52	9.300
+ROTMP	sagittarius	55	15.683
+ROTMP	sagittarius	58	16.500
+ROTMP	sagittarius	60	17.133
+ROTMP	sagittarius	61	17.133
+ROTMP	sagittarius	62	17.533
+ROTMP	sagittarius	64	22.000
+ROTMP	sagittarius	66	22.817
+ROTMP	sagittarius	68	23.517
+ROTMP	sagittarius	70	24.167
+ROTMP	sagittarius	72	24.867
+ROTMP	sagittarius	74	25.517
+ROTMP	sagittarius	76	13.967
+ROTMP	sagittarius	77	15.400
+ROTMP	sagittarius	78	15.400
+ROTMP	sagittarius	80	15.400
+ROTMP	shillien saint	1	1.050
+ROTMP	shillien saint	7	2.400
+ROTMP	shillien saint	14	4.900
+ROTMP	shillien saint	20	5.667
+ROTMP	shillien saint	25	6.033
+ROTMP	shillien saint	30	6.033
+ROTMP	shillien saint	35	6.033
+ROTMP	shillien saint	40	7.333
+ROTMP	shillien saint	44	7.333
+ROTMP	shillien saint	48	7.322
+ROTMP	shillien saint	52	7.333
+ROTMP	shillien saint	56	7.367
+ROTMP	shillien saint	58	7.367
+ROTMP	shillien saint	60	7.367
+ROTMP	shillien saint	61	8.300
+ROTMP	shillien saint	62	8.300
+ROTMP	shillien saint	64	8.300
+ROTMP	shillien saint	66	8.300
+ROTMP	shillien saint	68	8.300
+ROTMP	shillien saint	70	8.300
+ROTMP	shillien saint	72	8.300
+ROTMP	shillien saint	74	8.300
+ROTMP	shillien saint	76	8.300
+ROTMP	shillien saint	77	8.300
+ROTMP	shillien saint	78	7.885
+ROTMP	shillien saint	80	7.885
+ROTMP	shillien templar	5	0.917
+ROTMP	shillien templar	10	1.167
+ROTMP	shillien templar	15	1.583
+ROTMP	shillien templar	20	1.900
+ROTMP	shillien templar	24	1.900
+ROTMP	shillien templar	28	1.900
+ROTMP	shillien templar	32	3.850
+ROTMP	shillien templar	36	4.317
+ROTMP	shillien templar	40	5.017
+ROTMP	shillien templar	43	5.250
+ROTMP	shillien templar	46	5.717
+ROTMP	shillien templar	49	6.300
+ROTMP	shillien templar	52	6.533
+ROTMP	shillien templar	55	13.533
+ROTMP	shillien templar	58	14.467
+ROTMP	shillien templar	60	15.167
+ROTMP	shillien templar	61	15.167
+ROTMP	shillien templar	62	15.400
+ROTMP	shillien templar	64	16.100
+ROTMP	shillien templar	66	16.567
+ROTMP	shillien templar	68	17.150
+ROTMP	shillien templar	70	17.617
+ROTMP	shillien templar	72	18.083
+ROTMP	shillien templar	74	18.550
+ROTMP	shillien templar	76	18.550
+ROTMP	shillien templar	80	18.550
+ROTMP	soultaker	1	1.167
+ROTMP	soultaker	7	2.533
+ROTMP	soultaker	14	5.300
+ROTMP	soultaker	20	11.067
+ROTMP	soultaker	25	13.833
+ROTMP	soultaker	30	15.817
+ROTMP	soultaker	35	17.800
+ROTMP	soultaker	40	20.700
+ROTMP	soultaker	44	17.250
+ROTMP	soultaker	48	26.143
+ROTMP	soultaker	52	27.467
+ROTMP	soultaker	56	24.342
+ROTMP	soultaker	58	30.437
+ROTMP	soultaker	60	30.935
+ROTMP	soultaker	61	34.347
+ROTMP	soultaker	62	35.190
+ROTMP	soultaker	64	36.033
+ROTMP	soultaker	66	37.107
+ROTMP	soultaker	68	38.257
+ROTMP	soultaker	70	35.631
+ROTMP	soultaker	72	36.532
+ROTMP	soultaker	74	37.643
+ROTMP	soultaker	76	32.583
+ROTMP	soultaker	77	32.583
+ROTMP	soultaker	78	32.583
+ROTMP	soultaker	80	32.583
+ROTMP	spectral dancer	5	0.917
+ROTMP	spectral dancer	10	1.167
+ROTMP	spectral dancer	15	1.583
+ROTMP	spectral dancer	20	1.900
+ROTMP	spectral dancer	24	1.900
+ROTMP	spectral dancer	28	1.900
+ROTMP	spectral dancer	32	3.850
+ROTMP	spectral dancer	36	4.317
+ROTMP	spectral dancer	40	5.017
+ROTMP	spectral dancer	43	5.250
+ROTMP	spectral dancer	46	5.717
+ROTMP	spectral dancer	49	6.300
+ROTMP	spectral dancer	52	6.533
+ROTMP	spectral dancer	55	15.433
+ROTMP	spectral dancer	58	16.367
+ROTMP	spectral dancer	60	17.067
+ROTMP	spectral dancer	61	15.167
+ROTMP	spectral dancer	62	15.400
+ROTMP	spectral dancer	64	16.100
+ROTMP	spectral dancer	66	16.567
+ROTMP	spectral dancer	68	17.150
+ROTMP	spectral dancer	70	17.617
+ROTMP	spectral dancer	72	18.083
+ROTMP	spectral dancer	74	18.550
+ROTMP	spectral dancer	76	18.550
+ROTMP	spectral dancer	78	18.550
+ROTMP	spectral dancer	80	18.550
+ROTMP	spectral master	1	1.050
+ROTMP	spectral master	7	2.400
+ROTMP	spectral master	14	4.900
+ROTMP	spectral master	20	10.133
+ROTMP	spectral master	25	12.133
+ROTMP	spectral master	30	12.700
+ROTMP	spectral master	35	14.267
+ROTMP	spectral master	40	17.058
+ROTMP	spectral master	44	17.058
+ROTMP	spectral master	48	17.020
+ROTMP	spectral master	52	14.400
+ROTMP	spectral master	56	17.600
+ROTMP	spectral master	58	17.600
+ROTMP	spectral master	60	17.600
+ROTMP	spectral master	61	19.780
+ROTMP	spectral master	62	19.780
+ROTMP	spectral master	64	19.780
+ROTMP	spectral master	66	19.780
+ROTMP	spectral master	68	19.780
+ROTMP	spectral master	70	19.780
+ROTMP	spectral master	72	19.780
+ROTMP	spectral master	74	19.780
+ROTMP	spectral master	76	17.200
+ROTMP	spectral master	77	17.200
+ROTMP	spectral master	78	17.200
+ROTMP	spectral master	80	17.200
+ROTMP	storm screamer	1	1.050
+ROTMP	storm screamer	7	2.400
+ROTMP	storm screamer	14	4.900
+ROTMP	storm screamer	20	10.133
+ROTMP	storm screamer	25	12.133
+ROTMP	storm screamer	30	12.700
+ROTMP	storm screamer	35	14.267
+ROTMP	storm screamer	40	19.742
+ROTMP	storm screamer	44	16.733
+ROTMP	storm screamer	48	18.113
+ROTMP	storm screamer	52	18.767
+ROTMP	storm screamer	56	20.767
+ROTMP	storm screamer	58	23.517
+ROTMP	storm screamer	60	22.783
+ROTMP	storm screamer	61	26.750
+ROTMP	storm screamer	62	27.700
+ROTMP	storm screamer	64	28.183
+ROTMP	storm screamer	66	28.217
+ROTMP	storm screamer	68	29.233
+ROTMP	storm screamer	70	31.767
+ROTMP	storm screamer	72	34.033
+ROTMP	storm screamer	74	35.167
+ROTMP	storm screamer	76	35.167
+ROTMP	storm screamer	77	35.167
+ROTMP	storm screamer	78	35.167
+ROTMP	storm screamer	80	35.167
+ROTMP	sword muse	5	0.000
+ROTMP	sword muse	10	1.167
+ROTMP	sword muse	15	1.583
+ROTMP	sword muse	20	1.900
+ROTMP	sword muse	24	1.900
+ROTMP	sword muse	28	0.000
+ROTMP	sword muse	32	0.000
+ROTMP	sword muse	36	0.000
+ROTMP	sword muse	40	0.000
+ROTMP	sword muse	43	0.000
+ROTMP	sword muse	46	0.000
+ROTMP	sword muse	49	0.000
+ROTMP	sword muse	52	0.000
+ROTMP	sword muse	55	0.000
+ROTMP	sword muse	58	0.000
+ROTMP	sword muse	60	0.000
+ROTMP	sword muse	61	0.000
+ROTMP	sword muse	62	0.000
+ROTMP	sword muse	64	0.000
+ROTMP	sword muse	66	0.000
+ROTMP	sword muse	68	0.000
+ROTMP	sword muse	70	0.000
+ROTMP	sword muse	72	0.000
+ROTMP	sword muse	74	0.000
+ROTMP	sword muse	76	0.000
+ROTMP	sword muse	78	0.000
+ROTMP	sword muse	80	0.000
+ROTMP	titan	5	0.917
+ROTMP	titan	10	1.167
+ROTMP	titan	15	1.583
+ROTMP	titan	20	3.417
+ROTMP	titan	24	3.667
+ROTMP	titan	28	4.083
+ROTMP	titan	32	4.333
+ROTMP	titan	36	4.667
+ROTMP	titan	40	6.667
+ROTMP	titan	43	6.833
+ROTMP	titan	46	7.167
+ROTMP	titan	49	7.583
+ROTMP	titan	52	7.750
+ROTMP	titan	55	8.167
+ROTMP	titan	58	8.500
+ROTMP	titan	60	5.667
+ROTMP	titan	61	5.667
+ROTMP	titan	62	5.750
+ROTMP	titan	64	6.000
+ROTMP	titan	66	6.167
+ROTMP	titan	68	6.417
+ROTMP	titan	70	6.583
+ROTMP	titan	72	6.750
+ROTMP	titan	74	6.917
+ROTMP	titan	76	10.000
+ROTMP	titan	77	12.300
+ROTMP	titan	78	12.300
+ROTMP	titan	80	12.300
+ROTMP	wind rider	5	0.000
+ROTMP	wind rider	10	0.000
+ROTMP	wind rider	15	0.000
+ROTMP	wind rider	20	0.000
+ROTMP	wind rider	24	1.600
+ROTMP	wind rider	28	1.600
+ROTMP	wind rider	32	2.050
+ROTMP	wind rider	36	6.583
+ROTMP	wind rider	40	11.083
+ROTMP	wind rider	43	11.483
+ROTMP	wind rider	46	11.883
+ROTMP	wind rider	49	13.717
+ROTMP	wind rider	52	14.117
+ROTMP	wind rider	55	14.650
+ROTMP	wind rider	58	15.750
+ROTMP	wind rider	60	16.150
+ROTMP	wind rider	61	8.133
+ROTMP	wind rider	62	8.267
+ROTMP	wind rider	64	8.667
+ROTMP	wind rider	66	14.600
+ROTMP	wind rider	68	14.900
+ROTMP	wind rider	70	15.200
+ROTMP	wind rider	72	15.500
+ROTMP	wind rider	74	15.800
+ROTMP	wind rider	76	22.467
+ROTMP	wind rider	77	22.467
+ROTMP	wind rider	78	24.300
+ROTMP	wind rider	80	24.300
 #ROTCLASS	classId	line
 ROTCLASS	0	adventurer
 ROTCLASS	1	dreadnought

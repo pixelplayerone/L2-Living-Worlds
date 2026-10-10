@@ -3,6 +3,7 @@ real time-to-kill (ZoneRotationTtk).
 
 ROT  line  level  autoDps  dps5 dps15 dps30 dps45 dps60 dps90 dps120   damage per second against the sim's dummy (P.Def 400, M.Def 300),
                                   over each window; autoDps is the plain auto-attack rate the same gear would do (0 for casters)
+ROTMP  line  level  mpPerSecond     MP the 60 s rotation spends per second (its mp_used over the window), for the sustained skill share
 ROTCLASS  classId  line          the line a class follows (its own third-class line, or the first line that grows from it)
 
 Only the plain files (rotations_<line>.json) are used; variants (party, finite MP, position) are ignored. Usage: python3 build_rotation_table.py [out.tsv]
@@ -31,7 +32,7 @@ for path in glob.glob(os.path.join(HERE, "rotations_*.json")):
         name = stem.replace("_", " ")
     if name in by_name:
         lines[name] = (by_name[name], json.load(open(path)))
-rows, skills, classes, selfrows, servrows, undeadrows = [], [], {}, [], [], []
+rows, skills, classes, selfrows, servrows, undeadrows, mprows = [], [], {}, [], [], [], []
 SUMMONERS = {"arcana lord", "elemental master", "spectral master"}
 servitors = json.load(open(os.path.join(HERE, "servitors.json"))) if os.path.exists(os.path.join(HERE, "servitors.json")) else {}
 pet_hp = {}
@@ -60,6 +61,7 @@ for name, (leaf, data) in sorted(lines.items()):
                 if any(r > 1.0005 for r in ratio) or abs(b["pdef_mul"] - 1) > 1e-6 or abs(b["mdef_mul"] - 1) > 1e-6:
                     selfrows.append("ROTSELF\t%s\t%d\t%s\t%.3f\t%.3f\t%s" % (name, key, "\t".join("%.4f" % r for r in ratio), b["pdef_mul"], b["mdef_mul"], ",".join(str(i) for i in b["selfbuffs"]) or "-"))
         rows.append("ROT\t%s\t%d\t%.3f\t%s" % (name, key, auto, "\t".join("%.3f" % d for d in dps)))
+        mprows.append("ROTMP\t%s\t%d\t%.3f" % (name, key, win[60]["mp_used"] / 60.0 if 60 in win else 0.0))
         up = os.path.join(HERE, "rotations_%s_undead.json" % name.replace(" ", "_"))      # healers (Turn Undead style skills) and Phoenix Knight have an undead rotation
         if os.path.exists(up):
             ud = json.load(open(up)).get(str(key))
@@ -83,6 +85,7 @@ with open(OUT, "w", encoding="utf-8", newline="") as f:
     f.write("#ROTSELF\tline\tlevel\tx5..x120\tpDefMul\tmDefMul\tskillIds (dps with the self buffs the class has learned over without; free, permanent)\tpDefMul\tmDefMul\n" + "\n".join(selfrows) + "\n")
     f.write("#SERV\tline\tlevel\tservitorDps\tservitorHp\tservitorPDef\tautoDps\tskillDps (summoner lines; best summon at the level)\n" + "\n".join(servrows) + "\n")
     f.write("#ROTU\tline\tlevel\tautoDps\tdps5..dps120   (the same against undead monsters; used for the undead share of a zone, see ZUNDEAD)\n" + "\n".join(undeadrows) + "\n")
+    f.write("#ROTMP\tline\tlevel\tmpPerSecond   (MP the 60 s rotation spends per second; the cold model picks the share of skills a class can sustain from it)\n" + "\n".join(mprows) + "\n")
     f.write("#ROTCLASS\tclassId\tline\n" + "\n".join("ROTCLASS\t%d\t%s" % (c, n) for c, n in sorted(classes.items())) + "\n")
 print(len(lines), "lines,", len(rows), "rows,", len(classes), "classes ->", OUT)
 print(sorted(lines))

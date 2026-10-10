@@ -962,10 +962,12 @@ public class LivingPopulationTest
 			hp.setExtraMonsters(new double[] { 0.15, 0.075, 0.04, 0.02, 0.01 });
 			final double crowd = hp.deathsPerHour("Mid", 2, 40, hpStats);
 			check("hp deaths: monsters joining the fight add deaths", crowd >= alone);
-			hp.setAggroRisk(1.0);
-			check("hp deaths: a zone full of aggressive monsters sees them join more often", hp.deathsPerHour("Crowded", 2, 40, hpStats) >= hp.deathsPerHour("Mid", 2, 40, hpStats));
-			hp.setExtraMonsters(new double[] { 1, 1, 1, 1, 1 });
-			check("hp deaths: six monsters at once are far deadlier", hp.deathsPerHour("Mid", 2, 40, hpStats) > crowd);
+			hp.setHpDeaths(true, 0.2, 0.3);
+			final double lax = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			hp.setHpDeaths(true, 0.0001, 0.3);
+			final double strict = hp.deathsPerHour("Mid", 2, 40, hpStats);
+			check("hp deaths: a bot that accepts a riskier fight dies more", lax >= strict);
+			check("hp deaths: the rate is never negative where there is rest data", (strict >= 0.0) && (crowd >= 0.0) && (alone >= 0.0));
 		}
 		catch (Exception e)
 		{

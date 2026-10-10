@@ -134,6 +134,7 @@ public final class ZoneCombat
 	private volatile double[] _buffShare = new double[Role.values().length]; // per role: 0 no buffs, 1 the full party
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotationsUndead = new HashMap<>(); // the same against undead monsters (healer lines with Turn Undead style skills, Phoenix Knight)
 	private final Map<String, Double> _undeadShare = new HashMap<>(); // zone -> share (0 to 1) of its monsters that are undead
+	private final Map<String, java.util.TreeMap<Integer, Double>> _rotationMp = new HashMap<>(); // line -> level -> MP per second the 60 s rotation spends
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotations = new HashMap<>(); // line -> level -> {auto dps, dps over 5, 15, 30, 45, 60, 90, 120 s} against the sim's dummy
 	private final Map<Integer, String> _rotationLine = new HashMap<>(); // class id -> its rotation line
 	private final Map<String, java.util.TreeMap<Integer, double[]>> _rotSelf = new HashMap<>(); // line -> level -> {dps ratio over 5 .. 120 s with the self buffs, P.Def mul, M.Def mul}
@@ -205,6 +206,7 @@ public final class ZoneCombat
 		final Map<String, double[]> curves = new HashMap<>();
 		final List<ZoneStats> zones = new ArrayList<>();
 		final Map<Role, double[][]> buffs = new java.util.EnumMap<>(Role.class);
+		final Map<String, java.util.TreeMap<Integer, Double>> rotationMp = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotations = new HashMap<>();
 		final Map<String, java.util.TreeMap<Integer, double[]>> rotationsUndead = new HashMap<>();
 		final Map<String, Double> undeadShare = new HashMap<>();
@@ -258,6 +260,10 @@ public final class ZoneCombat
 							values[i] = Double.parseDouble(f[3 + i]);
 						}
 						rotations.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), values);
+					}
+					else if (f[0].equals("ROTMP") && (f.length >= 4))
+					{
+						rotationMp.computeIfAbsent(f[1], k -> new java.util.TreeMap<>()).put(Integer.parseInt(f[2]), Double.parseDouble(f[3]));
 					}
 					else if (f[0].equals("ROTU") && (f.length >= 11))
 					{
@@ -345,6 +351,7 @@ public final class ZoneCombat
 		final Params use = usable ? params : new Params(false, params.baseKillsPerMinute(), params.fightShare(), params.skillFloor(), params.maxKillsPerMinute(), params.minDeathFactor(), params.maxDeathFactor(), params.gearTierLevelStep());
 		final ZoneCombat model = new ZoneCombat(use, curves, zones, buffs);
 		model._rotations.putAll(rotations);
+		model._rotationMp.putAll(rotationMp);
 		model._rotationsUndead.putAll(rotationsUndead);
 		model._undeadShare.putAll(undeadShare);
 		model._heals.putAll(heals);
@@ -436,8 +443,14 @@ public final class ZoneCombat
 		return (!spoiler || (rest.length < 5) || (rest[4] <= 0.0)) ? 0.0 : (spoilMana(level) / rest[4]);
 	}
 
-	/** Kills factor from sitting: the cycle over the cycle plus the sit; potions heal part of the HP deficit so it sits less. 1 without rest data. */
-	private double restFactor(String zone, Role role, int level, double killsPerMinute, double potionsPerHour, boolean spoiler, double healCover, double healMana)
+	/**
+	 * Kills factor from sitting: the cycle over the cycle plus the sit. The HP the monsters take in a fight this long (with the extra monsters that join) is repaid at the sitting regen, the MP the rotation spent
+	 * beyond the standing regen likewise, and both refill in the same sit; potions heal part of the HP deficit so it sits less. 1 without rest data.
+	 * @param fight the seconds of one fight
+	 * @param cycle the fight and the walk before the next one
+	 * @param mpUsed the MP one kill costs, or -1 for the rest table's own figure
+	 */
+	private double restFactor(String zone, Role role, int level, double fight, double cycle, double mpUsed, double potionsPerHour, double killsPerMinute, boolean spoiler, double healCover, double healMana)
 	{
 		final Map<Role, java.util.TreeMap<Integer, double[]>> byRole = _rest.get(zone);
 		final java.util.TreeMap<Integer, double[]> table = (byRole == null) ? null : byRole.get(role);
@@ -446,7 +459,7 @@ public final class ZoneCombat
 			return 1.0;
 		}
 		final java.util.Map.Entry<Integer, double[]> entry = (table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry();
-		final double[] r = entry.getValue(); // cycle, HP deficit per kill, HP sit regen per s, MP sit s
+		final double[] r = entry.getValue(); // cycle, HP deficit per kill, HP sit regen per s, MP sit s (the rest estimate's own fight, used here only for the MP when the rotation has none), MP sit regen, HP pool
 		double healPerKill = (potionsPerHour <= 0 || killsPerMinute <= 0) ? 0.0 : ((potionsPerHour * ((level < 20) ? POTION_HEAL_LESSER : POTION_HEAL)) / (killsPerMinute * 60.0));
 		double sitRegen = r[2];
 		if (_startingBuffs && (level >= NEWBIE_FROM_LEVEL) && (level <= NEWBIE_TO_LEVEL) && (_newbie.get(role) != null) && knows(zone))
@@ -464,12 +477,14 @@ public final class ZoneCombat
 			sitRegen *= extras[1];
 		}
 		// Mystic-line bots heal themselves (healCover is the share of the HP they lose that the heals they have learned cover) and summoners repair the servitor; the mana (healMana per kill) comes out of the pool they sit to refill.
-		final double deficit = Math.max(0.0, r[1] - healPerKill);
+		final double lost = damageTaken(_zones.get(_zoneIndex.get(zone)), role, level, fight);
+		final double deficit = Math.max(0.0, lost - (r[2] * 1.1 / 1.5 * cycle) - healPerKill);
 		final double healMp = (r.length >= 5 && r[4] > 0.0) ? (healMana / r[4]) : 0.0;
 		final double sitHp = (deficit * (1.0 - healCover)) / Math.max(1e-9, sitRegen);
+		final double sitMpBase = (mpUsed >= 0.0 && r.length >= 5 && r[4] > 0.0) ? (Math.max(0.0, mpUsed - (r[4] * 1.1 / 1.5 * cycle)) / r[4]) : r[3];
 		// A spoiler bot casts Spoil on every monster: that mana is refilled by sitting too (a spoiler in the party that is not the bot costs it nothing).
-		final double sit = Math.max(sitHp, r[3] + healMp + spoilSitSeconds(r, level, spoiler));
-		return r[0] / (r[0] + sit);
+		final double sit = Math.max(sitHp, sitMpBase + healMp + spoilSitSeconds(r, level, spoiler));
+		return cycle / (cycle + sit);
 	}
 
 	/**
@@ -629,7 +644,7 @@ public final class ZoneCombat
 		for (int pass = 0; pass < 2; pass++)
 		{
 			final int w = windowFor(pass, fight);
-			final double dps = (rotationDps(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, w) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
+			final double dps = (rotationDps(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, w, true) * tankShots * tankBuff) + (rotationDps(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, w, true) * dpsShots * dpsBuff) + (petDps(z, dpsClass, level, dpsSkills) * partyBuff(buffer, Role.MELEE, 0, level));
 			fight = z.hp() / Math.max(1e-6, dps);
 		}
 		// A ranged damage dealer (archer or mage, the healer's mage included) pulls the mob for the group, so the party walks less between kills.
@@ -643,7 +658,7 @@ public final class ZoneCombat
 			final double[] mageRow = restRow(z.name(), Role.MAGE, level);
 			if ((tankRow != null) && (mageRow != null))
 			{
-				final double lost = tankRow[1] * (fight / Math.max(1e-6, tankRow[0] - 2.5)); // HP the mobs take off the tank per kill, beyond its standing regen
+				final double lost = lostPerKill(z.name(), Role.TANK, level, fight); // HP the mobs take off the tank per kill, beyond its standing regen
 				final double sitHp = (lost * (1.0 - p.healCoverage())) / Math.max(1e-9, tankRow[2]);
 				// The healer only heals: its mana goes to the HP it heals (no attack spells), and it refills by sitting at a mage's MP regen.
 				final int healerClass = (slot == 3) ? classId : 97;
@@ -653,7 +668,10 @@ public final class ZoneCombat
 				final double cycle = fight + 2.5;
 				final double[] ownRow = restRow(z.name(), role, level);
 				final double sitSpoil = LivingSupplies.isSpoiler(classId) && (ownRow != null) ? spoilSitSeconds(ownRow, level, true) : 0.0; // only when the bot itself spoils
-				factor = cycle / (cycle + Math.max(sitHp, Math.max(sitMp, sitSpoil)));
+				// The members who cast also wait on their own MP: nobody in the party takes damage to hide that sit in, so the whole party waits for it.
+				final double sitTank = memberMpSit(z, Role.TANK, tankClass, level, tankStats.attack(), tankSkills, botTank ? stats.selfBuffs() : 1.0, fight, cycle);
+				final double sitDps = memberMpSit(z, dpsRole, dpsClass, level, dpsStats.attack(), dpsSkills, (slot == 1) ? stats.selfBuffs() : 1.0, fight, cycle);
+				factor = cycle / (cycle + Math.max(Math.max(sitHp, sitMp), Math.max(sitSpoil, Math.max(sitTank, sitDps))));
 			}
 		}
 		// Deaths: the mobs hit the tank (it holds their attention) and the healer heals a share of its damage as it comes in. The healer tops the tank up to full between fights and the party waits when the healer is out of mana (the rest factor above), so every fight starts at full HP: a party death needs a burst the heals do not cover, or more monsters at once.
@@ -681,6 +699,19 @@ public final class ZoneCombat
 		final double resetShare = Math.min(0.9, (events * p.baseDeathsPerHour() * p.resetSeconds()) / 3600.0);
 		kills = Math.min(_params.maxKillsPerMinute(), kills * factor * (1.0 - resetShare));
 		return new PartyOutcome(kills, deathFactor, deathsPerHour, p.expBonus() / PARTY_SIZE, slot, buffer, 1.0 / PARTY_SIZE, LivingSupplies.isSpoiler(classId) || LivingSupplies.isSpoiler(dpsClass));
+	}
+
+	/** @return the seconds a party member sits per kill to refill the MP its rotation spends (its sustained share of skills, no HP sit to share it with) */
+	private double memberMpSit(ZoneStats z, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, double fight, double cycle)
+	{
+		final String line = _rotationLine.get(classId);
+		final double[] r = restRow(z.name(), role, level);
+		if ((line == null) || (r == null) || (r[4] <= 0.0))
+		{
+			return 0.0;
+		}
+		final double used = rotationMp(line, level) * Math.max(0.0, Math.min(1.0, skillFraction)) * sustainedShare(z, role, classId, level, weaponAttack, skillFraction, selfShare, true) * fight;
+		return Math.max(0.0, used - (r[4] * 1.1 / 1.5 * cycle)) / r[4];
 	}
 
 	private double[] restRow(String zone, Role role, int level)
@@ -725,19 +756,26 @@ public final class ZoneCombat
 	 */
 	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, int window)
 	{
+		return rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, false);
+	}
+
+	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, int window, boolean party)
+	{
 		final String line = _rotationLine.get(classId);
-		final double plain = rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, _rotations.get(line));
+		final double share = sustainedShare(zone, role, classId, level, weaponAttack, skillFraction, selfShare, party);
+		final double plain = rotationDpsOf(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, _rotations.get(line), share);
 		final double undead = _undeadShare.getOrDefault(zone.name(), 0.0);
 		final java.util.TreeMap<Integer, double[]> undeadTable = (line == null) ? null : _rotationsUndead.get(line);
 		if ((undead <= 0.0) || (undeadTable == null))
 		{
 			return plain;
 		}
-		final double against = Math.max(plain, rotationDps(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, undeadTable)); // never slower than the plain rotation (Phoenix Knight's is no better)
+		final double against = Math.max(plain, rotationDpsOf(zone, role, classId, level, weaponAttack, skillFraction, selfShare, window, undeadTable, share)); // never slower than the plain rotation (Phoenix Knight's is no better)
 		return 1.0 / (((1.0 - undead) / Math.max(1e-9, plain)) + (undead / Math.max(1e-9, against))); // kills take the time of their own kind: average the seconds, not the damage
 	}
 
-	private double rotationDps(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, int window, java.util.TreeMap<Integer, double[]> table)
+	/** @param share the share of the rotation's skills the bot keeps up (see {@link #sustainedShare}); 1 = the full rotation */
+	private double rotationDpsOf(ZoneStats zone, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, int window, java.util.TreeMap<Integer, double[]> table, double share)
 	{
 		if (table == null)
 		{
@@ -749,7 +787,7 @@ public final class ZoneCombat
 		final double refAttack = curve(role == Role.MAGE ? "matk_mage" : (role == Role.BOW ? "patk_bow" : "patk_melee"), LivingSupplies.gradeFor(level));
 		final double ratio = (refAttack <= 0) ? 1.0 : Math.max(0.1, Math.min(1.5, weaponAttack / refAttack));
 		final double gear = (role == Role.MAGE) ? Math.sqrt(ratio) : ratio;
-		final double skills = (role == Role.MAGE) ? Math.max(0.1, skillFraction) : Math.max(0.0, Math.min(1.0, skillFraction));
+		final double skills = ((role == Role.MAGE) ? Math.max(0.1, skillFraction) : Math.max(0.0, Math.min(1.0, skillFraction))) * share;
 		final double auto = Math.min(r[0], r[1 + window]);
 		double dps = (auto + ((r[1 + window] - auto) * skills)) * scale * gear;
 		// Self buffs the class has learned (free and permanent): the share it has bought of the ratio the sim measured with them all on.
@@ -814,11 +852,92 @@ public final class ZoneCombat
 		return fightSeconds * zone.hitsPerSecond() * MOB_DAMAGE * zone.pAtk() * zone.hitMultiple() / Math.max(1.0, defence);
 	}
 
-	/** @return the HP the monsters take off a bot per kill beyond its standing regen, for a fight of this length (the rest estimate scaled from its own fight); 0 without rest data */
+	/** @return the HP the monsters take off a bot per kill beyond its standing regen, for a fight of this length (the monsters' hits for the whole fight, with the extra monsters that join); 0 without rest data */
 	private double lostPerKill(String zone, Role role, int level, double fightSeconds)
 	{
 		final double[] r = restRow(zone, role, level);
-		return (r == null) ? 0.0 : (r[1] * (fightSeconds / Math.max(1e-6, r[0] - 2.5)));
+		final Integer zi = _zoneIndex.get(zone);
+		if ((r == null) || (zi == null))
+		{
+			return 0.0;
+		}
+		return Math.max(0.0, damageTaken(_zones.get(zi), role, level, fightSeconds) - (r[2] * 1.1 / 1.5 * (fightSeconds + 2.5)));
+	}
+
+	/** @return the HP the zone's monsters take off a fighter in a fight of this length: one monster's average damage times the monsters that may join (n monsters do n(n+1)/2 times one's) */
+	private double damageTaken(ZoneStats z, Role role, int level, double fight)
+	{
+		final int grade = LivingSupplies.gradeFor(level);
+		final double defence = Math.max(1.0, curveStats(role, grade, grade).pDef() * buff(role, 1, level));
+		return fightDamage(z, role, level, defence, fight)[0] * averageMonsters(z);
+	}
+
+	/** @return the average of n(n+1)/2 over the number of monsters in a fight of this zone: what the extra monsters multiply one monster's damage by */
+	private double averageMonsters(ZoneStats z)
+	{
+		final double[] counts = monsterCounts(z);
+		double weight = 0.0;
+		for (int n = 1; n <= 6; n++)
+		{
+			weight += counts[n - 1] * (n * (n + 1) / 2.0);
+		}
+		return weight;
+	}
+
+	/** @return MP per second the line's 60 s rotation spends at the level, 0 without the data */
+	private double rotationMp(String line, int level)
+	{
+		final java.util.TreeMap<Integer, Double> table = (line == null) ? null : _rotationMp.get(line);
+		final java.util.Map.Entry<Integer, Double> entry = (table == null) ? null : ((table.floorEntry(level) != null) ? table.floorEntry(level) : table.firstEntry());
+		return (entry == null) ? 0.0 : entry.getValue();
+	}
+
+	/** @return the seconds between one kill and the next that are not fighting: the walk and loot, from the flat kill rate and fight share (shorter for a faster bot, and for ranged classes) */
+	private double overheadSeconds(Role role, int level)
+	{
+		return (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, level) * ((role == Role.BOW || role == Role.MAGE) ? _rangedWalk : 1.0);
+	}
+
+	/**
+	 * The share of the rotation's skills a class can keep up while hunting: the damage per second is the auto-attacks plus {@code share} of what the skills add, and the skills burn MP that regen does not
+	 * make back. A bot sits for its HP anyway and refills MP in the same sit, so it casts as much as that sit covers; past that every skill costs sitting time. The share is the one with the most kills
+	 * an hour (fight + walk + sit). A party member that takes no hits has no HP sit to hide the MP in, so it holds back more. Mages cast everything (no useful auto-attack).
+	 * @param party whether the fighter takes no damage (the healer covers the tank, the others are not hit)
+	 */
+	private double sustainedShare(ZoneStats z, Role role, int classId, int level, double weaponAttack, double skillFraction, double selfShare, boolean party)
+	{
+		final String line = _rotationLine.get(classId);
+		final double mp = rotationMp(line, level);
+		final double[] r = restRow(z.name(), role, level);
+		final java.util.TreeMap<Integer, double[]> table = (line == null) ? null : _rotations.get(line);
+		if ((role == Role.MAGE) || (mp <= 0.0) || (r == null) || (table == null) || (r[4] <= 0.0))
+		{
+			return 1.0;
+		}
+		final int window = windowFor(1, 60.0);
+		final double overhead = overheadSeconds(role, level);
+		final double hpSit = r[2];
+		final double standingMp = r[4] * 1.1 / 1.5;
+		final double standingHp = r[2] * 1.1 / 1.5;
+		final double buffed = buff(role, 0, level);
+		double best = 0.0;
+		double bestKills = -1.0;
+		for (int step = 0; step <= 10; step++)
+		{
+			final double share = step / 10.0;
+			final double dps = rotationDpsOf(z, role, classId, level, weaponAttack, skillFraction, selfShare, window, table, share) * buffed;
+			final double fight = z.hp() / Math.max(1e-6, dps);
+			final double cycle = fight + overhead;
+			final double sitHp = party ? 0.0 : Math.max(0.0, damageTaken(z, role, level, fight) - (standingHp * cycle)) / Math.max(1e-9, hpSit);
+			final double sitMp = Math.max(0.0, (share * Math.max(0.0, Math.min(1.0, skillFraction)) * mp * fight) - (standingMp * cycle)) / r[4];
+			final double kills = 1.0 / (cycle + Math.max(sitHp, sitMp));
+			if (kills >= bestKills - 1e-12)
+			{
+				bestKills = Math.max(bestKills, kills);
+				best = share;
+			}
+		}
+		return best;
 	}
 
 	/**
@@ -1215,12 +1334,13 @@ public final class ZoneCombat
 			}
 		}
 		}
-		final double overhead = (60.0 / _params.baseKillsPerMinute()) * (1.0 - _params.fightShare()) / runSpeed(role, level) * ((role == Role.BOW || role == Role.MAGE) ? _rangedWalk : 1.0); // the walk between monsters shrinks with the bot's speed, and ranged classes move less
+		final double overhead = overheadSeconds(role, level); // the walk between monsters shrinks with the bot's speed, and ranged classes move less
 		double kills = 60.0 / (overhead + fightSeconds);
 		final double[] shield = (pet == null) ? null : servitorShield(_zones.get(zi), pet, level, fightSeconds, kills, servHealed);
 		if (_restOn)
 		{
-		kills *= restFactor(_zones.get(zi).name(), role, level, kills, potionsPerHour, LivingSupplies.isSpoiler(classId), healCover, healMana);
+		final double mpUsed = rotation ? (rotationMp(_rotationLine.get(classId), level) * Math.max(0.0, Math.min(1.0, skills / 10.0)) * sustainedShare(_zones.get(zi), role, classId, level, attack, skills / 10.0, selfBuffs, false) * fightSeconds) : -1.0;
+		kills *= restFactor(_zones.get(zi).name(), role, level, fightSeconds, overhead + fightSeconds, mpUsed, potionsPerHour, kills, LivingSupplies.isSpoiler(classId), healCover, healMana);
 		}
 		if (shield != null)
 		{
