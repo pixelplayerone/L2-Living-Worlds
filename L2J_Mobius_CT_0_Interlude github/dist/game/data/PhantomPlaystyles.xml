@@ -31,7 +31,7 @@
 	                 Aggression, which is manager-owned and handled in code, so it is NOT listed here.
 	  when         - comma-separated AND conditions:
 	                 ALWAYS, TARGET_HP_BELOW (hpBelow), TARGET_HP_ABOVE (hpAbove),
-	                 SELF_HP_BELOW (selfHpBelow), MP_ABOVE (mpAbove), MOBS_NEAR (mobsAtLeast),
+	                 SELF_HP_BELOW (selfHpBelow), MP_ABOVE (mpAbove; ignored when the target is a player, so a duel never holds mana back), MOBS_NEAR (mobsAtLeast),
 	                 MOBS_UNSPOILED (mobsAtLeast), REAR, CHARGES (chargesAtLeast), CHARGES_BELOW (chargesBelow),
 	                 DEBUFF_MISSING, SELF_ABNORMAL_FREE, NOT_SPOILED, DURABLE_TARGET, HEALER_READY,
 	                 ONCE_PER_TARGET, UNDER_ATTACK, PVP (the target is a player), FOCUS_ON_ME (the target has
@@ -163,12 +163,12 @@
 		<skill id="1177" name="Wind Strike"     use="ROTATION" when="ALWAYS" />
 	</playstyle>
 
-	<!-- Orc Mystic (49) -> shaman roots (overlord/warcryer). No plain bolt - its damage is the HP-drains;
+	<!-- Orc Mystic (49) -> shaman roots (overlord/warcryer). No plain bolt - its damage is the HP-drain plus the Chill Flame / Venom damage-over-time (DEBUFF entries: a DoT has no direct hit, so a ROTATION entry never fires);
 	     Venom is its early durable-target poison. Soul Cry (toggle), Chant of Battle (party buff) and the
 	     fear/sleep CC are deliberately left to upkeep / the manager. -->
 	<playstyle name="Orc Mystic (base)" classIds="49">
 		<skill id="1095" name="Venom"       use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
-		<skill id="1100" name="Chill Flame" use="ROTATION" when="MP_ABOVE" mpAbove="35" />
+		<skill id="1100" name="Chill Flame" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1090" name="Life Drain"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 	</playstyle>
 

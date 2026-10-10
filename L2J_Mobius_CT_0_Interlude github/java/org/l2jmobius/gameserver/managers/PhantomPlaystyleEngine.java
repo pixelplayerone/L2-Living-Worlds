@@ -926,7 +926,8 @@ public class PhantomPlaystyleEngine
 				}
 				case MP_ABOVE:
 				{
-					if (npc.getCurrentMpPercent() <= entry.mpAbove)
+					// A mana reserve is a farming habit: against a player (a duel, an Olympiad match) the bot spends everything.
+					if (!focus.isPlayer() && (npc.getCurrentMpPercent() <= entry.mpAbove))
 					{
 						return false;
 					}
