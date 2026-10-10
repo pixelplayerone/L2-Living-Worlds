@@ -1317,10 +1317,42 @@ public class Formulas
 			return false;
 		}
 		
+		if (calcEffectChance(attacker, target, skill) <= Rnd.get(100))
+		{
+			final SystemMessage sm = new SystemMessage(SystemMessageId.S1_HAS_RESISTED_YOUR_S2);
+			sm.addString(target.getName());
+			sm.addSkillName(skill);
+			attacker.sendPacket(sm);
+			return false;
+		}
+		
+		return true;
+	}
+	
+	/**
+	 * The chance, in percent, that {@code skill}'s effect lands on {@code target}: what {@link #calcEffectSuccess} rolls against, without rolling.
+	 * @param attacker the attacker
+	 * @param target the target
+	 * @param skill the skill
+	 * @return 0 when the target cannot receive the effect, 100 when it always lands, otherwise the clamped landing rate
+	 */
+	public static double calcEffectChance(Creature attacker, Creature target, Skill skill)
+	{
+		// StaticObjects can not receive continuous effects.
+		if (target.isDoor() || (target instanceof SiegeFlag) || (target instanceof StaticObject))
+		{
+			return 0;
+		}
+		
+		if (skill.isDebuff() && (target.calcStat(Stat.DEBUFF_IMMUNITY, 0, attacker, skill) > 0))
+		{
+			return 0;
+		}
+		
 		final int activateRate = skill.getActivateRate();
 		if ((activateRate == -1) || (activateRate > 99) || (skill.getBasicProperty() == BaseStat.NONE))
 		{
-			return true;
+			return 100;
 		}
 		
 		int magicLevel = skill.getMagicLevel();
@@ -1385,18 +1417,7 @@ public class Formulas
 		}
 		
 		final double rate = baseMod * elementMod * traitMod * mAtkMod * buffDebuffMod;
-		final double finalRate = traitMod > 0 ? MathUtil.clamp(rate, skill.getMinChance(), skill.getMaxChance()) : 0;
-		
-		if (finalRate <= Rnd.get(100))
-		{
-			final SystemMessage sm = new SystemMessage(SystemMessageId.S1_HAS_RESISTED_YOUR_S2);
-			sm.addString(target.getName());
-			sm.addSkillName(skill);
-			attacker.sendPacket(sm);
-			return false;
-		}
-		
-		return true;
+		return traitMod > 0 ? MathUtil.clamp(rate, skill.getMinChance(), skill.getMaxChance()) : 0;
 	}
 	
 	public static boolean calcCubicSkillSuccess(Cubic attacker, Creature target, Skill skill, byte shld)

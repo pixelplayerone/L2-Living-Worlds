@@ -70,6 +70,7 @@ public class PhantomPlaystyleEngine
 	 * durability is the target's total health pool (a proxy for how long it will live), not how much is left now. */
 	private static final double DURABLE_SECONDS = 8; // a target the member needs this long to bring down is worth a setup cast
 	private static final int CONTROL_MAX_TARGETS = 24; // control results remembered per member, LRU like the ledger
+	private static final double CONTROL_PRIOR_TRIES = 5; // how many tries the server's own landing chance counts for against what this fight shows
 	private static final long CONTROL_SETTLE_MS = 600; // after the cast time, before the effect is read off the target
 	private static final long DURABLE_CACHE_MS = 1000; // how long a kill-time estimate is reused for the same target
 	/** Fallback engagement reach for melee skills that report no cast range, plus slack on all range gates. */
@@ -587,14 +588,15 @@ public class PhantomPlaystyleEngine
 	/**
 	 * Whether another attempt at a control skill against a player is worth it. A landed control saves the damage the
 	 * enemy would deal during it, and a try gives up the member's own damage for the cast (less what the skill itself
-	 * hits for), so a try pays when {@code landRate x duration x enemyDps > cast x ownDps}. The land rate is learned
-	 * from this fight, starting at 40% and falling with each miss, so a resistant target is given up on. A target
-	 * that dies before the cast finishes is not worth controlling at all.
+	 * hits for), so a try pays when {@code landRate x duration x enemyDps > cast x ownDps}. The land rate starts at the
+	 * server's own chance for this skill against this target and moves toward what the fight shows (a miss lowers it,
+	 * a landing raises it), so a resistant target is given up on. A target that dies before the cast finishes is not
+	 * worth controlling at all.
 	 */
 	private static boolean controlWorthIt(Player npc, Player enemy, PlayState state, Skill skill)
 	{
 		final int[] tries = state.controlTries.get(controlKey(enemy.getObjectId(), skill.getId()));
-		final double landRate = ((tries == null ? 0 : tries[1]) + 2.0) / ((tries == null ? 0 : tries[0]) + 5.0);
+		final double landRate = ((tries == null ? 0 : tries[1]) + (CONTROL_PRIOR_TRIES * Formulas.calcEffectChance(npc, enemy, skill) / 100)) / ((tries == null ? 0 : tries[0]) + CONTROL_PRIOR_TRIES);
 		final double castSeconds = Math.max(550, Formulas.calcAtkSpd(npc, skill, skill.getHitTime() + skill.getCoolTime())) / 1000.0;
 		final double mine = damagePerSecond(npc, enemy);
 		if ((mine > 0) && ((enemy.getCurrentHp() / mine) <= castSeconds))
