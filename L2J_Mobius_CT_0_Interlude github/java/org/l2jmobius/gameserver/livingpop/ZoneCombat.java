@@ -526,7 +526,7 @@ public final class ZoneCombat
 	/** The server's party experience bonus by member count (Party.BONUS_EXP_SP, one member first). */
 	private static final double[] EXP_BONUS = { 1.0, 1.10, 1.20, 1.30, 1.40, 1.50, 2.0, 2.10, 2.20 };
 	/** How likely a virtual party is 4, 5 ... 9 members: small parties are the common ones, and the higher the level the bigger they get. Rows by level: below 61, 61+, 70+, 76+. */
-	private static final double[][] SIZE_CHANCE = { { 0.50, 0.25, 0.12, 0.07, 0.04, 0.02 }, { 0.30, 0.25, 0.175, 0.125, 0.10, 0.05 }, { 0.0, 0.0, 0.35, 0.25, 0.25, 0.15 }, { 0.0, 0.0, 0.0, 0.0, 0.50, 0.50 } };
+	private static final double[][] SIZE_CHANCE = { { 0.50, 0.25, 0.12, 0.07, 0.04, 0.02 }, { 0.30, 0.25, 0.175, 0.125, 0.10, 0.05 }, { 0.0, 0.0, 0.35, 0.25, 0.25, 0.15 }, { 0.0, 0.0, 0.0, 0.20, 0.30, 0.50 } };
 
 	private static int partySize(double roll, int level)
 	{
