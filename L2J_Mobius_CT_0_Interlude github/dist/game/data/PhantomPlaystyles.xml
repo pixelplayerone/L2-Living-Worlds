@@ -299,6 +299,7 @@
 		<skill id="404" name="Mass Shackling" use="CONTROL"  when="MOBS_NEAR" mobsAtLeast="3" paceMs="10000" />
 		<skill id="92"  name="Shield Stun"    use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
 		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING" paceMs="10000" />
+		<skill id="403" name="Shackle"       use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" />
 		<skill id="400" name="Tribunal"       use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 		<skill id="70"  name="Drain Health"   use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="55" />
 	</playstyle>
@@ -310,6 +311,8 @@
 		<skill id="342" name="Touch of Death" use="DEBUFF"   when="DURABLE_TARGET,ONCE_PER_TARGET" />
 		<skill id="92"  name="Shield Stun"    use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
 		<skill id="353" name="Shield Slam"    use="CONTROL"  when="PVP,TARGET_FIGHTER,DEBUFF_MISSING" paceMs="10000" />
+		<skill id="403" name="Shackle"       use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" />
+		<skill id="65"  name="Horror"        use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="15000" />
 		<skill id="127" name="Hamstring"      use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
 		<skill id="401" name="Judgment"       use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 		<skill id="70"  name="Drain Health"   use="ROTATION" when="MP_ABOVE" mpAbove="40" maxLevel="55" />
@@ -322,6 +325,7 @@
 		<skill id="335" name="Fortitude"         use="STANCE"   when="PVP" />
 		<skill id="400" name="Tribunal"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="352" name="Shield Bash"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
+		<skill id="402" name="Arrest"       use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" />
 		<skill id="102" name="Entangle"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
 		<skill id="3"   name="Power Strike" use="ROTATION" when="MP_ABOVE" mpAbove="45" maxLevel="49" />
 	</playstyle>
@@ -338,6 +342,7 @@
 		<skill id="115" name="Power Break"     use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="342" name="Touch of Death"  use="DEBUFF"   when="DURABLE_TARGET,ONCE_PER_TARGET" />
 		<skill id="352" name="Shield Bash"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="5000" />
+		<skill id="402" name="Arrest"         use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" />
 		<skill id="279" name="Lightning Strike" use="CONTROL" when="DURABLE_TARGET" paceMs="15000" />
 		<skill id="105" name="Freezing Strike" use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" maxLevel="55" />
 		<skill id="401" name="Judgment"        use="ROTATION" when="MP_ABOVE" mpAbove="40" />
@@ -350,6 +355,7 @@
 	<playstyle name="Sword Muse" classIds="21,100">
 		<skill id="402" name="Arrest"       use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
 		<skill id="102" name="Entangle"     use="CONTROL"  when="DEBUFF_MISSING" paceMs="10000" maxLevel="55" />
+		<skill id="98"  name="Sword Symphony" use="ROTATION" when="MP_ABOVE" mpAbove="50" />
 		<skill id="3"   name="Power Strike" use="ROTATION" when="MP_ABOVE" mpAbove="50" maxLevel="49" />
 	</playstyle>
 
@@ -402,6 +408,7 @@
 		<skill id="111" name="Ultimate Evasion" use="PANIC"    when="SELF_HP_BELOW,UNDER_ATTACK" selfHpBelow="40" />
 		<skill id="30"  name="Backstab"         use="ROTATION" when="REAR" />
 		<skill id="12"  name="Switch"           use="CONTROL"  when="PVP,FOCUS_ON_ME" />
+		<skill id="102" name="Entangle"        use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" />
 		<skill id="321" name="Blinding Blow"    use="ROTATION" when="ALWAYS" />
 		<skill id="263" name="Deadly Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="344" name="Lethal Blow"      use="ROTATION" when="ALWAYS" />
@@ -421,6 +428,7 @@
 		<skill id="11"  name="Trick"            use="CONTROL"  when="PVP,FOCUS_ON_ME" />
 		<skill id="129" name="Poison"           use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="122" name="Hex"              use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="115" name="Power Break"     use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="321" name="Blinding Blow"    use="ROTATION" when="ALWAYS" />
 		<skill id="263" name="Deadly Blow"      use="ROTATION" when="ALWAYS" />
 		<skill id="344" name="Lethal Blow"      use="ROTATION" when="ALWAYS" />
@@ -428,6 +436,7 @@
 		<skill id="412" name="Sand Bomb"        use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="96"  name="Bleed"            use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" maxLevel="45" />
 		<skill id="223" name="Sting"            use="ROTATION" when="MP_ABOVE" mpAbove="35" maxLevel="45" />
+		<skill id="70"  name="Drain Health"    use="ROTATION" when="MP_ABOVE" mpAbove="40" />
 		<skill id="16"  name="Mortal Blow"      use="ROTATION" when="MP_ABOVE" mpAbove="30" maxLevel="45" />
 	</playstyle>
 
@@ -456,6 +465,7 @@
 		<skill id="334" name="Focus Skill Mastery" use="STANCE"   when="PVP" />
 		<skill id="101" name="Stunning Shot"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="354" name="Hamstring Shot" use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
+		<skill id="102" name="Entangle"      use="CONTROL"  when="PVP,DEBUFF_MISSING" paceMs="8000" />
 		<skill id="24"  name="Burst Shot"     use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="19"  name="Double Shot"    use="ROTATION" when="ALWAYS" />
 		<skill id="343" name="Lethal Shot"    use="ROTATION" when="MP_ABOVE" mpAbove="40" />
@@ -466,6 +476,8 @@
 		<skill id="334" name="Focus Skill Mastery" use="STANCE"   when="PVP" />
 		<skill id="101" name="Stunning Shot"  use="CONTROL"  when="DEBUFF_MISSING" paceMs="6000" />
 		<skill id="122" name="Hex"            use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="129" name="Poison"        use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="115" name="Power Break"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="354" name="Hamstring Shot" use="CONTROL"  when="DEBUFF_MISSING" paceMs="8000" />
 		<skill id="19"  name="Double Shot"    use="ROTATION" when="ALWAYS" />
 		<skill id="343" name="Lethal Shot"    use="ROTATION" when="MP_ABOVE" mpAbove="40" />
@@ -481,6 +493,8 @@
 		<skill id="1177" name="Wind Strike"       use="PULL"     when="ALWAYS" />
 		<skill id="1083" name="Surrender To Fire" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" maxLevel="59" />
 		<skill id="1233" name="Decay"             use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1168" name="Curse: Poison"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1164" name="Curse: Weakness" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1296" name="Rain of Fire"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1171" name="Blazing Circle"    use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="69" />
 		<skill id="1181" name="Flame Strike"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
@@ -496,6 +510,8 @@
 		<skill id="337" name="Arcane Power"      use="STANCE"   when="PVP" />
 		<skill id="1177" name="Wind Strike"       use="PULL"     when="ALWAYS" />
 		<skill id="1263" name="Curse Gloom"       use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1168" name="Curse: Poison"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1164" name="Curse: Weakness" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1064" name="Silence"           use="CONTROL"  when="DEBUFF_MISSING,DURABLE_TARGET" paceMs="10000" />
 		<skill id="1170" name="Anchor"            use="CONTROL"  when="DURABLE_TARGET" paceMs="15000" />
 		<skill id="1148" name="Death Spike"       use="ROTATION" when="ALWAYS" />
@@ -512,6 +528,7 @@
 		<skill id="1177" name="Wind Strike"        use="PULL"     when="ALWAYS" />
 		<skill id="1071" name="Surrender To Water" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1183" name="Freezing Shackle"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1164" name="Curse: Weakness" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1174" name="Frost Wall"         use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1181" name="Flame Strike"       use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
 		<skill id="1235" name="Hydro Blast"        use="ROTATION" when="ALWAYS" />
@@ -529,6 +546,8 @@
 		<skill id="338" name="Arcane Agility"    use="STANCE"   when="PVP" />
 		<skill id="1262" name="Transfer Pain"     use="STANCE"   when="PVP" />
 		<skill id="1177" name="Wind Strike"  use="PULL"     when="ALWAYS" />
+		<skill id="1168" name="Curse: Poison"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1164" name="Curse: Weakness" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1181" name="Flame Strike" use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1220" name="Blaze"        use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="1274" name="Energy Bolt"  use="ROTATION" when="MP_ABOVE" mpAbove="25" />
@@ -541,6 +560,7 @@
 		<skill id="338" name="Arcane Agility"    use="STANCE"   when="PVP" />
 		<skill id="1262" name="Transfer Pain"     use="STANCE"   when="PVP" />
 		<skill id="1177" name="Wind Strike"  use="PULL"     when="ALWAYS" />
+		<skill id="1164" name="Curse: Weakness" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1181" name="Flame Strike" use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1264" name="Solar Spark"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="1175" name="Aqua Swirl"   use="ROTATION" when="MP_ABOVE" mpAbove="30" />
@@ -554,6 +574,7 @@
 		<skill id="338" name="Arcane Agility"    use="STANCE"   when="PVP" />
 		<skill id="1262" name="Transfer Pain"     use="STANCE"   when="PVP" />
 		<skill id="1177" name="Wind Strike"   use="PULL"     when="ALWAYS" />
+		<skill id="1168" name="Curse: Poison"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1181" name="Flame Strike"  use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1266" name="Shadow Spark"  use="ROTATION" when="MP_ABOVE" mpAbove="30" />
 		<skill id="1178" name="Twister"       use="ROTATION" when="MP_ABOVE" mpAbove="30" />
@@ -566,6 +587,7 @@
 		<skill id="337" name="Arcane Power"      use="STANCE"   when="PVP" />
 		<skill id="1177" name="Wind Strike"       use="PULL"     when="ALWAYS" />
 		<skill id="1074" name="Surrender To Wind" use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
+		<skill id="1168" name="Curse: Poison"   use="DEBUFF"   when="DEBUFF_MISSING,DURABLE_TARGET" />
 		<skill id="1176" name="Tempest"           use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" />
 		<skill id="1181" name="Flame Strike"      use="AOE"      when="MOBS_NEAR" mobsAtLeast="3" maxLevel="45" />
 		<skill id="1239" name="Hurricane"         use="ROTATION" when="ALWAYS" />
