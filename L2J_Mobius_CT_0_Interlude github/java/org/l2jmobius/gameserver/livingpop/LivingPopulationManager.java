@@ -794,7 +794,7 @@ public class LivingPopulationManager
 					final long lootValue = Math.round(Math.max(0.0, kills * yield.loot()));
 					bot.setLoot(Math.min(ColdEconomy.MAX_ADENA, bot.getLoot() + lootValue));
 					huntAdena += lootValue;
-					_townStock.deposit(bot.getTown(), zoneItems(bot.getZone(), progress.level(), spoils), kills, _random);
+					_townStock.deposit(bot.getTown(), bot.getId(), zoneItems(bot.getZone(), progress.level(), spoils), kills, _random);
 				}
 				// Gear kept per slot: the weapons and armor its kills dropped are rolled for real; it wears the better ones.
 				if ((_gear != null) && _travelConfig.dropIncome() && (huntedMs > 0))
@@ -1518,7 +1518,7 @@ public class LivingPopulationManager
 		}
 		final StringBuilder sb = new StringBuilder("{");
 		boolean firstTown = true;
-		for (Map.Entry<String, Map<Integer, Long>> town : _townStock.snapshot().entrySet())
+		for (Map.Entry<String, Map<Integer, Long>> town : _townStock.totals().entrySet())
 		{
 			sb.append(firstTown ? "" : ",").append('"').append(town.getKey()).append("\":[");
 			firstTown = false;

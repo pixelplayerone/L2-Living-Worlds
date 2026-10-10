@@ -471,22 +471,25 @@ public class LivingTravelTest
 
 		final TownStock stock = new TownStock();
 		check("a new stock is empty and clean", (stock.count("Giran", 3) == 0) && !stock.dirty());
-		stock.deposit("Giran", counts, 10, new java.util.Random(1));
+		stock.deposit("Giran", 5L, counts, 10, new java.util.Random(1));
 		check("a sure drop adds up exactly", stock.count("Giran", 3) == 30);
 		check("a deposit marks the stock changed", stock.dirty());
 		stock.clean();
 		check("clean clears the changed mark", !stock.dirty());
-		stock.deposit(null, counts, 10, new java.util.Random(1));
-		stock.deposit("Giran", counts, 0, new java.util.Random(1));
+		stock.deposit(null, 5L, counts, 10, new java.util.Random(1));
+		stock.deposit("Giran", 5L, counts, 0, new java.util.Random(1));
 		check("no town or no kills deposits nothing", !stock.dirty());
 		final java.util.Random random = new java.util.Random(7);
 		for (int i = 0; i < 2000; i++)
 		{
-			stock.deposit("Aden", counts, 1, random);
+			stock.deposit("Aden", 9L, counts, 1, random);
 		}
 		final long rare = stock.count("Aden", 1);
 		check("a rare drop averages out over many spans", (rare > 70) && (rare < 130));
-		check("towns are kept apart", (stock.count("Giran", 3) == 30) && (stock.count("Aden", 3) == 6000) && (stock.snapshot().size() == 2));
+		check("towns are kept apart", (stock.count("Giran", 3) == 30) && (stock.count("Aden", 3) == 6000) && (stock.totals().size() == 2));
+		stock.deposit("Giran", 6L, counts, 10, new java.util.Random(1));
+		check("items stay with the bot that hunted them", (stock.count("Giran", 5L, 3) == 30) && (stock.count("Giran", 6L, 3) == 30) && (stock.count("Giran", 3) == 60) && (stock.count("Giran", 7L, 3) == 0));
+		check("the listings list every owner's items", stock.listings().stream().filter(listing -> listing.town().equals("Giran") && (listing.itemId() == 3)).count() == 2);
 	}
 
 	private static void testDropYield()

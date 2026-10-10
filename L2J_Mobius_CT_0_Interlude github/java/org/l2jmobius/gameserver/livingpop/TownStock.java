@@ -18,29 +18,48 @@
  */
 package org.l2jmobius.gameserver.livingpop;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The items each town holds: what the cold bots hunted and sold there, kept as real items instead of only the adena
- * the vendor paid. Pure (no game types), so the standalone test lane covers it. Nothing takes items out yet.
+ * The items each town holds, like a back-end auction house: every item belongs to the bot that hunted it, and what a
+ * buyer pays will go to that owner. Pure (no game types), so the standalone test lane covers it. Nothing takes items
+ * out yet.
  */
 public final class TownStock
 {
-	private final Map<String, Map<Integer, Long>> _towns = new ConcurrentHashMap<>();
+	/**
+	 * @param town the town the items are in
+	 * @param owner the id of the bot they belong to
+	 * @param itemId the item
+	 * @param count how many
+	 */
+	public record Listing(String town, long owner, int itemId, long count)
+	{
+	}
+
+	private record Key(String town, long owner, int itemId)
+	{
+	}
+
+	private final Map<Key, Long> _listings = new ConcurrentHashMap<>();
 	private volatile boolean _dirty;
 
 	/**
 	 * Adds the items a span of hunting dropped: each item's expected count rounded up or down at random, so small
 	 * amounts still add up over many spans.
 	 * @param town the town the bot sells in (ignored when null)
+	 * @param owner the hunting bot's id
 	 * @param perKill item id to expected count per kill
 	 * @param kills how many kills the span had
 	 * @param random the rounding source
 	 */
-	public void deposit(String town, Map<Integer, Double> perKill, double kills, Random random)
+	public void deposit(String town, long owner, Map<Integer, Double> perKill, double kills, Random random)
 	{
 		if ((town == null) || (kills <= 0))
 		{
@@ -53,39 +72,67 @@ public final class TownStock
 			final long count = whole + ((random.nextDouble() < (expected - whole)) ? 1 : 0);
 			if (count > 0)
 			{
-				add(town, entry.getKey(), count);
+				add(town, owner, entry.getKey(), count);
 			}
 		}
 	}
 
 	/**
 	 * @param town a town
+	 * @param owner the bot the items belong to
 	 * @param itemId an item
 	 * @param count how many to add
 	 */
-	public void add(String town, int itemId, long count)
+	public void add(String town, long owner, int itemId, long count)
 	{
-		_towns.computeIfAbsent(town, key -> new ConcurrentHashMap<>()).merge(itemId, count, Long::sum);
+		_listings.merge(new Key(town, owner, itemId), count, Long::sum);
 		_dirty = true;
 	}
 
 	/**
 	 * @param town a town
 	 * @param itemId an item
-	 * @return how many the town holds
+	 * @return how many the town holds, whoever owns them
 	 */
 	public long count(String town, int itemId)
 	{
-		final Map<Integer, Long> items = _towns.get(town);
-		return (items == null) ? 0L : items.getOrDefault(itemId, 0L);
+		long total = 0;
+		for (Map.Entry<Key, Long> entry : _listings.entrySet())
+		{
+			if (entry.getKey().town().equals(town) && (entry.getKey().itemId() == itemId))
+			{
+				total += entry.getValue();
+			}
+		}
+		return total;
 	}
 
-	/** @return a copy of every town's items, towns and items in order */
-	public Map<String, Map<Integer, Long>> snapshot()
+	/**
+	 * @param town a town
+	 * @param owner a bot
+	 * @param itemId an item
+	 * @return how many of it the bot has in the town
+	 */
+	public long count(String town, long owner, int itemId)
 	{
-		final Map<String, Map<Integer, Long>> copy = new TreeMap<>();
-		_towns.forEach((town, items) -> copy.put(town, new TreeMap<>(items)));
-		return copy;
+		return _listings.getOrDefault(new Key(town, owner, itemId), 0L);
+	}
+
+	/** @return every listing, in town, owner, item order */
+	public List<Listing> listings()
+	{
+		final List<Listing> all = new ArrayList<>();
+		_listings.forEach((key, count) -> all.add(new Listing(key.town(), key.owner(), key.itemId(), count)));
+		all.sort(Comparator.comparing(Listing::town).thenComparingLong(Listing::owner).thenComparingInt(Listing::itemId));
+		return all;
+	}
+
+	/** @return each town's items and how many it holds in all, towns and items in order */
+	public Map<String, Map<Integer, Long>> totals()
+	{
+		final Map<String, Map<Integer, Long>> totals = new TreeMap<>();
+		_listings.forEach((key, count) -> totals.computeIfAbsent(key.town(), town -> new TreeMap<>()).merge(key.itemId(), count, Long::sum));
+		return totals;
 	}
 
 	/** @return whether anything changed since the last {@link #clean()} */

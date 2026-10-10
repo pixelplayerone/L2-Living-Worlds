@@ -21,14 +21,13 @@ package org.l2jmobius.gameserver.livingpop;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.l2jmobius.commons.database.DatabaseFactory;
 
 /**
- * Loads and saves the {@link TownStock} in the module's own table (created by install.sql).
+ * Loads and saves the {@link TownStock} listings in the module's own table (created by install.sql).
  */
 public class TownStockDao
 {
@@ -41,12 +40,12 @@ public class TownStockDao
 	public boolean load(TownStock stock)
 	{
 		try (Connection con = DatabaseFactory.getConnection();
-			PreparedStatement ps = con.prepareStatement("SELECT town,item_id,quantity FROM living_town_stock");
+			PreparedStatement ps = con.prepareStatement("SELECT town,owner_id,item_id,quantity FROM living_town_listings");
 			ResultSet rs = ps.executeQuery())
 		{
 			while (rs.next())
 			{
-				stock.add(rs.getString(1), rs.getInt(2), rs.getLong(3));
+				stock.add(rs.getString(1), rs.getLong(2), rs.getInt(3), rs.getLong(4));
 			}
 			stock.clean();
 			return true;
@@ -64,17 +63,15 @@ public class TownStockDao
 	public void save(TownStock stock)
 	{
 		try (Connection con = DatabaseFactory.getConnection();
-			PreparedStatement ps = con.prepareStatement("REPLACE INTO living_town_stock (town,item_id,quantity) VALUES (?,?,?)"))
+			PreparedStatement ps = con.prepareStatement("REPLACE INTO living_town_listings (town,owner_id,item_id,quantity) VALUES (?,?,?,?)"))
 		{
-			for (Map.Entry<String, Map<Integer, Long>> town : stock.snapshot().entrySet())
+			for (TownStock.Listing listing : stock.listings())
 			{
-				for (Map.Entry<Integer, Long> item : town.getValue().entrySet())
-				{
-					ps.setString(1, town.getKey());
-					ps.setInt(2, item.getKey());
-					ps.setLong(3, item.getValue());
-					ps.addBatch();
-				}
+				ps.setString(1, listing.town());
+				ps.setLong(2, listing.owner());
+				ps.setInt(3, listing.itemId());
+				ps.setLong(4, listing.count());
+				ps.addBatch();
 			}
 			ps.executeBatch();
 			stock.clean();
