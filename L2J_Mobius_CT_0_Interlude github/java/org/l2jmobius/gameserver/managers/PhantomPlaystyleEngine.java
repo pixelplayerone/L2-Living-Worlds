@@ -69,6 +69,8 @@ public class PhantomPlaystyleEngine
 	/** DURABLE_TARGET: a setup debuff/limit amortizes on a raid or on anything whose MAX HP is at least this - i.e.
 	 * durability is the target's total health pool (a proxy for how long it will live), not how much is left now. */
 	private static final double DURABLE_SECONDS = 8; // a target the member needs this long to bring down is worth a setup cast
+	private static final int CONTROL_MAX_TARGETS = 24; // control results remembered per member, LRU like the ledger
+	private static final long CONTROL_SETTLE_MS = 600; // after the cast time, before the effect is read off the target
 	private static final long DURABLE_CACHE_MS = 1000; // how long a kill-time estimate is reused for the same target
 	/** Fallback engagement reach for melee skills that report no cast range, plus slack on all range gates. */
 	private static final int MELEE_REACH = 80;
@@ -94,6 +96,8 @@ public class PhantomPlaystyleEngine
 		final int repeatMs;
 		final int priority;
 		final double preference;
+		/** True for a CONTROL entry: its landed/failed result feeds the retry estimate (see {@link #controlWorthIt}). */
+		final boolean control;
 
 		CastAction(Skill skill, Creature target, boolean oncePerTarget, int focusObjectId, int ledgerSkillId)
 		{
@@ -102,6 +106,12 @@ public class PhantomPlaystyleEngine
 
 		CastAction(Skill skill, Creature target, boolean oncePerTarget, int focusObjectId, int ledgerSkillId, int repeatMs, int priority, double preference)
 		{
+			this(skill, target, oncePerTarget, focusObjectId, ledgerSkillId, repeatMs, priority, preference, false);
+		}
+
+		CastAction(Skill skill, Creature target, boolean oncePerTarget, int focusObjectId, int ledgerSkillId, int repeatMs, int priority, double preference, boolean control)
+		{
+			this.control = control;
 			this.skill = skill;
 			this.target = target;
 			this.oncePerTarget = oncePerTarget;
@@ -149,6 +159,19 @@ public class PhantomPlaystyleEngine
 		int killFocusId;
 		long killAt;
 		double killSeconds;
+		// Control results against players: (target, skill) -> {attempts, landed}. The last launched control cast waits
+		// in ctl* until its cast has finished, then settleControl checks whether the effect is on the target.
+		final Map<Long, int[]> controlTries = Collections.synchronizedMap(new LinkedHashMap<>(32, 0.75f, true)
+		{
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<Long, int[]> eldest)
+			{
+				return size() > CONTROL_MAX_TARGETS;
+			}
+		});
+		int ctlFocusId;
+		int ctlSkillId;
+		long ctlSettleAt;
 
 		/** Forces re-resolution when the data has been reloaded, so an edit applies without re-recruiting. */
 		void refreshIfReloaded()
@@ -209,6 +232,7 @@ public class PhantomPlaystyleEngine
 	{
 		final int classId = npc.getPlayerClass().getId();
 		state.refreshIfReloaded();
+		settleControl(state, focus);
 		if (!state.lookedUp)
 		{
 			state.lookedUp = true;
@@ -332,7 +356,11 @@ public class PhantomPlaystyleEngine
 				{
 					continue; // a damage cast must improve on the weapon attacks it interrupts
 				}
-				final CastAction candidate = new CastAction(skill, target, oncePerTarget, focus.getObjectId(), entry.skillId, (entry.paceMs > 0) ? entry.paceMs : (caster ? 0 : 1500), priority, preference);
+				if ((entry.use == Use.CONTROL) && (focus instanceof Player enemy) && !controlWorthIt(npc, enemy, state, skill))
+				{
+					continue; // the odds of landing it, against the damage the cast gives up, no longer favor another try
+				}
+				final CastAction candidate = new CastAction(skill, target, oncePerTarget, focus.getObjectId(), entry.skillId, (entry.paceMs > 0) ? entry.paceMs : (caster ? 0 : 1500), priority, preference, entry.use == Use.CONTROL);
 				if ((best == null) || (candidate.priority > best.priority) || ((priority == 100) && (best.priority == 100) && (candidate.preference > best.preference)))
 				{
 					best = candidate;
@@ -533,6 +561,52 @@ public class PhantomPlaystyleEngine
 		return 91 * Math.sqrt(Math.max(0, npc.getMAtk(focus, skill) * magicShots)) * power / Math.max(1, focus.getMDef(npc, skill));
 	}
 
+	private static long controlKey(int focusObjectId, int skillId)
+	{
+		return ((long) focusObjectId << 32) | skillId;
+	}
+
+	/** Reads the result of the last launched control cast once it has finished: it landed if its effect is on the target. */
+	private static void settleControl(PlayState state, Creature focus)
+	{
+		if ((state.ctlSettleAt == 0) || (System.currentTimeMillis() < state.ctlSettleAt))
+		{
+			return;
+		}
+		state.ctlSettleAt = 0;
+		if ((focus != null) && (focus.getObjectId() == state.ctlFocusId) && focus.isAffectedBySkill(state.ctlSkillId))
+		{
+			final int[] tries = state.controlTries.get(controlKey(state.ctlFocusId, state.ctlSkillId));
+			if (tries != null)
+			{
+				tries[1]++;
+			}
+		}
+	}
+
+	/**
+	 * Whether another attempt at a control skill against a player is worth it. A landed control saves the damage the
+	 * enemy would deal during it, and a try gives up the member's own damage for the cast (less what the skill itself
+	 * hits for), so a try pays when {@code landRate x duration x enemyDps > cast x ownDps}. The land rate is learned
+	 * from this fight, starting at 40% and falling with each miss, so a resistant target is given up on. A target
+	 * that dies before the cast finishes is not worth controlling at all.
+	 */
+	private static boolean controlWorthIt(Player npc, Player enemy, PlayState state, Skill skill)
+	{
+		final int[] tries = state.controlTries.get(controlKey(enemy.getObjectId(), skill.getId()));
+		final double landRate = ((tries == null ? 0 : tries[1]) + 2.0) / ((tries == null ? 0 : tries[0]) + 5.0);
+		final double castSeconds = Math.max(550, Formulas.calcAtkSpd(npc, skill, skill.getHitTime() + skill.getCoolTime())) / 1000.0;
+		final double mine = damagePerSecond(npc, enemy);
+		if ((mine > 0) && ((enemy.getCurrentHp() / mine) <= castSeconds))
+		{
+			return false; // it dies before the cast finishes
+		}
+		final double power = skill.getPower(npc, enemy, true, false);
+		final double ownHit = (power > 0) ? hitEstimate(npc, enemy, skill, power, weaponHit(npc, enemy)) : 0;
+		final double given = Math.max(0, (castSeconds * mine) - ownHit);
+		return landRate * skill.getAbnormalTime() * damagePerSecond(enemy, npc) > given;
+	}
+
 	/**
 	 * A target worth a setup cast (debuff, control, a limit skill): a raid, or one the member needs
 	 * {@link #DURABLE_SECONDS} or longer to bring down from its present HP. Judged against the member's own damage, so
@@ -628,11 +702,21 @@ public class PhantomPlaystyleEngine
 	 */
 	public static void confirmCast(PlayState state, CastAction action)
 	{
-		if ((action == null) || !action.oncePerTarget)
+		if (action == null)
 		{
 			return;
 		}
-		state.castLedger.computeIfAbsent(action.focusObjectId, k -> ConcurrentHashMap.newKeySet()).add(action.ledgerSkillId);
+		if (action.control && (action.target instanceof Player))
+		{
+			state.controlTries.computeIfAbsent(controlKey(action.focusObjectId, action.ledgerSkillId), k -> new int[2])[0]++;
+			state.ctlFocusId = action.focusObjectId;
+			state.ctlSkillId = action.ledgerSkillId;
+			state.ctlSettleAt = System.currentTimeMillis() + action.skill.getHitTime() + action.skill.getCoolTime() + CONTROL_SETTLE_MS;
+		}
+		if (action.oncePerTarget)
+		{
+			state.castLedger.computeIfAbsent(action.focusObjectId, k -> ConcurrentHashMap.newKeySet()).add(action.ledgerSkillId);
+		}
 	}
 
 	/**
@@ -657,6 +741,7 @@ public class PhantomPlaystyleEngine
 		if (state != null)
 		{
 			state.castLedger.remove(objectId);
+			state.controlTries.keySet().removeIf(key -> (key >> 32) == objectId);
 		}
 	}
 
@@ -668,6 +753,7 @@ public class PhantomPlaystyleEngine
 		if (state != null)
 		{
 			state.castLedger.clear();
+			state.controlTries.clear();
 		}
 	}
 
