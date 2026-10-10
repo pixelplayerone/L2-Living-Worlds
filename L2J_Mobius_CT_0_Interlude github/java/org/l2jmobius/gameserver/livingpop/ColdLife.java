@@ -149,6 +149,15 @@ public final class ColdLife
 
 		/** @return levels per gear tier (the tier then follows the weapon's grade) */
 		int tierStep();
+
+		/**
+		 * @param itemId an item
+		 * @return how many minutes of wear a shadow item lasts, or 0 for any other item
+		 */
+		default int shadowMinutes(int itemId)
+		{
+			return 0;
+		}
 	}
 
 	/**
@@ -655,7 +664,7 @@ public final class ColdLife
 		}
 
 		// Gear, piece by piece, with what is left after supplies.
-		shopGear(bot, town, context, events);
+		shopGear(bot, town, context, events, now);
 		bot.setShoppedAt(now);
 
 		// Business with a class master or its trainer comes before any break.
@@ -1131,7 +1140,7 @@ public final class ColdLife
 	/**
 	 * Buys gear piece by piece on a town visit (see {@link LivingGear#shop}) and sells what it replaces.
 	 */
-	private static void shopGear(ColdBot bot, Town town, Context context, List<DecisionLog.Event> events)
+	private static void shopGear(ColdBot bot, Town town, Context context, List<DecisionLog.Event> events, long now)
 	{
 		final GearShop shop = context.gear();
 		if (shop == null)
@@ -1140,6 +1149,15 @@ public final class ColdLife
 		}
 		final LivingGear.Fit fit = fitOf(shop, bot.getClassId(), bot.getId(), bot.getLevel());
 		final Map<LivingGear.Slot, Integer> gear = gearOf(bot);
+		final Integer weapon = gear.get(LivingGear.Slot.WEAPON);
+		final int minutes = (weapon == null) ? 0 : shop.shadowMinutes(weapon);
+		if ((minutes > 0) && (bot.getShoppedAt() > 0) && LivingGear.wornOut(bot.getId(), now, now - bot.getShoppedAt(), minutes))
+		{
+			final LivingGear.Piece worn = shop.items().piece(weapon);
+			gear.remove(LivingGear.Slot.WEAPON);
+			setGear(bot, gear, shop);
+			events.add(new DecisionLog.Event(null, "Its " + ((worn == null) ? "shadow weapon" : worn.name()) + " wore out"));
+		}
 		long adena = bot.getAdena();
 		final List<String> old = new ArrayList<>();
 		// A slot filled on this visit is not shopped again, so it never buys a piece and sells it a round later.

@@ -911,6 +911,21 @@ public class LivingTravelTest
 	private static void testGearRules()
 	{
 		check("a bow is not a warrior's weapon", !LivingGear.fits(PIECES.get(12), WARRIOR));
+		final LivingGear.Piece normalC = new LivingGear.Piece(900, "Sword of C", LivingGear.Kind.WEAPON, 2, "SWORD", false, false, false, 120, 60, 0, 0, 5000L);
+		final LivingGear.Piece shadowC = new LivingGear.Piece(901, "Shadow Item: Sword of C", LivingGear.Kind.WEAPON, 2, "SWORD", false, false, false, 120, 60, 0, 0, 0L);
+		final LivingGear.Piece normalA = new LivingGear.Piece(902, "Sword of A", LivingGear.Kind.WEAPON, 4, "SWORD", false, false, false, 200, 80, 0, 0, 5000L);
+		final Map<Integer, LivingGear.Piece> shadowItems = Map.of(900, normalC, 901, shadowC, 902, normalA);
+		final LivingGear.Items shadowLookup = shadowItems::get;
+		final Map<LivingGear.Slot, Integer> bare = new java.util.EnumMap<>(LivingGear.Slot.class);
+		check("from level 40 a bot buys the shadow C weapon and not the normal one", (LivingGear.target(bare, shadowC, WARRIOR, 45, shadowLookup) == LivingGear.Slot.WEAPON) && (LivingGear.target(bare, normalC, WARRIOR, 45, shadowLookup) == null) && (LivingGear.target(bare, normalA, WARRIOR, 65, shadowLookup) == LivingGear.Slot.WEAPON));
+		check("no C grade weapon is open to a bot before level 40", LivingGear.target(bare, normalC, WARRIOR, 39, shadowLookup) == null);
+		check("a shadow weapon wears out with use", !LivingGear.wornOut(7L, 1_000_000L, 0L, 300) && LivingGear.wornOut(7L, 1_000_000L, 301L * 60_000L, 300) && !LivingGear.wornOut(7L, 1_000_000L, 60_000L, 0));
+		final Map<LivingGear.Slot, Integer> armed = new java.util.EnumMap<>(LivingGear.Slot.class);
+		armed.put(LivingGear.Slot.WEAPON, 10);
+		armed.put(LivingGear.Slot.SHIELD, 30);
+		final LivingGear.Piece twoHander = PIECES.get(15);
+		final List<LivingGear.Change> swapped = LivingGear.shop(armed, new LivingGear.Fit("HEAVY", Set.of("SWORD"), false, true, 0), 5, 100_000L, List.of(new LivingGear.Offer(twoHander, 3000L, true)), PIECES::get);
+		check("a two-handed weapon takes the shield off", !swapped.isEmpty() && !armed.containsKey(LivingGear.Slot.SHIELD) && swapped.get(0).removed().contains(30));
 		check("a staff is not a fighter's weapon", !LivingGear.fits(PIECES.get(14), WARRIOR) && LivingGear.fits(PIECES.get(14), new LivingGear.Fit("MAGIC", Set.of(), true, true, 0)));
 		check("heavy armor fits a heavy class, light armor does not", LivingGear.fits(PIECES.get(22), WARRIOR) && !LivingGear.fits(PIECES.get(20), WARRIOR));
 		check("a one-handed class takes no two-hander", !LivingGear.fits(PIECES.get(15), new LivingGear.Fit("HEAVY", Set.of("SWORD"), false, true, 1)));

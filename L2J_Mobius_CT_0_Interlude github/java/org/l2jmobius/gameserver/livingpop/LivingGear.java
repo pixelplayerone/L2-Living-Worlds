@@ -145,6 +145,34 @@ public final class LivingGear
 	 */
 	public record Piece(int itemId, String name, Kind kind, int grade, String type, boolean magic, boolean twoHanded, boolean fullBody, int pAtk, int mAtk, int pDef, int mDef, long sellPrice)
 	{
+		/** @return whether it is a shadow item: a copy of a normal weapon that cannot be sold and wears out with use */
+		public boolean shadow()
+		{
+			return name.startsWith("Shadow Item:");
+		}
+	}
+
+	/** From this level a bot buys shadow C and B grade weapons instead of the normal ones, and sells the C and B weapons that drop. */
+	public static final int SHADOW_FROM_LEVEL = 40;
+
+	/**
+	 * Whether a shadow weapon that has been worn for a while has run out. The chance is the share of its life used since
+	 * the last visit, rolled the same way for the same bot and minute.
+	 * @param botId the bot
+	 * @param now the time
+	 * @param wornMs how long it has been worn since the bot last shopped
+	 * @param minutes how long the weapon lasts, in minutes
+	 * @return whether it has run out
+	 */
+	public static boolean wornOut(long botId, long now, long wornMs, int minutes)
+	{
+		if ((minutes <= 0) || (wornMs <= 0))
+		{
+			return false;
+		}
+		final long wornMinutes = wornMs / 60_000L;
+		final long roll = Math.floorMod(((botId * 31) + (now / 60_000L)) * 0x9E3779B97F4A7C15L >>> 20, (long) minutes);
+		return roll < wornMinutes;
 	}
 
 	/**
@@ -309,6 +337,10 @@ public final class LivingGear
 		if ((piece.grade() > allowedGrade(level)) || !fits(piece, fit))
 		{
 			return null;
+		}
+		if ((piece.kind() == Kind.WEAPON) && !piece.shadow() && (level >= SHADOW_FROM_LEVEL) && ((piece.grade() == 2) || (piece.grade() == 3)))
+		{
+			return null; // a bot of this level buys shadow weapons at C and B grade and sells the drops
 		}
 		final Slot slot = slotFor(gear, piece, fit, items);
 		if (slot == null)

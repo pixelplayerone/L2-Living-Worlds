@@ -61,6 +61,12 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 {
 	private static final Logger LOGGER = Logger.getLogger(GearCatalog.class.getName());
 
+	/** What a shadow weapon of the usual 300 minutes costs, in percent of the normal weapon (a rough number to tune once the market is reworked). */
+	private static final long SHADOW_PRICE_PERCENT = 20;
+
+	/** The wear time the shadow price percent is for. */
+	private static final long SHADOW_REFERENCE_MINUTES = 300;
+
 	/** A shop NPC this close to a town's arrival point or grocer counts as that town's shop. */
 	private static final double TOWN_RADIUS = 10_000.0;
 
@@ -68,6 +74,7 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 	private final Map<String, List<LivingGear.Offer>> _offers = new ConcurrentHashMap<>();
 	private final Map<Integer, LivingGear.Fit> _fits = new ConcurrentHashMap<>();
 	private volatile List<LivingGear.Piece> _tradePool;
+	private volatile List<LivingGear.Offer> _shadowOffers;
 	private volatile List<ShopList> _shopLists;
 	private final boolean _trade;
 	private final int _tierStep;
@@ -112,7 +119,71 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 	@Override
 	public boolean wearable(int itemId)
 	{
-		return (piece(itemId) != null) && FakePlayerGearFilter.isPlayerGear(itemId);
+		final LivingGear.Piece piece = piece(itemId);
+		return (piece != null) && (FakePlayerGearFilter.isPlayerGear(itemId) || (piece.shadow() && (shadowOriginal(piece) != null)));
+	}
+
+	@Override
+	public int shadowMinutes(int itemId)
+	{
+		final LivingGear.Piece piece = piece(itemId);
+		return ((piece != null) && piece.shadow()) ? ItemData.getInstance().getTemplate(itemId).getDuration() : 0;
+	}
+
+	/**
+	 * @param shadow a shadow item
+	 * @return the normal item it copies (same name and grade, gear the phantoms render safely), or null when there is none
+	 */
+	private ItemTemplate shadowOriginal(LivingGear.Piece shadow)
+	{
+		final String name = shadow.name().substring("Shadow Item:".length()).trim();
+		for (ItemTemplate item : ItemData.getInstance().getAllItems())
+		{
+			if ((item != null) && item.getName().equals(name) && (item.getCrystalType().ordinal() == shadow.grade()) && item.isTradeable() && FakePlayerGearFilter.isPlayerGear(item))
+			{
+				return item;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The shadow weapons of C and B grade for sale. No shop sells them, so they are bought as if from another player, at a
+	 * share of what the normal weapon costs (they cannot be sold and wear out, so they are cheaper): scaled by how long
+	 * the copy lasts.
+	 */
+	private List<LivingGear.Offer> shadowOffers()
+	{
+		List<LivingGear.Offer> offers = _shadowOffers;
+		if (offers != null)
+		{
+			return offers;
+		}
+		offers = new ArrayList<>();
+		for (ItemTemplate item : ItemData.getInstance().getAllItems())
+		{
+			if ((item == null) || !item.getName().startsWith("Shadow Item:"))
+			{
+				continue;
+			}
+			final LivingGear.Piece piece = piece(item.getId());
+			if ((piece == null) || (piece.kind() != LivingGear.Kind.WEAPON) || ((piece.grade() != 2) && (piece.grade() != 3)))
+			{
+				continue;
+			}
+			final ItemTemplate original = shadowOriginal(piece);
+			if ((original == null) || (original.getReferencePrice() <= 0) || (item.getDuration() <= 0))
+			{
+				continue;
+			}
+			offers.add(new LivingGear.Offer(piece, Math.max(1L, (original.getReferencePrice() * SHADOW_PRICE_PERCENT * item.getDuration()) / (100L * SHADOW_REFERENCE_MINUTES)), false));
+		}
+		offers = List.copyOf(offers);
+		if (!offers.isEmpty())
+		{
+			_shadowOffers = offers; // only cached once the gear allow-list is loaded
+		}
+		return offers;
 	}
 
 	/**
@@ -148,7 +219,7 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 	{
 		if (town == null)
 		{
-			return tradeOffers(Map.of());
+			return withShadow(tradeOffers(Map.of()));
 		}
 		return _offers.computeIfAbsent(town.name(), name ->
 		{
@@ -174,7 +245,9 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 			}
 			final List<LivingGear.Offer> traded = tradeOffers(sold);
 			offers.addAll(traded);
-			LOGGER.info("LivingPopulation: " + name + " sells " + (offers.size() - traded.size()) + " gear pieces" + (_trade ? (", and " + traded.size() + " more can be bought from players") : ""));
+			final List<LivingGear.Offer> shadow = shadowOffers();
+			offers.addAll(shadow);
+			LOGGER.info("LivingPopulation: " + name + " sells " + (offers.size() - traded.size() - shadow.size()) + " gear pieces" + (_trade ? (", and " + traded.size() + " more can be bought from players") : "") + ", plus " + shadow.size() + " shadow weapons from players");
 			return List.copyOf(offers);
 		});
 	}
@@ -227,6 +300,13 @@ public class GearCatalog implements LivingGear.Items, ColdLife.GearShop
 		final Map<LivingGear.Slot, Integer> gear = new EnumMap<>(LivingGear.Slot.class);
 		LivingGear.shop(gear, fit(classId), 80, Long.MAX_VALUE, pool, this);
 		return gear;
+	}
+
+	private List<LivingGear.Offer> withShadow(List<LivingGear.Offer> offers)
+	{
+		final List<LivingGear.Offer> all = new ArrayList<>(offers);
+		all.addAll(shadowOffers());
+		return all;
 	}
 
 	private List<LivingGear.Offer> tradeOffers(Map<Integer, Long> sold)
